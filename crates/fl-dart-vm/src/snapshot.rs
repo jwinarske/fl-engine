@@ -8,9 +8,9 @@
 //! [`DartError::SnapshotVersionMismatch`] naming both sides.
 
 #[cfg(feature = "aot")]
-use std::ffi::{c_void, CStr, CString};
+use std::ffi::CString;
 #[cfg(feature = "aot")]
-use std::os::raw::{c_char, c_int};
+use std::os::raw::c_char;
 #[cfg(feature = "aot")]
 use std::path::Path;
 
@@ -99,27 +99,29 @@ pub(crate) fn mismatch_from_message(msg: &str) -> Option<DartError> {
     })
 }
 
-/// An AOT snapshot loaded with `dlopen`, the way Flutter loads `libapp.so`.
+/// An AOT snapshot, loaded through the VM's own ELF loader (`Dart_LoadELF`).
 ///
-/// Since Dart 3.13 a snapshot is one data section and one text section,
-/// `_kDartSnapshotData` and `_kDartSnapshotText` -- the separate VM and isolate
-/// snapshots earlier embedders loaded four symbols for are gone, and so is any
-/// snapshot argument to `Dart_Initialize`.
+/// `dart compile aot-snapshot` writes an `ET_DYN` ELF exporting
+/// `_kDartSnapshotData`, `_kDartSnapshotText` and `_kDartSnapshotBuildId` --
+/// and nothing else. dlopen + dlsym of the first two *looks* right but hands
+/// back a data section the dynamic loader has not arranged as the VM expects
+/// and leaves the instructions' BSS unset, so the VM crashes at the first
+/// native call. `Dart_LoadELF` maps the sections the way the VM expects and
+/// returns the data and text pointers to pass to `Dart_CreateIsolateGroup`.
 ///
-/// The text section is executable code mapped by the dynamic loader; it has
-/// to stay mapped for as long as anything created from it can run, so the
-/// isolate group keeps this alive and the library is closed only after the
-/// group's cleanup.
+/// The loader owns the mapping until `Dart_UnloadELF`, so this must outlive
+/// every isolate made from it; the isolate group enforces that by holding an
+/// `Arc` of it until the group's cleanup.
 #[cfg(feature = "aot")]
 #[derive(Debug)]
 pub struct AotSnapshot {
-    handle: *mut c_void,
+    handle: *mut sys::Dart_LoadedElf,
     data: *const u8,
     text: *const u8,
 }
 
 #[cfg(feature = "aot")]
-// SAFETY: the handle is only dlclose'd in Drop and the two pointers are
+// SAFETY: the handle is only unloaded in Drop and the two pointers are
 // read-only mapped sections; nothing here is tied to a thread.
 unsafe impl Send for AotSnapshot {}
 #[cfg(feature = "aot")]
@@ -128,52 +130,35 @@ unsafe impl Sync for AotSnapshot {}
 
 #[cfg(feature = "aot")]
 impl AotSnapshot {
-    /// `dlopen`s an ELF snapshot from `dart compile aot-snapshot` or
-    /// `gen_snapshot --snapshot_kind=app-aot-elf` and checks its version.
+    /// Loads an AOT ELF snapshot from `dart compile aot-snapshot` (or
+    /// `gen_snapshot --snapshot_kind=app-aot-elf`) and checks its version.
     pub fn open(path: &Path) -> Result<AotSnapshot, DartError> {
         let c = CString::new(path.as_os_str().as_encoded_bytes())
             .map_err(|_| DartError::Api(format!("NUL in path {}", path.display())))?;
-        // SAFETY: c is a valid C string; RTLD_LOCAL keeps the snapshot's
-        // symbols from resolving anything else in the process.
-        let handle = unsafe { dlopen(c.as_ptr(), RTLD_NOW | RTLD_LOCAL) };
+        let mut err: *const c_char = std::ptr::null();
+        let mut data: *const u8 = std::ptr::null();
+        let mut text: *const u8 = std::ptr::null();
+        // SAFETY: c is a valid C string; the three out-pointers are valid for
+        // the call. On success the handle owns a mapping and data/text point
+        // into it; on failure the handle is null and err is a VM-owned message.
+        let handle = unsafe { sys::Dart_LoadELF(c.as_ptr(), 0, &mut err, &mut data, &mut text) };
         if handle.is_null() {
-            return Err(DartError::Api(format!(
-                "dlopen {}: {}",
-                path.display(),
-                dl_error()
-            )));
+            // SAFETY: err is null or a NUL-terminated string the loader owns;
+            // borrowed, not freed.
+            let msg = unsafe { crate::error::cstr(err) };
+            return Err(mismatch_from_message(&msg).unwrap_or_else(|| {
+                DartError::Api(format!("Dart_LoadELF {}: {msg}", path.display()))
+            }));
         }
-        let snap = AotSnapshot {
-            handle,
-            data: std::ptr::null(),
-            text: std::ptr::null(),
-        };
-        let data = snap.symbol(c"_kDartSnapshotData")?;
-        let text = snap.symbol(c"_kDartSnapshotText")?;
-        let snap = AotSnapshot { data, text, ..snap };
-        // SAFETY: data points at a mapped snapshot section, which starts with
-        // at least a full header (magic, length, kind, hash) when it is one.
-        // Reading the header length is bounded by the magic check failing first
-        // on anything that is not.
+        let snap = AotSnapshot { handle, data, text };
+        // SAFETY: data points at the loaded snapshot's data section, which
+        // begins with a full header (magic, length, kind, hash) when the file
+        // is a snapshot; the magic check fails first on anything that is not.
         let header = unsafe {
             std::slice::from_raw_parts(snap.data, SNAPSHOT_HASH_OFFSET + SNAPSHOT_HASH_LEN)
         };
         check_aot_header(header)?;
         Ok(snap)
-    }
-
-    fn symbol(&self, name: &CStr) -> Result<*const u8, DartError> {
-        // SAFETY: handle is a live dlopen handle; name is NUL-terminated.
-        let p = unsafe { dlsym(self.handle, name.as_ptr()) };
-        if p.is_null() {
-            Err(DartError::Api(format!(
-                "snapshot has no symbol {}: {}",
-                name.to_string_lossy(),
-                dl_error()
-            )))
-        } else {
-            Ok(p.cast())
-        }
     }
 
     pub(crate) fn data(&self) -> *const u8 {
@@ -188,29 +173,10 @@ impl AotSnapshot {
 #[cfg(feature = "aot")]
 impl Drop for AotSnapshot {
     fn drop(&mut self) {
-        // SAFETY: handle came from dlopen and is closed exactly once.
-        unsafe { dlclose(self.handle) };
+        // SAFETY: handle came from Dart_LoadELF and is unloaded exactly once;
+        // the group's Arc kept it alive until the last isolate was gone.
+        unsafe { sys::Dart_UnloadELF(self.handle) };
     }
-}
-
-#[cfg(feature = "aot")]
-fn dl_error() -> String {
-    // SAFETY: dlerror returns null or a thread-local C string.
-    unsafe { crate::error::cstr(dlerror()) }
-}
-
-#[cfg(feature = "aot")]
-const RTLD_NOW: c_int = 2;
-#[cfg(feature = "aot")]
-const RTLD_LOCAL: c_int = 0;
-
-#[cfg(feature = "aot")]
-#[link(name = "dl")]
-extern "C" {
-    fn dlopen(filename: *const c_char, flag: c_int) -> *mut c_void;
-    fn dlsym(handle: *mut c_void, symbol: *const c_char) -> *mut c_void;
-    fn dlclose(handle: *mut c_void) -> c_int;
-    fn dlerror() -> *mut c_char;
 }
 
 #[cfg(test)]

@@ -23,6 +23,11 @@ Dart_Handle fl_dart_io_setup_isolate(const char* script_uri,
   dart::bin::DartIoSettings settings;
   settings.script_uri = script_uri;
   settings.disable_exit = disable_exit;
+  // Off: it registers a VM-service extension, and the service is not part of
+  // M1 (debugging arrives at M9). Left at its default true, the JIT runtime
+  // fails the first isolate's setup with "To access
+  // 'dart:io::_NetworkProfiling' from native code, it must be annotated".
+  settings.enable_network_profiling = false;
   return dart::bin::SetupDartIoLibrary(settings);
 }
 

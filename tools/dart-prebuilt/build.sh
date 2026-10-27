@@ -143,6 +143,11 @@ mri="$stage/merge.mri"
 "$llvm_ar" -M < "$mri"
 cp "$sdk"/runtime/include/{dart_api.h,dart_native_api.h,dart_tools_api.h,dart_version.h} "$dest/include/"
 cp "$here/fl_dart/fl_dart_io.h" "$dest/include/"
+# elf_loader.h is the snapshot loader's header; fl-dart-sys binds it. Its
+# "../include/dart_api.h" include is rewritten to the flat layout the artifact
+# ships (every header in one include/ dir).
+sed 's#"../include/dart_api.h"#"dart_api.h"#' \
+  "$sdk/runtime/bin/elf_loader.h" > "$dest/include/elf_loader.h"
 cp "$pinned_dir/VERSION" "$dest/VERSION"
 cat > "$lib/link.txt" <<LINK
 # Written by tools/dart-prebuilt/build.sh from $conf at $revision.
