@@ -246,35 +246,51 @@ fn run(cmd: &mut Command) -> Result<(), String> {
 /// pairing each asset's most recent `"id"` with the next `"name"` seen, which
 /// holds for either field order within an object.
 fn asset_id_for(body: &str, name: &str) -> Option<u64> {
-    let needle = format!("\"name\":\"{name}\"");
+    // Scanned, not deserialized (this crate has no dependencies), and
+    // tolerant of whitespace after every colon: GitHub serves this endpoint
+    // pretty-printed to a plain client, while `gh api` hands back a compact
+    // re-serialization. A needle written for one shape misses the other, and
+    // the id parse below would then keep a stale id rather than fail. Both
+    // shapes are fixtures in the test.
     let mut last_id: Option<u64> = None;
     let mut rest = body;
     loop {
-        let id_at = rest.find("\"id\":");
-        let name_at = rest.find(&needle);
+        let id_at = value_after(rest, "\"id\"");
+        let name_at = value_after(rest, "\"name\"");
         match (id_at, name_at) {
-            (Some(i), Some(n)) if i < n => {
-                let after = &rest[i + 5..];
-                let digits: String = after.chars().take_while(|c| c.is_ascii_digit()).collect();
-                last_id = digits.parse().ok().or(last_id);
-                rest = &rest[i + 5..];
-            }
-            (_, Some(n)) => {
-                // The name matched; the id already seen for this object is it.
-                // If none preceded it, look ahead for the next "id".
-                if last_id.is_some() {
-                    return last_id;
-                }
-                let after = &rest[n..];
-                let i = after.find("\"id\":")?;
-                let digits: String = after[i + 5..]
+            (Some((i, v)), Some((n, _))) if i < n => {
+                let digits: String = rest[v..]
                     .chars()
                     .take_while(|c| c.is_ascii_digit())
                     .collect();
-                return digits.parse().ok();
+                last_id = digits.parse().ok();
+                rest = &rest[v..];
+            }
+            (_, Some((_, v))) => {
+                let quoted = format!("\"{name}\"");
+                if rest[v..].starts_with(&quoted) {
+                    return last_id;
+                }
+                rest = &rest[v..];
             }
             _ => return None,
         }
+    }
+}
+
+/// The first `key` in `rest`, as (index of the key, index of its value):
+/// after the key, optional whitespace, a colon, optional whitespace.
+fn value_after(rest: &str, key: &str) -> Option<(usize, usize)> {
+    let mut from = 0;
+    loop {
+        let k = from + rest[from..].find(key)?;
+        let after = &rest[k + key.len()..];
+        let trimmed = after.trim_start();
+        if let Some(t) = trimmed.strip_prefix(':') {
+            let v = rest.len() - t.trim_start().len();
+            return Some((k, v));
+        }
+        from = k + key.len();
     }
 }
 
@@ -288,6 +304,52 @@ mod tests {
             {"id":681784949,"name":"fl-dart-prebuilt-3.13.7-x86_64-unknown-linux-gnu-jit.tar.xz","uploader":{"id":22}},
             {"id":681784951,"name":"fl-dart-prebuilt-3.13.7-x86_64-unknown-linux-gnu-aot.tar.xz","uploader":{"id":22}},
             {"id":681784959,"name":"SHA256SUMS","uploader":{"id":22}}]}"#;
+        assert_eq!(
+            super::asset_id_for(
+                body,
+                "fl-dart-prebuilt-3.13.7-x86_64-unknown-linux-gnu-aot.tar.xz"
+            ),
+            Some(681784951)
+        );
+        assert_eq!(super::asset_id_for(body, "SHA256SUMS"), Some(681784959));
+        assert_eq!(super::asset_id_for(body, "absent.tar.xz"), None);
+    }
+
+    /// The same release as a plain `curl` receives it: pretty-printed, a
+    /// space after every colon. Taken from the live endpoint on 2026-10-27;
+    /// the compact fixture above is what `gh api` shows for the same bytes.
+    #[test]
+    fn pretty_printed_body_pairs_the_same_ids() {
+        let body = r#"{
+  "url": "https://api.github.com/repos/jwinarske/fl-engine/releases/425445027",
+  "id": 425445027,
+  "author": {
+    "login": "github-actions[bot]",
+    "id": 41898282,
+    "node_id": "MDM6Qm90NDE4OTgyODI="
+  },
+  "assets": [
+    {
+      "url": "https://api.github.com/repos/jwinarske/fl-engine/releases/assets/681784951",
+      "id": 681784951,
+      "node_id": "RA_kwDOVZIxaM4oozZ3",
+      "name": "fl-dart-prebuilt-3.13.7-x86_64-unknown-linux-gnu-aot.tar.xz",
+      "label": "",
+      "uploader": {
+        "login": "github-actions[bot]",
+        "id": 41898282
+      },
+      "browser_download_url": "https://github.com/jwinarske/fl-engine/releases/download/dart-prebuilt-3.13.7/fl-dart-prebuilt-3.13.7-x86_64-unknown-linux-gnu-aot.tar.xz"
+    },
+    {
+      "id": 681784959,
+      "name": "SHA256SUMS",
+      "uploader": {
+        "id": 41898282
+      }
+    }
+  ]
+}"#;
         assert_eq!(
             super::asset_id_for(
                 body,
