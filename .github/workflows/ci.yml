@@ -59,7 +59,7 @@ jobs:
       - name: Fetch the prebuilt VM
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: cargo xtask fetch-prebuilt --target x86_64-unknown-linux-gnu --mode ${{ matrix.mode }}
+        run: ci/annotate-on-fail.sh cargo xtask fetch-prebuilt --target x86_64-unknown-linux-gnu --mode ${{ matrix.mode }}
       - name: Fetch the pinned stock SDK
         run: |
           base="https://storage.googleapis.com/dart-archive/channels/stable/release/3.13.7/sdk"
@@ -72,4 +72,4 @@ jobs:
       - name: L2 suite
         env:
           FL_DART_SDK_BIN: ${{ github.workspace }}/dart-sdk/bin/dart
-        run: cargo test -p fl-dart-cli ${{ matrix.flags }}
+        run: ci/annotate-on-fail.sh cargo test -p fl-dart-cli ${{ matrix.flags }}
