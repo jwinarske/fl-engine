@@ -42,7 +42,7 @@ fn bindgen() -> Result<(), String> {
 
     // C enums become newtypes over their integer, not Rust enums: the VM is
     // free to hand back a value a newer header added, and a Rust enum holding a
-    // discriminant it does not declare is undefined behaviour.
+    // discriminant it does not declare is undefined behavior.
     let common = [
         "--use-core",
         "--default-enum-style",

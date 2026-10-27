@@ -20,7 +20,7 @@ pub enum DartError {
     Compilation(String),
     /// The snapshot was produced by a different SDK than the VM linked here.
     /// A snapshot is valid only for the exact VM build it was made by, and the
-    /// VM's own report of this is rarely recognisable as that; this one names
+    /// VM's own report of this is rarely recognizable as that; this one names
     /// both sides.
     #[error("snapshot version mismatch: this VM expects {expected}, the snapshot is {found}")]
     SnapshotVersionMismatch { expected: String, found: String },

@@ -771,7 +771,11 @@ unsafe extern "C" fn builtin_print_string(args: sys::Dart_NativeArguments) {
     });
 }
 
-/// `Dart_LookupLibrary`, with "not loaded" as `None` rather than an error.
+/// `Dart_LookupLibrary`, with "not in this program" as `None`.
+///
+/// Only the VM's not-found error means absent. Any other error is returned:
+/// treating every failure as absence would let a real fault pick the wrong
+/// print source (or none) without saying why.
 ///
 /// # Safety
 /// A current isolate with an open scope.
@@ -783,12 +787,15 @@ unsafe fn lookup_optional(uri: &str) -> Result<Option<sys::Dart_Handle>, DartErr
             uri.len() as isize,
         ))?;
         let lib = sys::Dart_LookupLibrary(s);
-        if sys::Dart_IsError(lib) {
-            // The VM's only error for a library absent from the snapshot; any
-            // other failure would also have failed the lookups that follow.
+        if !sys::Dart_IsError(lib) {
+            return Ok(Some(lib));
+        }
+        // "Dart_LookupLibrary: library 'dart:ui' not found."
+        let msg = crate::error::cstr(sys::Dart_GetError(lib));
+        if msg.contains("not found") {
             Ok(None)
         } else {
-            Ok(Some(lib))
+            Err(DartError::Api(msg))
         }
     }
 }

@@ -101,7 +101,7 @@ into the platform dill and every AOT snapshot, and binds to natives by name:
 185 entries in `runtime/bin/io_natives.cc`, backed by ~25k lines of Linux C++
 (event handler, process, file, socket, TLS filter, directory watch, stdio).
 A port implements those natives with the exact names, argument conventions
-and error behaviour that Dart side expects, since it is not ours to change.
+and error behavior that Dart side expects, since it is not ours to change.
 `socket_patch.dart` and `secure_socket_patch.dart` are the tightly coupled
 ones (epoll event-mask encoding, BoringSSL filter buffers).
 

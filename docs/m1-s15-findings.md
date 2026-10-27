@@ -273,7 +273,7 @@ system ICU that has its data library).
   selectively `-C link-arg=-Wl,--export-dynamic-symbol=host_*` (lld/GNU ld ≥2.35; this is what Dart itself uses for
   `Dart_*`, bin/BUILD.gn:36-51) or `-Wl,--dynamic-list=list.txt`. Make sure the functions are not dead-stripped
   (referenced or `#[used]`); verify with `nm -D --defined-only <bin> | grep host_`. (I did not build a Rust binary
-  here; flag semantics are standard ld behaviour.) Shared libraries already loaded with RTLD_GLOBAL (incl. libc) are
+  here; flag semantics are standard ld behavior.) Shared libraries already loaded with RTLD_GLOBAL (incl. libc) are
   also found.
 - **@Native without asset** — resolution order in `FfiResolveInternal` (ffi_dynamic_library.cc:563-610):
   1. `Dart_SetFfiNativeResolver(library, resolver)` registered on the library whose URI equals the asset id
@@ -300,13 +300,13 @@ system ICU that has its data library).
 is_system_isolate, is_service_isolate, is_kernel_isolate, snapshot_is_dontneed_safe, branch_coverage, coverage,
 dwarf_stack_traces, code_comments`.
 
-- Always initialise with `Dart_IsolateFlagsInitialize(&flags)` (dart_api_impl.cc:1284-1286 → isolate.cc:1730-1741);
+- Always initialize with `Dart_IsolateFlagsInitialize(&flags)` (dart_api_impl.cc:1284-1286 → isolate.cc:1730-1741);
   passing `flags=NULL` to the create calls does the same (dart_api_impl.cc:1298-1302, :1330-1334). `version` is
   **not validated** anywhere (only written, isolate.cc:1683/1694/1733/1746).
 - `null_safety`: still a field, but **ignored** — FlagsInitialize/FlagsCopyTo force it to `true`
   (isolate.cc:1690, :1701, :1740, :1753); nothing reads it.
 - Mapping to VM state: isolate.h:136-159 (`BOOL_ISOLATE_GROUP_FLAG_LIST` / `BOOL_ISOLATE_FLAG_LIST`). Defaults come
-  from command-line flags (`--enable-asserts`, `--use-osr`, …); `obfuscate` honoured only in precompiler;
+  from command-line flags (`--enable-asserts`, `--use-osr`, …); `obfuscate` honored only in precompiler;
   `enable_asserts`, `snapshot_is_dontneed_safe`, coverage, `is_system/service/kernel_isolate` are **NONPRODUCT-only**
   (ignored in PRODUCT builds). For AOT snapshots the group flags are overwritten from the snapshot header
   (`SnapshotHeaderReader::InitializeIsolateGroupFlagsFromSnapshot`, dart.cc:775-783).

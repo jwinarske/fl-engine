@@ -86,7 +86,7 @@ pub fn check_aot_header(data: &[u8]) -> Result<(), DartError> {
     Ok(())
 }
 
-/// Recognises the VM's own wording for a version mismatch, for the cases the
+/// Recognizes the VM's own wording for a version mismatch, for the cases the
 /// header checks above do not see first (a snapshot handed over as bytes).
 pub(crate) fn mismatch_from_message(msg: &str) -> Option<DartError> {
     // "Wrong full snapshot version, expected '<hash>' found '<hash>'"
@@ -136,6 +136,11 @@ unsafe impl Sync for AotSnapshot {}
 impl AotSnapshot {
     /// `dlopen`s an AOT ELF snapshot -- a `libapp.so` from Flutter's tooling,
     /// or `dart compile aot-snapshot` output -- and checks its version.
+    ///
+    /// A snapshot is machine code, and `dlopen` runs its ELF initializers, so
+    /// opening one runs it: only open snapshots from a source you would run a
+    /// binary from. The version check below happens after the library is
+    /// mapped, so it protects against mismatched builds, not hostile files.
     pub fn open(path: &Path) -> Result<AotSnapshot, DartError> {
         let c = CString::new(path.as_os_str().as_encoded_bytes())
             .map_err(|_| DartError::Api(format!("NUL in path {}", path.display())))?;
