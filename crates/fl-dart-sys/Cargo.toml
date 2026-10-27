@@ -1,0 +1,23 @@
+[package]
+name = "fl-dart-sys"
+description = "Raw bindings to the Dart VM embedding API, linked from a prebuilt libdart"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+# Tells cargo this crate owns the link to the Dart VM, so a second copy of the
+# VM in one binary is a resolution error rather than a duplicate-symbol one.
+links = "dart"
+build = "build.rs"
+
+[features]
+# Exactly one of these. They select which static library set is linked, and the
+# two are different builds of the same VM: they cannot coexist in a process.
+jit = []
+aot = []
+# dart_tools_api.h: the service and timeline API. Bound, unused in M1.
+tools = []
+
+[lints]
+workspace = true

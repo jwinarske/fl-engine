@@ -1,0 +1,73 @@
+error[E0277]: `*mut _Dart_Handle` cannot be sent between threads safely
+ --> tests/compile_fail/persistent_handle_crosses_threads.rs:6:24
+  |
+6 |     std::thread::spawn(move || drop(h));
+  |     ------------------ -------^^^^^^^^
+  |     |                  |
+  |     |                  `*mut _Dart_Handle` cannot be sent between threads safely
+  |     |                  within this `{closure@$DIR/tests/compile_fail/persistent_handle_crosses_threads.rs:6:24: 6:31}`
+  |     required by a bound introduced by this call
+  |
+  = help: within `{closure@$DIR/tests/compile_fail/persistent_handle_crosses_threads.rs:6:24: 6:31}`, the trait `Send` is not implemented for `*mut _Dart_Handle`
+note: required because it appears within the type `PersistentHandle`
+ --> src/isolate.rs
+  |
+  | pub struct PersistentHandle {
+  |            ^^^^^^^^^^^^^^^^
+note: required because it's used within this closure
+ --> tests/compile_fail/persistent_handle_crosses_threads.rs:6:24
+  |
+6 |     std::thread::spawn(move || drop(h));
+  |                        ^^^^^^^
+note: required by a bound in `spawn`
+ --> $RUST/std/src/thread/functions.rs
+
+error[E0277]: `*mut _Dart_Isolate` cannot be sent between threads safely
+ --> tests/compile_fail/persistent_handle_crosses_threads.rs:6:24
+  |
+6 |     std::thread::spawn(move || drop(h));
+  |     ------------------ -------^^^^^^^^
+  |     |                  |
+  |     |                  `*mut _Dart_Isolate` cannot be sent between threads safely
+  |     |                  within this `{closure@$DIR/tests/compile_fail/persistent_handle_crosses_threads.rs:6:24: 6:31}`
+  |     required by a bound introduced by this call
+  |
+  = help: within `{closure@$DIR/tests/compile_fail/persistent_handle_crosses_threads.rs:6:24: 6:31}`, the trait `Send` is not implemented for `*mut _Dart_Isolate`
+note: required because it appears within the type `PersistentHandle`
+ --> src/isolate.rs
+  |
+  | pub struct PersistentHandle {
+  |            ^^^^^^^^^^^^^^^^
+note: required because it's used within this closure
+ --> tests/compile_fail/persistent_handle_crosses_threads.rs:6:24
+  |
+6 |     std::thread::spawn(move || drop(h));
+  |                        ^^^^^^^
+note: required by a bound in `spawn`
+ --> $RUST/std/src/thread/functions.rs
+
+error[E0277]: `*const ()` cannot be sent between threads safely
+ --> tests/compile_fail/persistent_handle_crosses_threads.rs:6:24
+  |
+6 |     std::thread::spawn(move || drop(h));
+  |     ------------------ -------^^^^^^^^
+  |     |                  |
+  |     |                  `*const ()` cannot be sent between threads safely
+  |     |                  within this `{closure@$DIR/tests/compile_fail/persistent_handle_crosses_threads.rs:6:24: 6:31}`
+  |     required by a bound introduced by this call
+  |
+  = help: within `{closure@$DIR/tests/compile_fail/persistent_handle_crosses_threads.rs:6:24: 6:31}`, the trait `Send` is not implemented for `*const ()`
+note: required because it appears within the type `PhantomData<*const ()>`
+ --> $RUST/core/src/marker.rs
+note: required because it appears within the type `PersistentHandle`
+ --> src/isolate.rs
+  |
+  | pub struct PersistentHandle {
+  |            ^^^^^^^^^^^^^^^^
+note: required because it's used within this closure
+ --> tests/compile_fail/persistent_handle_crosses_threads.rs:6:24
+  |
+6 |     std::thread::spawn(move || drop(h));
+  |                        ^^^^^^^
+note: required by a bound in `spawn`
+ --> $RUST/std/src/thread/functions.rs

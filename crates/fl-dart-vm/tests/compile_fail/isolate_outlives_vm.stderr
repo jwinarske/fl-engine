@@ -1,0 +1,11 @@
+error[E0505]: cannot move out of `vm` because it is borrowed
+  --> tests/compile_fail/isolate_outlives_vm.rs:10:10
+   |
+ 8 | fn outlive(vm: Vm) {
+   |            -- binding `vm` declared here
+ 9 |     let isolate = make(&vm);
+   |                        --- borrow of `vm` occurs here
+10 |     drop(vm);
+   |          ^^ move out of `vm` occurs here
+11 |     drop(isolate);
+   |          ------- borrow later used here

@@ -1,0 +1,13 @@
+error[E0521]: borrowed data escapes outside of closure
+ --> tests/compile_fail/handle_stored_outside_scope.rs:7:20
+  |
+6 |     let mut kept: Option<Handle<'_>> = None;
+  |         -------- `kept` declared here, outside of the closure body
+7 |     scope.with(|s| kept = Some(s.null()));
+  |                 -  ^^^^^^^^^^^^^^^^^^^^^ `s` escapes the closure body here
+  |                 |
+  |                 `s` is a reference that is only valid in the closure body
+  |
+  = note: requirement occurs because of the type `Handle<'_>`, which makes the generic argument `'_` invariant
+  = note: the struct `Handle<'s>` is invariant over the parameter `'s`
+  = help: see <https://doc.rust-lang.org/nomicon/subtyping.html> for more information about variance

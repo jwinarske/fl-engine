@@ -1,0 +1,35 @@
+[workspace]
+resolver = "2"
+members = ["crates/*", "xtask"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+# Same floor as emblema, and for the same reason: the two workspaces meet at M2,
+# and a floor lower than the one emblema can actually build on would be a promise
+# nothing here can keep once they do.
+rust-version = "1.85"
+publish = false
+# Matches the Flutter Engine and the Dart SDK, whose embedding API this binds.
+license = "BSD-3-Clause"
+
+# The engine workspace is not pure Rust, and says so in exactly one place: the
+# Dart VM is a C++ runtime, linked from a prebuilt static archive that
+# `fl-dart-sys` locates and never builds. Everything else here keeps emblema's
+# rule -- no C/C++ toolchain, cmake, or pkg-config at build time.
+
+[workspace.lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+
+[workspace.lints.clippy]
+unwrap_used = "deny"
+panic = "deny"
+todo = "deny"
+unimplemented = "deny"
+
+[workspace.dependencies]
+thiserror = "1"
+trybuild = "1"
+
+fl-dart-sys = { path = "crates/fl-dart-sys", version = "0.1.0", default-features = false }
+fl-dart-vm = { path = "crates/fl-dart-vm", version = "0.1.0", default-features = false }

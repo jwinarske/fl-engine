@@ -1,0 +1,6 @@
+/target
+# Unpacked prebuilt VM libraries are fetched, never committed; the headers and
+# the pinned VERSION beside them are.
+/third_party/dart-prebuilt/*/lib/
+/third_party/dart-prebuilt/*/bin/
+/third_party/dart-prebuilt/*/snapshots/

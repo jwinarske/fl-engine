@@ -1,0 +1,11 @@
+error[E0597]: `isolate` does not live long enough
+  --> tests/compile_fail/scope_outlives_isolate.rs:13:17
+   |
+12 |         let mut isolate = make(vm);
+   |             ----------- binding `isolate` declared here
+13 |         scope = isolate.enter().unwrap();
+   |                 ^^^^^^^ borrowed value does not live long enough
+14 |     }
+   |     - `isolate` dropped here while still borrowed
+15 |     drop(scope);
+   |          ----- borrow later used here

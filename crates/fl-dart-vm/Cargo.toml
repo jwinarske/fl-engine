@@ -1,0 +1,22 @@
+[package]
+name = "fl-dart-vm"
+description = "A safe host for the Dart VM: isolates, scopes and handles whose rules are types"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+
+[features]
+jit = ["fl-dart-sys/jit"]
+aot = ["fl-dart-sys/aot"]
+
+[dependencies]
+fl-dart-sys = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+trybuild = { workspace = true }
+
+[lints]
+workspace = true

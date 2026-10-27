@@ -1,0 +1,12 @@
+error: lifetime may not live long enough
+ --> tests/compile_fail/handle_escapes_scope.rs:6:28
+  |
+6 |     let h = scope.with(|s| s.null());
+  |                         -- ^^^^^^^^ returning this value requires that `'1` must outlive `'2`
+  |                         ||
+  |                         |return type of closure is Handle<'2>
+  |                         has type `&mut HandleScope<'1>`
+  |
+  = note: requirement occurs because of the type `Handle<'_>`, which makes the generic argument `'_` invariant
+  = note: the struct `Handle<'s>` is invariant over the parameter `'s`
+  = help: see <https://doc.rust-lang.org/nomicon/subtyping.html> for more information about variance

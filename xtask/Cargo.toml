@@ -1,0 +1,13 @@
+[package]
+name = "xtask"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+# This workspace's own tooling. It is the one place here allowed to need
+# libclang (through the bindgen CLI), because it runs on a developer's machine
+# when the pin moves, never in a build.
+publish = false
+license.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,27 @@
+[package]
+name = "fl-dart-cli"
+description = "`fl-dart run` / `run-aot`: a thin shell over fl-dart-vm"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+
+build = "build.rs"
+
+[[bin]]
+name = "fl-dart"
+path = "src/main.rs"
+
+[features]
+# AOT is the primary mode (brief §3); `jit` replaces it on a dev host with
+# `--no-default-features --features jit`.
+default = ["aot"]
+jit = ["fl-dart-vm/jit"]
+aot = ["fl-dart-vm/aot"]
+
+[dependencies]
+fl-dart-vm = { workspace = true }
+
+[lints]
+workspace = true
