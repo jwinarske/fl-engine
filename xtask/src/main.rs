@@ -143,10 +143,11 @@ fn fetch_prebuilt(args: &[String]) -> Result<(), String> {
     let url = format!("{RELEASES}/dart-prebuilt-{PINNED_VERSION}/{name}");
     let mut curl = Command::new("curl");
     curl.args(["-fL", "--retry", "3", "-o"]).arg(&tmp).arg(&url);
-    // The repository may be private, where release downloads need a token.
-    if let Ok(token) = std::env::var("GITHUB_TOKEN") {
-        curl.args(["-H", &format!("Authorization: Bearer {token}")]);
-    }
+    // No Authorization header: the browser download endpoint answers an
+    // Actions token with 404, and GITHUB_TOKEN is always set on a runner --
+    // which is how ci's first fetch failed. The repository is public; a
+    // private one would need the API asset endpoint, not this URL with a
+    // bearer token.
     run(&mut curl)?;
 
     let out = Command::new("sha256sum")
