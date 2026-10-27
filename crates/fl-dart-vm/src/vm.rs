@@ -42,7 +42,16 @@ impl Vm {
         if INITIALIZED.swap(true, Ordering::SeqCst) {
             return Err(VmError::AlreadyInitialized);
         }
-        set_flags(&cfg.flags)?;
+        // A precompiled runtime must be told it is one: dartaotruntime and the
+        // Flutter engine (`kDartPrecompilationArgs` in runtime/dart_vm.cc) both
+        // pass --precompilation. Without it the VM runs AOT code with JIT
+        // assumptions, and the first native call crashes in LinkNativeCall.
+        let mut flags = Vec::with_capacity(cfg.flags.len() + 1);
+        if cfg!(feature = "aot") {
+            flags.push("--precompilation".to_owned());
+        }
+        flags.extend(cfg.flags.iter().cloned());
+        set_flags(&flags)?;
 
         // SAFETY: an all-zero Dart_InitializeParams is every callback null and
         // every flag false, which is a valid starting state for the struct.

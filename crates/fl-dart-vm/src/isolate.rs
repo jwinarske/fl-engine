@@ -668,15 +668,34 @@ unsafe fn install_hooks(script_uri: &std::ffi::CStr) -> Result<(), DartError> {
             check(sys::Dart_LookupLibrary(s))
         };
         let name = |n: &str| sys::Dart_NewStringFromUTF8(n.as_ptr(), n.len() as isize);
-        let builtin = lib("dart:_builtin")?;
         let internal = lib("dart:_internal")?;
-        check(sys::Dart_SetNativeResolver(
-            builtin,
-            Some(resolve_builtin),
-            None,
-        ))?;
+        // Which library supplies `print` depends on which platform the program
+        // was compiled against. The standalone platform (`dart compile`) has
+        // `dart:_builtin`, whose `_print` calls a classic native; the Flutter
+        // platform (Flutter's tooling, `libapp.so`) has no `dart:_builtin`, and
+        // its `dart:ui` `_print` calls an `@Native` symbol instead. Either way
+        // the closure lands in `dart:_internal._printClosure` and the native
+        // lands in Rust.
+        let print_source = if let Some(builtin) = lookup_optional("dart:_builtin")? {
+            check(sys::Dart_SetNativeResolver(
+                builtin,
+                Some(resolve_builtin),
+                None,
+            ))?;
+            builtin
+        } else if let Some(ui) = lookup_optional("dart:ui")? {
+            // The first engine native this crate provides, and the shape M2's
+            // dart:ui bindings take: an `@Native` resolved by symbol name
+            // through Dart_SetFfiNativeResolver, no classic native resolver.
+            check(sys::Dart_SetFfiNativeResolver(ui, Some(resolve_ui_ffi)))?;
+            ui
+        } else {
+            return Err(DartError::Api(
+                "the program has neither dart:_builtin nor dart:ui to provide print".into(),
+            ));
+        };
         let print = check(sys::Dart_Invoke(
-            builtin,
+            print_source,
             name("_getPrintClosure"),
             0,
             std::ptr::null_mut(),
@@ -747,6 +766,62 @@ unsafe extern "C" fn builtin_print_string(args: sys::Dart_NativeArguments) {
             let data = sys::Dart_CurrentIsolateData() as *const IsolateData;
             if let Some(data) = data.as_ref() {
                 (data.print)(&s);
+            }
+        }
+    });
+}
+
+/// `Dart_LookupLibrary`, with "not loaded" as `None` rather than an error.
+///
+/// # Safety
+/// A current isolate with an open scope.
+unsafe fn lookup_optional(uri: &str) -> Result<Option<sys::Dart_Handle>, DartError> {
+    // SAFETY: per this function's contract.
+    unsafe {
+        let s = check(sys::Dart_NewStringFromUTF8(
+            uri.as_ptr(),
+            uri.len() as isize,
+        ))?;
+        let lib = sys::Dart_LookupLibrary(s);
+        if sys::Dart_IsError(lib) {
+            // The VM's only error for a library absent from the snapshot; any
+            // other failure would also have failed the lookups that follow.
+            Ok(None)
+        } else {
+            Ok(Some(lib))
+        }
+    }
+}
+
+/// `dart:ui`'s `@Native` symbols this crate implements. M1 provides print only;
+/// every other dart:ui native resolves to null, which the VM reports as a
+/// named missing-symbol error when (and only when) Dart calls it.
+unsafe extern "C" fn resolve_ui_ffi(name: *const c_char, _args_n: usize) -> *mut c_void {
+    std::panic::catch_unwind(|| {
+        if name.is_null() {
+            return std::ptr::null_mut();
+        }
+        // SAFETY: the VM passes a NUL-terminated symbol name.
+        let n = unsafe { std::ffi::CStr::from_ptr(name) }.to_bytes();
+        match n {
+            b"DartRuntimeHooks::Logger_PrintString"
+            | b"DartRuntimeHooks::Logger_PrintDebugString" => ui_logger_print_string as *mut c_void,
+            _ => std::ptr::null_mut(),
+        }
+    })
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// `@Native<Void Function(Handle)>`: called by the VM in the mutator, inside
+/// an API scope (a `Handle` argument guarantees one).
+unsafe extern "C" fn ui_logger_print_string(s: sys::Dart_Handle) {
+    let _ = std::panic::catch_unwind(|| {
+        // SAFETY: a Handle-typed native runs with a current isolate and scope.
+        unsafe {
+            let Ok(text) = string_value(s) else { return };
+            let data = sys::Dart_CurrentIsolateData() as *const IsolateData;
+            if let Some(data) = data.as_ref() {
+                (data.print)(&text);
             }
         }
     });

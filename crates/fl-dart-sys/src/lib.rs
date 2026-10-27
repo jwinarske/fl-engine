@@ -66,51 +66,6 @@ mod io {
 }
 pub use io::*;
 
-/// The standalone ELF snapshot loader (`runtime/bin/elf_loader.*`), bundled
-/// into the AOT archive by the artifact pipeline. `dart compile aot-snapshot`
-/// output must be loaded through this, not dlopen: the ELF's instructions
-/// reference a BSS the loader mmaps and wires up, which a plain dlopen leaves
-/// unset (the file carries no `_kDartSnapshotBss` symbol), so the first native
-/// call crashes. `Dart_LoadELF*` returns the data and text buffers to hand to
-/// `Dart_CreateIsolateGroup`, and a handle to unload.
-mod elf {
-    use core::ffi::{c_char, c_int};
-
-    /// Opaque handle from `Dart_LoadELF*` (elf_loader.h: an empty struct the
-    /// loader owns). Not produced by bindgen, since elf_loader.h is not one of
-    /// the bound headers.
-    #[repr(C)]
-    pub struct Dart_LoadedElf {
-        _private: [u8; 0],
-    }
-
-    extern "C" {
-        pub fn Dart_LoadELF(
-            filename: *const c_char,
-            file_offset: u64,
-            error: *mut *const c_char,
-            snapshot_data: *mut *const u8,
-            snapshot_text: *mut *const u8,
-        ) -> *mut Dart_LoadedElf;
-        pub fn Dart_LoadELF_Fd(
-            fd: c_int,
-            file_offset: u64,
-            error: *mut *const c_char,
-            snapshot_data: *mut *const u8,
-            snapshot_text: *mut *const u8,
-        ) -> *mut Dart_LoadedElf;
-        pub fn Dart_LoadELF_Memory(
-            snapshot: *const u8,
-            snapshot_size: u64,
-            error: *mut *const c_char,
-            snapshot_data: *mut *const u8,
-            snapshot_text: *mut *const u8,
-        ) -> *mut Dart_LoadedElf;
-        pub fn Dart_UnloadELF(loaded: *mut Dart_LoadedElf);
-    }
-}
-pub use elf::*;
-
 /// `ILLEGAL_PORT` is a cast in a macro, which bindgen does not translate.
 pub const ILLEGAL_PORT: Dart_Port = 0;
 

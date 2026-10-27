@@ -234,3 +234,35 @@ modes, the header/port unit tests, and the seven compile-fail cases. With
 artifacts: `cargo test -p fl-dart-cli` (needs `FL_DART_SDK_BIN`) runs the L2
 suite: hello world, run-loop draining, exception with stack trace, both FFI
 crossings, version mismatch.
+
+### First AOT run green; the ELF-loader premise was wrong (2026-10-27)
+
+The AOT L2 suite passes 5/5 on x86_64 against the published run-7 archive:
+hello world, run-loop draining (timers via dart:io's event handler),
+exception with Dart stack trace, both FFI crossings, version mismatch.
+
+Root cause of the first-native-call segfault was **not** the loader. Both
+`dartaotruntime` (`main_impl.cc`) and the Flutter engine
+(`kDartPrecompilationArgs`, `runtime/dart_vm.cc`) pass **`--precompilation`**
+to `Dart_SetVMFlags` in the precompiled runtime; without it the VM runs AOT code
+with JIT assumptions and crashes in `LinkNativeCall`. `Vm::init` now adds it in
+AOT builds. Also needed: `Dart_SetVMFlags` must run once even with no flags.
+
+Corrections to what commit 0db6a2a claimed: dlopen + dlsym of
+`_kDartSnapshotData`/`_kDartSnapshotText` is fine, and is what Flutter does with
+`libapp.so`, whose ELF has the same three symbols and 8-byte `.bss` stub as
+`dart compile aot-snapshot` output. The `Dart_LoadELF` embedder crashed
+identically for lack of `--precompilation`. `AotSnapshot` is back on dlopen,
+with the use-after-dlclose (placeholder struct's `Drop`) fixed. The
+`elf_loader` now in the archive is unused and can go at the next rebuild; the
+shim's `enable_network_profiling = false` from the same commit *is* needed.
+
+Flutter tooling: a `libapp.so` built the way `flutter_tools` builds it
+(`frontend_server --target=flutter --aot --tfa` over
+`flutter_patched_sdk_product`, then the release `gen_snapshot
+--snapshot_kind=app-aot-elf`) runs through `fl-dart run-aot`. Its platform has
+no `dart:_builtin`, so `print` comes from `dart:ui._getPrintClosure`, whose
+`_print` calls `@Native` `DartRuntimeHooks::Logger_PrintString`; that symbol is
+resolved through `Dart_SetFfiNativeResolver` on `dart:ui`. This is the first
+engine native, done FFI-first (brief §13). Linux desktop Flutter does not use
+compressed pointers (`tools/gn`: Android only), matching the archive.
