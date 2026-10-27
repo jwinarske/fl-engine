@@ -3,6 +3,7 @@
 //! ```text
 //! fl-dart run hello.dill [args...]       # JIT, dev hosts (--features jit)
 //! fl-dart run-aot hello.aot [args...]    # precompiled runtime, every target
+//! fl-dart cycle <program> <n>            # leak harness: n isolate lifecycles
 //! ```
 //!
 //! Exit codes follow the standalone `dart` tool: 0 on success, 254 when the
@@ -32,6 +33,10 @@ fn main() -> ExitCode {
         "run" => run_kernel(path, &rest),
         #[cfg(feature = "aot")]
         "run-aot" => run_aot(path, &rest),
+        "cycle" => match rest.first().and_then(|n| n.parse().ok()) {
+            Some(n) => cycle(path, n),
+            None => return usage(),
+        },
         _ => return usage(),
     };
     match result {
@@ -54,7 +59,12 @@ fn usage() -> ExitCode {
     } else {
         "run-aot <file.aot>"
     };
-    eprintln!("usage: fl-dart {modes} [args...]");
+    let prog = if cfg!(feature = "jit") {
+        "file.dill"
+    } else {
+        "file.aot"
+    };
+    eprintln!("usage: fl-dart {modes} [args...]\n       fl-dart cycle <{prog}> <n>");
     ExitCode::from(64)
 }
 
@@ -127,4 +137,60 @@ fn run_main(isolate: &mut fl_dart_vm::Isolate<'_>, args: &[&str]) -> Result<(), 
         s.invoke_main(args)?;
         s.run_loop()
     })
+}
+
+/// The L5 harness's in-process half (brief §11): create, run and shut down
+/// `n` isolates from one program in one VM, and report resident memory and
+/// open descriptors before and after. The lane compares the two, under ASan
+/// or valgrind; a count that grows with `n` is the leak.
+fn cycle(path: &str, n: u32) -> Result<(), Failure> {
+    let vm = start_vm()?;
+    #[cfg(feature = "jit")]
+    let program = std::fs::read(path).map_err(|e| Failure::Other(format!("{path}: {e}")))?;
+    #[cfg(feature = "aot")]
+    let program = std::sync::Arc::new(fl_dart_vm::AotSnapshot::open(path.as_ref())?);
+    let quiet = IsolateConfig {
+        print: std::sync::Arc::new(|_| {}),
+        ..config(path)
+    };
+
+    let mut before = None;
+    for i in 0..n {
+        #[cfg(feature = "jit")]
+        let mut isolate = vm.isolate_from_kernel(&program, quiet.clone())?;
+        #[cfg(feature = "aot")]
+        let mut isolate = vm.isolate_from_aot(&program, quiet.clone())?;
+        run_main(&mut isolate, &[])?;
+        isolate.shutdown();
+        // The first cycle warms caches the VM keeps for its lifetime; the
+        // baseline is taken after it, not before.
+        if i == 0 {
+            before = Some(usage_now());
+        }
+    }
+    let after = usage_now();
+    let (rss0, fd0) = before.unwrap_or(after);
+    println!(
+        "cycles={n} rss_kb={rss0}->{} fds={fd0}->{} persistent_handles={}",
+        after.0,
+        after.1,
+        fl_dart_vm::live_persistent_handles()
+    );
+    Ok(())
+}
+
+/// (VmRSS in kB, open descriptors), from procfs.
+fn usage_now() -> (u64, usize) {
+    let rss = std::fs::read_to_string("/proc/self/status")
+        .ok()
+        .and_then(|s| {
+            s.lines()
+                .find_map(|l| l.strip_prefix("VmRSS:"))
+                .and_then(|v| v.split_whitespace().next()?.parse().ok())
+        })
+        .unwrap_or(0);
+    let fds = std::fs::read_dir("/proc/self/fd")
+        .map(|d| d.count())
+        .unwrap_or(0);
+    (rss, fds)
 }
