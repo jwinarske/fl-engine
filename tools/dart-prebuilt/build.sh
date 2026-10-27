@@ -90,13 +90,21 @@ case "$target" in
   riscv64gc-*) clang_triple="riscv64-unknown-linux-gnu" ;;
   *) clang_triple="${target%%-*}-unknown-linux-gnu" ;;
 esac
-# Anchor on llvm-ar, which is a regular file; `bin/clang` is a symlink to
-# clang-NN in these packages, which a `-type f` find never returns -- run 5's
-# annotation is how that was learned. The two live in one bin directory.
-llvm_ar="$(find "$sdk/buildtools" -type f -name llvm-ar -print -quit)"
-[[ -n "$llvm_ar" ]] || die "no llvm-ar under $sdk/buildtools"
-clang="$(dirname "$llvm_ar")/clang"
-[[ -x "$clang" ]] || die "no clang beside $llvm_ar: $(ls "$(dirname "$llvm_ar")" | head -8 | tr '\n' ' ')"
+# The toolchain is a busybox-style LLVM package: `clang` is a symlink to
+# clang-NN and `llvm-ar` a symlink to one `llvm` multi-tool, so any
+# `find -type f` is structurally blind to both -- which is what runs 3, 5
+# and 6 failed on, one tool per annotation. The layout is known
+# (buildtools/<host>-<cpu>/clang/bin); a symlink-tolerant find is the
+# fallback for the day it moves.
+bin="$sdk/buildtools/linux-x64/clang/bin"
+if [[ ! -x "$bin/clang" ]]; then
+  bin="$(dirname "$(find "$sdk/buildtools" -name clang -path '*/bin/*' -print -quit)")"
+fi
+[[ -n "$bin" && -x "$bin/clang" ]] \
+  || die "no clang bin dir under buildtools; top level: $(ls "$sdk/buildtools" 2>/dev/null | tr '\n' ' ')"
+clang="$bin/clang"
+llvm_ar="$bin/llvm-ar"
+[[ -x "$llvm_ar" ]] || die "no llvm-ar beside clang in $bin: $(ls "$bin" | head -10 | tr '\n' ' ')"
 # The toolchain knows where its own runtime libraries are; asking it is the
 # answer that survives a package relayout. The find is a fallback for a clang
 # that answers with a bare name (what --print-file-name does for a miss).
