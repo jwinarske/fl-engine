@@ -28,12 +28,14 @@ are built rather than guessed at where they are consumed. One directive per
 line, blank lines and `#` comments ignored:
 
 ```
-static=fl_dart_aot   # lib<name>.a here: VM + dart:io + ICU + zlib + BoringSSL + shim
-cxx=stdc++           # the C++ runtime the archive was built against
+static=fl_dart_aot   # lib<name>.a here: VM + dart:io + ICU + zlib + BoringSSL + shim + libc++
 system=dl            # a system library
 system=pthread
 ```
 
-`cxx` is the one platform-conditional the brief allows; it is a line in this
-file rather than a `cfg` in the build script because it depends on which
-toolchain built the archives, not on which target they are for.
+`cxx` names a C++ runtime to link dynamically. The pipeline never writes it:
+its archives carry the toolchain's static libc++, the way every SDK binary
+does, so a board needs no C++ runtime installed. The directive exists for an
+artifact built some other way (a distro's shared libstdc++, say), and it is a
+line in this file rather than a `cfg` in the build script because it depends
+on which toolchain built the archives, not on which target they are for.

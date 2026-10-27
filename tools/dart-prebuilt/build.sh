@@ -70,21 +70,43 @@ conf="$(cd "$sdk" && python3 -c "import sys; sys.path.insert(0, 'tools'); import
 archive="$(find "$sdk/out/$conf" -name "libfl_dart_$mode.a" -print -quit)"
 [[ -n "$archive" ]] || die "no libfl_dart_$mode.a under out/$conf"
 
+# The SDK's toolchain is clang with libc++, linked statically into every SDK
+# binary (`-static-libstdc++` in build/config/linux/BUILD.gn): dartaotruntime
+# has no C++ runtime among its NEEDED entries. A consumer of our archive gets
+# the same by merging the toolchain's libc++ and libc++abi into it here, so
+# the archive carries its own C++ runtime and link.txt names none. Unwinding
+# stays with the consumer's libgcc_s, which is what Rust links anyway; the
+# toolchain's libunwind is deliberately left out so there is one unwinder.
+clang_triple="${target%%-*}-unknown-linux-gnu"
+cxx_lib="$(find "$sdk/buildtools" -type d -path "*clang/lib/$clang_triple" -print -quit)"
+[[ -n "$cxx_lib" && -f "$cxx_lib/libc++.a" && -f "$cxx_lib/libc++abi.a" ]] \
+  || die "no static libc++ for $clang_triple under $sdk/buildtools"
+
 stage="$(mktemp -d)"
 trap 'rm -rf "$stage"' EXIT
 dest="$stage/$version"
 lib="$dest/lib/$target/$mode"
 mkdir -p "$lib" "$dest/include"
-cp "$archive" "$lib/"
+# An MRI script merges whole archives without extracting members whose names
+# collide across them.
+llvm_ar="$(find "$sdk/buildtools" -type f -name llvm-ar -print -quit)"
+[[ -n "$llvm_ar" ]] || die "no llvm-ar under $sdk/buildtools"
+"$llvm_ar" -M <<MRI
+CREATE $lib/libfl_dart_$mode.a
+ADDLIB $archive
+ADDLIB $cxx_lib/libc++.a
+ADDLIB $cxx_lib/libc++abi.a
+SAVE
+END
+MRI
 cp "$sdk"/runtime/include/{dart_api.h,dart_native_api.h,dart_tools_api.h,dart_version.h} "$dest/include/"
 cp "$here/fl_dart/fl_dart_io.h" "$dest/include/"
 cp "$pinned_dir/VERSION" "$dest/VERSION"
 cat > "$lib/link.txt" <<LINK
 # Written by tools/dart-prebuilt/build.sh from $conf at $revision.
 static=fl_dart_$mode
-# Non-sanitizer Linux builds of the SDK compile against the system libstdc++
-# (use_flutter_cxx is off); a TSan build would bundle libc++ instead.
-cxx=stdc++
+# No cxx= line: the archive carries its own libc++ and libc++abi, merged in by
+# build.sh, the way every SDK binary links its C++ runtime statically.
 system=dl
 system=pthread
 system=m

@@ -85,6 +85,14 @@ jobs:
         run: |
           version="$(basename "$(dirname third_party/dart-prebuilt/*/VERSION)")"
           cat dist/*.sha256 > dist/SHA256SUMS
-          gh release create "dart-prebuilt-$version" dist/*.tar.xz dist/SHA256SUMS \
-            --title "Dart VM prebuilt $version" \
-            --notes "Built by dart-prebuilt.yml from $(sed -n 's/^revision=//p' third_party/dart-prebuilt/*/VERSION). Check the SHA256SUMS into third_party/dart-prebuilt/$version/ to make these fetchable."
+          tag="dart-prebuilt-$version"
+          notes="Built by dart-prebuilt.yml from $(sed -n 's/^revision=//p' third_party/dart-prebuilt/*/VERSION) at $GITHUB_SHA. Check the SHA256SUMS into third_party/dart-prebuilt/$version/ to make these fetchable."
+          # A re-publish for the same pin (a pipeline fix) replaces the assets
+          # in place. The checked-in SHA256SUMS is what pins consumers, so a
+          # replaced asset is harmless until that file is updated by review.
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" dist/*.tar.xz dist/SHA256SUMS --clobber
+            gh release edit "$tag" --notes "$notes"
+          else
+            gh release create "$tag" dist/*.tar.xz dist/SHA256SUMS --title "Dart VM prebuilt $version" --notes "$notes"
+          fi
