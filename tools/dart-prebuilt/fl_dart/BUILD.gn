@@ -23,8 +23,6 @@ template("fl_dart") {
       "fl_dart_io.cc",
       "fl_dart_io.h",
     ]
-    # elf_loader.h includes "bin/elf_loader.h"'s declarations via the runtime
-    # tree, which include_dirs already covers.
     deps = [ "//third_party/icu:icuuc" ] + invoker.extra_deps
   }
 }
@@ -34,10 +32,6 @@ fl_dart("fl_dart_jit") {
   extra_deps = [
     "//runtime:libdart_jit",
     "//runtime/bin:common_embedder_dart_io",
-    # The ELF loader for `dart compile aot-snapshot`/`kernel` ELF outputs.
-    # fl-dart-vm loads snapshots through Dart_LoadELF, not dlopen, so the
-    # loader must be in the archive (see fl-dart-vm's AotSnapshot).
-    "//runtime/bin:elf_loader",
   ]
 }
 
@@ -46,8 +40,6 @@ fl_dart("fl_dart_aot") {
   extra_deps = [
     "//runtime:libdart_aotruntime_product",
     "//runtime/bin:common_embedder_dart_io_product",
-    # See fl_dart_jit above. Product build pairs with elf_loader_product.
-    "//runtime/bin:elf_loader_product",
   ]
 }
 

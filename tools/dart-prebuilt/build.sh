@@ -5,7 +5,7 @@
 #   build.sh <sdk-checkout> <target> <mode> <out-dir>
 #
 #   target: x86_64-unknown-linux-gnu | aarch64-unknown-linux-gnu | riscv64gc-unknown-linux-gnu
-#   mode:   jit (x86_64 only) | aot
+#   mode:   jit (x86_64 only) | aot | jit-asan | jit-tsan (x86_64 only)
 #
 # Writes <out-dir>/fl-dart-prebuilt-<version>-<target>-<mode>.tar.xz and a
 # .sha256 beside it. The tarball unpacks over third_party/dart-prebuilt/, in
@@ -49,13 +49,22 @@ case "$target" in
   riscv64gc-unknown-linux-gnu) arch=riscv64 ;;
   *) die "unsupported target $target" ;;
 esac
+# Sanitizer variants are JIT only. A sanitized VM's snapshot feature string
+# names the sanitizer, so AOT would need a gen_snapshot of its own; kernel
+# carries no feature string, so the stock SDK's .dill runs on any JIT build.
+sanitizer=none
 case "$mode" in
+  jit-asan) sanitizer=asan ;;
+  jit-tsan) sanitizer=tsan ;;
+esac
+base="${mode%%-*}"
+case "$base" in
   # Release, not debug: the non-product JIT. Product is the configuration the
   # stock SDK's AOT snapshots declare in their feature string, and the VM
   # refuses a snapshot whose features differ from its own.
-  jit) [[ "$arch" == x64 ]] || die "jit is an x86_64 dev-host mode (brief §3)"; build_mode=release ;;
-  aot) build_mode=product ;;
-  *) die "mode must be jit or aot" ;;
+  jit) [[ "$arch" == x64 ]] || die "$mode is an x86_64 dev-host mode (brief §3)"; build_mode=release ;;
+  aot) [[ "$mode" == aot ]] || die "mode must be jit, aot, jit-asan or jit-tsan"; build_mode=product ;;
+  *) die "mode must be jit, aot, jit-asan or jit-tsan" ;;
 esac
 
 # Graft the shim into the checkout and make it reachable from the root, since
@@ -70,11 +79,12 @@ group("fl_dart") {
 }
 GN
 
-(cd "$sdk" && python3 tools/build.py --no-rbe --mode "$build_mode" --arch "$arch" "fl_dart_$mode")
+(cd "$sdk" && python3 tools/build.py --no-rbe --mode "$build_mode" --arch "$arch" \
+  --sanitizer "$sanitizer" "fl_dart_$base")
 
-conf="$(cd "$sdk" && python3 -c "import sys; sys.path.insert(0, 'tools'); import utils; print(utils.GetBuildConf('$build_mode', '$arch'))")"
-archive="$(find "$sdk/out/$conf" -name "libfl_dart_$mode.a" -print -quit)"
-[[ -n "$archive" ]] || die "no libfl_dart_$mode.a under out/$conf"
+conf="$(cd "$sdk" && python3 -c "import sys; sys.path.insert(0, 'tools'); import utils; print(utils.GetBuildConf('$build_mode', '$arch', None, '$sanitizer'))")"
+archive="$(find "$sdk/out/$conf" -name "libfl_dart_$base.a" -print -quit)"
+[[ -n "$archive" ]] || die "no libfl_dart_$base.a under out/$conf"
 
 # The SDK's toolchain is clang with libc++, linked statically into every SDK
 # binary (`-static-libstdc++` in build/config/linux/BUILD.gn): dartaotruntime
@@ -105,6 +115,20 @@ fi
 clang="$bin/clang"
 llvm_ar="$bin/llvm-ar"
 [[ -x "$llvm_ar" ]] || die "no llvm-ar beside clang in $bin: $(ls "$bin" | head -10 | tr '\n' ' ')"
+# The sanitizer must be in the objects, not just in the name: a sanitized
+# build calls into its runtime from every instrumented function.
+case "$sanitizer" in
+  asan) want_sym=__asan_report_load8 ;;
+  tsan) want_sym=__tsan_read8 ;;
+  *) want_sym="" ;;
+esac
+if [[ -n "$want_sym" ]]; then
+  [[ -x "$bin/llvm-nm" ]] || die "no llvm-nm beside clang in $bin"
+  # Not grep -q: it stops at the first match, llvm-nm dies of SIGPIPE, and
+  # pipefail reports the pipeline failed.
+  "$bin/llvm-nm" -u "$archive" | grep -w "$want_sym" >/dev/null \
+    || die "$archive has no references to $want_sym: not a $sanitizer build"
+fi
 # The toolchain knows where its own runtime libraries are; asking it is the
 # answer that survives a package relayout. The find is a fallback for a clang
 # that answers with a bare name (what --print-file-name does for a miss).
@@ -133,7 +157,7 @@ mkdir -p "$lib" "$dest/include"
 # collide across them. llvm-ar was located above, beside clang.
 mri="$stage/merge.mri"
 {
-  echo "CREATE $lib/libfl_dart_$mode.a"
+  echo "CREATE $lib/libfl_dart_$base.a"
   echo "ADDLIB $archive"
   echo "ADDLIB $cxx_a"
   [[ -n "$cxx_abi" ]] && echo "ADDLIB $cxx_abi"
@@ -143,16 +167,18 @@ mri="$stage/merge.mri"
 "$llvm_ar" -M < "$mri"
 cp "$sdk"/runtime/include/{dart_api.h,dart_native_api.h,dart_tools_api.h,dart_version.h} "$dest/include/"
 cp "$here/fl_dart/fl_dart_io.h" "$dest/include/"
-# elf_loader.h is the snapshot loader's header; fl-dart-sys binds it. Its
-# "../include/dart_api.h" include is rewritten to the flat layout the artifact
-# ships (every header in one include/ dir).
-sed 's#"../include/dart_api.h"#"dart_api.h"#' \
-  "$sdk/runtime/bin/elf_loader.h" > "$dest/include/elf_loader.h"
 cp "$pinned_dir/VERSION" "$dest/VERSION"
+# fl-dart-sys checks this against the build's -Zsanitizer. The runtime is not
+# in the archive: rustc links its own, and a process holds one.
+sanitizer_line=""
+case "$sanitizer" in
+  asan) sanitizer_line=$'sanitizer=address\n' ;;
+  tsan) sanitizer_line=$'sanitizer=thread\n' ;;
+esac
 cat > "$lib/link.txt" <<LINK
 # Written by tools/dart-prebuilt/build.sh from $conf at $revision.
-static=fl_dart_$mode
-# No cxx= line: the archive carries its own libc++ and libc++abi, merged in by
+static=fl_dart_$base
+${sanitizer_line}# No cxx= line: the archive carries its own libc++ and libc++abi, merged in by
 # build.sh, the way every SDK binary links its C++ runtime statically.
 system=dl
 system=pthread

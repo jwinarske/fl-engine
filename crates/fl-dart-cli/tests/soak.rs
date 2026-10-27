@@ -131,3 +131,22 @@ fn valgrind_finds_no_errors_or_leaks() {
     let (o, log) = valgrind(&["cycle".as_ref(), prog.as_os_str(), "100".as_ref()]);
     check("cycle ffi x100", &o, &log, 0);
 }
+
+/// The sanitizer lanes' lifecycle check: every soak program through a short
+/// run of isolate cycles. Instrumented JIT is several times slower, so 25
+/// cycles, not 1,000; the sanitizer reports the first bad access or race, and
+/// at exit LeakSanitizer any leak. Either makes fl-dart exit non-zero.
+#[test]
+#[ignore = "sanitizer lanes: see .github/workflows/sanitize.yml"]
+fn cycles_under_a_sanitizer() {
+    for name in PROGRAMS {
+        let prog = compile(name, MODE.0);
+        let o = fl_dart(&["cycle".as_ref(), prog.as_os_str(), "25".as_ref()]);
+        assert!(
+            o.status.success(),
+            "{name}: {}\n{}",
+            o.status,
+            String::from_utf8_lossy(&o.stderr)
+        );
+    }
+}

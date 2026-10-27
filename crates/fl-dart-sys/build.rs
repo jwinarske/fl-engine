@@ -83,11 +83,29 @@ fn main() {
     check_version(&root);
 
     let target = env::var("TARGET").expect("set by cargo");
-    let lib_dir = root.join("lib").join(&target).join(mode);
+    let sanitizer = sanitizer();
+    // A sanitized Rust build links the VM built with the same sanitizer, in
+    // its own directory: `jit-asan`, `jit-tsan`. The variant follows
+    // `-Zsanitizer`, so the two halves cannot be paired wrongly by hand.
+    let variant = match sanitizer.as_deref() {
+        None => mode.to_owned(),
+        Some(s) if mode == "aot" => panic!(
+            "fl-dart-sys: -Zsanitizer={s} needs the `jit` feature: sanitized VMs are \
+             JIT builds, since an AOT snapshot's feature string must name the same \
+             sanitizer and the stock SDK's do not"
+        ),
+        Some("address") => format!("{mode}-asan"),
+        Some("thread") => format!("{mode}-tsan"),
+        Some(other) => panic!(
+            "fl-dart-sys: -Zsanitizer={other} has no prebuilt VM; the pipeline builds \
+             address and thread"
+        ),
+    };
+    let lib_dir = root.join("lib").join(&target).join(&variant);
     let manifest = lib_dir.join("link.txt");
     let text = fs::read_to_string(&manifest).unwrap_or_else(|e| {
         panic!(
-            "fl-dart-sys: no {mode} libraries for {target}: cannot read {}: {e}\n{FETCH_HINT}",
+            "fl-dart-sys: no {variant} libraries for {target}: cannot read {}: {e}\n{FETCH_HINT}",
             manifest.display()
         )
     });
@@ -97,6 +115,7 @@ fn main() {
     // libraries) read this as DEP_DART_ROOT.
     println!("cargo:root={}", root.display());
 
+    let mut instrumented = false;
     for (n, raw) in text.lines().enumerate() {
         let line = raw.split('#').next().unwrap_or("").trim();
         if line.is_empty() {
@@ -125,6 +144,21 @@ fn main() {
             // produces a binary that links and then fails in ways that are slow
             // to trace back here. The pipeline knows which; this obeys.
             "cxx" | "system" => println!("cargo:rustc-link-lib=dylib={}", name.trim()),
+            // The sanitizer the archive was instrumented with. Its runtime is
+            // not in the archive: rustc links its own for `-Zsanitizer`, and
+            // two runtimes in one process do not work. A mismatch here means
+            // FL_DART_SDK_OUT points at the wrong build.
+            "sanitizer" => {
+                if sanitizer.as_deref() != Some(name.trim()) {
+                    panic!(
+                        "fl-dart-sys: {} is a {} build, but this build has -Zsanitizer={}",
+                        manifest.display(),
+                        name.trim(),
+                        sanitizer.as_deref().unwrap_or("<none>")
+                    );
+                }
+                instrumented = true;
+            }
             other => panic!(
                 "fl-dart-sys: {}:{}: unknown directive `{other}`",
                 manifest.display(),
@@ -132,6 +166,25 @@ fn main() {
             ),
         }
     }
+    // An uninstrumented VM under a sanitized build links, and then the
+    // sanitizer sees only the Rust half. That is a skip, so it is an error.
+    if let (Some(s), false) = (&sanitizer, instrumented) {
+        panic!(
+            "fl-dart-sys: this build has -Zsanitizer={s}, but {} declares no \
+             `sanitizer=` line: the VM there is not instrumented",
+            manifest.display()
+        );
+    }
+}
+
+/// The `-Zsanitizer` of the build, as cargo reports the target's
+/// `cfg(sanitize)`. One at a time: no prebuilt VM carries two.
+fn sanitizer() -> Option<String> {
+    let v = env::var("CARGO_CFG_SANITIZE").ok()?;
+    if v.contains(',') {
+        panic!("fl-dart-sys: -Zsanitizer={v}: one sanitizer at a time");
+    }
+    Some(v)
 }
 
 /// A VM other than the one the bindings came from is refused here, at build

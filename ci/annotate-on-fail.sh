@@ -14,7 +14,7 @@ out="$(mktemp)"
 rc=${PIPESTATUS[0]}
 if [[ $rc -ne 0 ]]; then
   # The lines that explain a failure, not the ones that precede it.
-  grep -E "panicked at|assertion|^(left|right):|error(\[E[0-9]+\])?:|FAILED|failed:|^    [a-z_]+$" "$out" \
+  grep -E "panicked at|Sanitizer:|SUMMARY: |assertion|^(left|right):|error(\[E[0-9]+\])?:|FAILED|failed:|^    [a-z_]+$" "$out" \
     | grep -v "^error: test failed, to rerun" | head -n 9 \
     | while IFS= read -r line; do echo "::error title=$label::$line"; done
   echo "::error title=$label::exit $rc; full tail in check run 'log: $label'"
