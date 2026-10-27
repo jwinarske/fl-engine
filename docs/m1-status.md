@@ -248,7 +248,7 @@ to `Dart_SetVMFlags` in the precompiled runtime; without it the VM runs AOT code
 with JIT assumptions and crashes in `LinkNativeCall`. `Vm::init` now adds it in
 AOT builds. Also needed: `Dart_SetVMFlags` must run once even with no flags.
 
-Corrections to what commit 0db6a2a claimed: dlopen + dlsym of
+Corrections to what commit 92beabf claimed: dlopen + dlsym of
 `_kDartSnapshotData`/`_kDartSnapshotText` is fine, and is what Flutter does with
 `libapp.so`, whose ELF has the same three symbols and 8-byte `.bss` stub as
 `dart compile aot-snapshot` output. The `Dart_LoadELF` embedder crashed
