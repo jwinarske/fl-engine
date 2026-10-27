@@ -16,6 +16,15 @@
 #![no_std]
 #![allow(non_camel_case_types, non_snake_case, non_upper_case_globals)]
 #![allow(clippy::all)]
+// The headers' doc comments use `[identifier]` for emphasis and `List<dynamic>`
+// style generics, which rustdoc reads as broken intra-doc links and unclosed
+// HTML tags. The comments are upstream's text, carried verbatim by bindgen;
+// silencing the lints here is what keeps a regenerate from having to edit them.
+#![allow(
+    rustdoc::broken_intra_doc_links,
+    rustdoc::bare_urls,
+    rustdoc::invalid_html_tags
+)]
 
 #[cfg(not(all(target_os = "linux", target_pointer_width = "64")))]
 compile_error!(

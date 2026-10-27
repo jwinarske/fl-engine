@@ -23,7 +23,13 @@ target="$2"
 mode="$3"
 out="$(mkdir -p "$4" && cd "$4" && pwd)"
 
-die() { echo "build.sh: $*" >&2; exit 1; }
+die() {
+  echo "build.sh: $*" >&2
+  # On Actions, a die becomes an annotation the API serves; the raw logs are
+  # only reachable through a blob host some environments cannot see.
+  [[ -n "${GITHUB_ACTIONS:-}" ]] && echo "::error::build.sh: $*"
+  exit 1
+}
 
 # The pin is read from the checked-in VERSION, never restated here.
 pinned_dir="$(ls -d "$repo"/third_party/dart-prebuilt/*/ | head -n1)"
@@ -77,7 +83,13 @@ archive="$(find "$sdk/out/$conf" -name "libfl_dart_$mode.a" -print -quit)"
 # the archive carries its own C++ runtime and link.txt names none. Unwinding
 # stays with the consumer's libgcc_s, which is what Rust links anyway; the
 # toolchain's libunwind is deliberately left out so there is one unwinder.
-clang_triple="${target%%-*}-unknown-linux-gnu"
+# The toolchain's triple for riscv64 drops the ISA suffix Rust's keeps, and
+# clang answers --print-file-name misses with the bare name, so the triple it
+# is asked with has to be the one it knows.
+case "$target" in
+  riscv64gc-*) clang_triple="riscv64-unknown-linux-gnu" ;;
+  *) clang_triple="${target%%-*}-unknown-linux-gnu" ;;
+esac
 clang="$(find "$sdk/buildtools" -type f -path "*/clang/bin/clang" -print -quit)"
 [[ -n "$clang" ]] || die "no clang under $sdk/buildtools"
 # The toolchain knows where its own runtime libraries are; asking it is the
@@ -93,8 +105,11 @@ if [[ ! -f "$cxx_a" ]]; then
   die "no static libc++ for $clang_triple"
 fi
 cxx_lib="$(dirname "$cxx_a")"
-[[ -f "$cxx_lib/libc++abi.a" ]] || die "$cxx_lib has libc++.a but no libc++abi.a"
-echo "build.sh: using libc++ from $cxx_lib"
+# Some clang packages merge libc++abi into libc++.a; its absence is a shape,
+# not an error, so the merge below adds it only when it exists on its own.
+cxx_abi=""
+[[ -f "$cxx_lib/libc++abi.a" ]] && cxx_abi="$cxx_lib/libc++abi.a"
+echo "build.sh: using libc++ from $cxx_lib${cxx_abi:+ (with libc++abi)}"
 
 stage="$(mktemp -d)"
 trap 'rm -rf "$stage"' EXIT
@@ -105,14 +120,16 @@ mkdir -p "$lib" "$dest/include"
 # collide across them.
 llvm_ar="$(find "$sdk/buildtools" -type f -name llvm-ar -print -quit)"
 [[ -n "$llvm_ar" ]] || die "no llvm-ar under $sdk/buildtools"
-"$llvm_ar" -M <<MRI
-CREATE $lib/libfl_dart_$mode.a
-ADDLIB $archive
-ADDLIB $cxx_lib/libc++.a
-ADDLIB $cxx_lib/libc++abi.a
-SAVE
-END
-MRI
+mri="$stage/merge.mri"
+{
+  echo "CREATE $lib/libfl_dart_$mode.a"
+  echo "ADDLIB $archive"
+  echo "ADDLIB $cxx_a"
+  [[ -n "$cxx_abi" ]] && echo "ADDLIB $cxx_abi"
+  echo "SAVE"
+  echo "END"
+} > "$mri"
+"$llvm_ar" -M < "$mri"
 cp "$sdk"/runtime/include/{dart_api.h,dart_native_api.h,dart_tools_api.h,dart_version.h} "$dest/include/"
 cp "$here/fl_dart/fl_dart_io.h" "$dest/include/"
 cp "$pinned_dir/VERSION" "$dest/VERSION"

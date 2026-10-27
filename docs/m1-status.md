@@ -175,6 +175,47 @@ release's assets, since the tag exists; the job now does so. The checked-in
 `SHA256SUMS` is what pins consumers, so a replaced asset is inert until that
 file changes under review.
 
+### Pipeline run 3 (2026-10-27): the merge's first run failed on all four, blind
+
+The first run of the libc++ merge failed every job at the Build step, after
+the full SDK build. The logs were unreachable from the session doing the
+work: the Actions log endpoint redirects to a blob host its proxy refuses,
+and the failure annotation says only "exit code 1". Two consequences, both
+now in the tree:
+
+- `die()` also emits a `::error::` annotation on Actions, because annotations
+  are served by the API that *is* reachable. A pipeline whose failures cannot
+  be read from where the work happens fails twice.
+- The likely cause was found by reading rather than by logs — twice, by two
+  sessions working the same failure concurrently, whose fixes met in a rebase.
+  One asked the toolchain itself (`clang --print-file-name=libc++.a`), which
+  is the locate that survives a package relayout and is what landed as the
+  primary; the other contributed what the ask still missed: the riscv64
+  toolchain triple drops the `gc` ISA suffix Rust's keeps, so clang must be
+  asked with the triple it knows, and `libc++abi.a` is optional, since some
+  packages merge it into `libc++.a`. A die now names the candidates it saw.
+
+### The workspace's own lanes (`.github/workflows/ci.yml`, 2026-10-27)
+
+Two jobs. `no-vm` is the documented lane set, verbatim: fmt, clippy in
+both modes, the fl-dart-vm unit and compile-fail suites, docs under
+`-D warnings`. `l2` fetches a published artifact by checksum, downloads the
+pinned stock SDK from dart-archive (hosted runners reach it; the session's
+proxy does not), asserts it is 3.13.7, and runs `cargo test -p fl-dart-cli`
+in each mode. The L2 lane stays red until a green `publish` run's
+`SHA256SUMS` is checked in — which is the gate working as designed, not a
+lane to silence.
+
+Found by the doc lane on its first local run: the generated bindings carry
+upstream's doc comments, whose `[identifier]` emphasis and `List<dynamic>`
+generics rustdoc reads as broken links and unclosed HTML under
+`-D warnings`. The allows live in `fl-dart-sys/src/lib.rs` beside the other
+bindgen allowances, not in the generated files, so a regenerate keeps them.
+
+Still not in the lanes, deliberately sequenced after a green L2: the qemu
+aarch64/riscv64 lanes, and the ASan/leak lane, which waits on a
+`gen_snapshot` of its own configuration (the feature-string finding above).
+
 ## What runs today
 
 Without a VM (`FL_DART_SDK_OUT=none`): clippy on the whole workspace in both
