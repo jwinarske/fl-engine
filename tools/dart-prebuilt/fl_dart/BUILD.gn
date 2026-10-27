@@ -24,6 +24,13 @@ template("fl_dart") {
       "fl_dart_io.h",
     ]
     deps = [ "//third_party/icu:icuuc" ] + invoker.extra_deps
+    # TSan (and MSan) builds compile their own instrumented libc++, in its own
+    # ABI namespace (std::_d), which BUILDCONFIG.gn adds to executables only.
+    # A static library has to carry it itself; build.sh then skips merging
+    # the toolchain's.
+    if (use_flutter_cxx) {
+      deps += [ "//third_party/libcxx" ]
+    }
   }
 }
 

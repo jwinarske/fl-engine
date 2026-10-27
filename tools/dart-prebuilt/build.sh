@@ -142,11 +142,24 @@ if [[ ! -f "$cxx_a" ]]; then
   die "no static libc++ for $clang_triple"
 fi
 cxx_lib="$(dirname "$cxx_a")"
+# A TSan build carries the SDK's own instrumented libc++ and libc++abi
+# (BUILD.gn, use_flutter_cxx). Merging the toolchain's on top would define
+# every __cxa_* twice, so the toolchain's goes in only when the archive has
+# no C++ runtime of its own. Not grep -q, for the pipefail reason above.
+own_cxx=""
+"$bin/llvm-nm" --defined-only "$archive" 2>/dev/null | grep -w __cxa_guard_acquire >/dev/null && own_cxx=1
+if [[ "$sanitizer" == tsan && -z "$own_cxx" ]]; then
+  die "$archive has no libc++ of its own; a TSan build needs the SDK's instrumented one"
+fi
 # Some clang packages merge libc++abi into libc++.a; its absence is a shape,
 # not an error, so the merge below adds it only when it exists on its own.
 cxx_abi=""
 [[ -f "$cxx_lib/libc++abi.a" ]] && cxx_abi="$cxx_lib/libc++abi.a"
-echo "build.sh: using libc++ from $cxx_lib${cxx_abi:+ (with libc++abi)}"
+if [[ -n "$own_cxx" ]]; then
+  echo "build.sh: archive carries the SDK's own libc++; toolchain's not merged"
+else
+  echo "build.sh: using libc++ from $cxx_lib${cxx_abi:+ (with libc++abi)}"
+fi
 
 stage="$(mktemp -d)"
 trap 'rm -rf "$stage"' EXIT
@@ -159,8 +172,10 @@ mri="$stage/merge.mri"
 {
   echo "CREATE $lib/libfl_dart_$base.a"
   echo "ADDLIB $archive"
-  echo "ADDLIB $cxx_a"
-  [[ -n "$cxx_abi" ]] && echo "ADDLIB $cxx_abi"
+  if [[ -z "$own_cxx" ]]; then
+    echo "ADDLIB $cxx_a"
+    [[ -n "$cxx_abi" ]] && echo "ADDLIB $cxx_abi"
+  fi
   echo "SAVE"
   echo "END"
 } > "$mri"
