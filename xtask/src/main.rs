@@ -176,8 +176,16 @@ fn fetch_prebuilt(args: &[String]) -> Result<(), String> {
     // asset object's id precedes its name in the payload GitHub serves, and
     // the pairing below tolerates either order by tracking the latest id.
     let body = String::from_utf8_lossy(&release.stdout);
-    let asset_id =
-        asset_id_for(&body, &name).ok_or_else(|| format!("release has no asset named {name}"))?;
+    let asset_id = asset_id_for(&body, &name).ok_or_else(|| {
+        let seen: Vec<&str> = body
+            .match_indices("\"name\":")
+            .map(|(i, _)| body[i..].split('"').nth(3).unwrap_or(""))
+            .collect();
+        format!(
+            "release has no asset named {name}; body is {} bytes and names {seen:?}",
+            body.len()
+        )
+    })?;
     let asset_url =
         format!("https://api.github.com/repos/jwinarske/fl-engine/releases/assets/{asset_id}");
     let mut curl = Command::new("curl");
