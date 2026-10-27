@@ -144,13 +144,39 @@ fi
 cxx_lib="$(dirname "$cxx_a")"
 # A TSan build carries the SDK's own instrumented libc++ and libc++abi
 # (BUILD.gn, use_flutter_cxx). Merging the toolchain's on top would define
-# every __cxa_* twice, so the toolchain's goes in only when the archive has
-# no C++ runtime of its own. Not grep -q, for the pipefail reason above.
+# every __cxa_* twice, so the toolchain's goes in only when the archive
+# defines no __cxa_* of its own. llvm-nm's errors are not hidden: an
+# unreadable archive must not read as one with no C++ runtime.
+defined="$(mktemp)"
+"$bin/llvm-nm" --defined-only "$archive" > "$defined" || die "llvm-nm failed on $archive"
 own_cxx=""
-"$bin/llvm-nm" --defined-only "$archive" 2>/dev/null | grep -w __cxa_guard_acquire >/dev/null && own_cxx=1
-if [[ "$sanitizer" == tsan && -z "$own_cxx" ]]; then
-  die "$archive has no libc++ of its own; a TSan build needs the SDK's instrumented one"
+grep -E ' [TWV] __cxa_' "$defined" >/dev/null && own_cxx=1
+sdk_cxx_a=""
+has_sdk_cxx() { [[ -n "$own_cxx" ]] && grep -w _ZNSt2_d5mutex4lockEv "$defined" >/dev/null; }
+if [[ "$sanitizer" == tsan ]] && ! has_sdk_cxx; then
+  # The objects GN compiled for //third_party/libcxx and libcxxabi, when the
+  # static library did not take them in: archived here and merged below.
+  mapfile -t cxx_objs < <(find "$sdk/out/$conf/obj/third_party/libcxx" \
+    "$sdk/out/$conf/obj/third_party/libcxxabi" -name '*.o' 2>/dev/null | sort)
+  echo "build.sh: archive lacks the SDK's libc++; ${#cxx_objs[@]} libcxx/libcxxabi objects in out/$conf" >&2
+  if [[ ${#cxx_objs[@]} -gt 0 ]]; then
+    sdk_cxx_a="$(mktemp -d)/libsdk_cxx.a"
+    "$llvm_ar" rcs "$sdk_cxx_a" "${cxx_objs[@]}"
+    "$bin/llvm-nm" --defined-only "$sdk_cxx_a" >> "$defined" || die "llvm-nm failed on $sdk_cxx_a"
+    grep -E ' [TWV] __cxa_' "$defined" >/dev/null && own_cxx=1
+  fi
 fi
+if [[ "$sanitizer" == tsan ]]; then
+  # What the run 9 link was missing: libc++'s out-of-line std::_d symbols.
+  if ! has_sdk_cxx; then
+    echo "build.sh: defined std::_d symbols: $(grep -c 'St2_d' "$defined" || true)," \
+      "std::__2: $(grep -c 'St3__2' "$defined" || true)," \
+      "__cxa_*: $(grep -cE ' [TWV] __cxa_' "$defined" || true)" >&2
+    grep -E '__cxa_|mutex4lock' "$defined" | head -10 >&2 || true
+    die "$archive does not define the SDK's instrumented libc++ (std::_d::mutex::lock); a TSan build needs it"
+  fi
+fi
+rm -f "$defined"
 # Some clang packages merge libc++abi into libc++.a; its absence is a shape,
 # not an error, so the merge below adds it only when it exists on its own.
 cxx_abi=""
@@ -172,6 +198,7 @@ mri="$stage/merge.mri"
 {
   echo "CREATE $lib/libfl_dart_$base.a"
   echo "ADDLIB $archive"
+  [[ -n "$sdk_cxx_a" ]] && echo "ADDLIB $sdk_cxx_a"
   if [[ -z "$own_cxx" ]]; then
     echo "ADDLIB $cxx_a"
     [[ -n "$cxx_abi" ]] && echo "ADDLIB $cxx_abi"
