@@ -4,3 +4,7 @@
 /third_party/dart-prebuilt/*/lib/
 /third_party/dart-prebuilt/*/bin/
 /third_party/dart-prebuilt/*/snapshots/
+# Shipped by the run-8 archives, which still bundle the ELF loader; nothing
+# binds it (snapshots load with dlopen). Goes away with the elf_loader deps at
+# the next pipeline rebuild, and this line with it.
+/third_party/dart-prebuilt/*/include/elf_loader.h
