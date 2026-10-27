@@ -142,7 +142,14 @@ impl AotSnapshot {
     /// binary from. The version check below happens after the library is
     /// mapped, so it protects against mismatched builds, not hostile files.
     pub fn open(path: &Path) -> Result<AotSnapshot, DartError> {
-        let c = CString::new(path.as_os_str().as_encoded_bytes())
+        // dlopen reads a name without a '/' as a library to search for on
+        // the loader path, not a file in the current directory, so
+        // `fl-dart run-aot hello.aot` failed. An absolute path is always
+        // opened as given; canonicalizing also turns a missing file into an
+        // error that says so.
+        let abs = std::fs::canonicalize(path)
+            .map_err(|e| DartError::Api(format!("{}: {e}", path.display())))?;
+        let c = CString::new(abs.as_os_str().as_encoded_bytes())
             .map_err(|_| DartError::Api(format!("NUL in path {}", path.display())))?;
         // SAFETY: c is a valid C string; RTLD_LOCAL keeps the snapshot's
         // symbols from resolving anything else in the process.

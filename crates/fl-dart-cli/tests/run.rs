@@ -132,3 +132,29 @@ fn snapshot_from_another_sdk_is_named_as_a_version_mismatch() {
     assert!(err.contains("snapshot version mismatch"), "{err}");
     assert!(err.contains("ffffffffff"), "names what it found: {err}");
 }
+
+#[test]
+fn program_named_relative_to_the_working_directory() {
+    // `fl-dart run-aot hello.aot`, as the README has it: a bare file name,
+    // resolved against the current directory. dlopen alone searches the
+    // loader path for such a name and does not find it.
+    let prog = compile("hello", MODE.0);
+    let dir = prog.parent().unwrap();
+    let name = prog.file_name().unwrap();
+    let o = Command::new(env!("CARGO_BIN_EXE_fl-dart"))
+        .current_dir(dir)
+        .arg(MODE.1)
+        .arg(name)
+        .output()
+        .unwrap();
+    assert!(o.status.success(), "{o:?}");
+    assert_eq!(stdout(&o), "Hello World\n");
+}
+
+#[test]
+fn missing_program_is_named() {
+    let o = fl_dart(&[MODE.1.as_ref(), "no-such-program".as_ref()]);
+    assert_eq!(o.status.code(), Some(255), "{o:?}");
+    let err = String::from_utf8_lossy(&o.stderr);
+    assert!(err.contains("no-such-program"), "{err}");
+}
