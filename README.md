@@ -116,6 +116,7 @@ On the board:
 ## Docs
 
 * [docs/m1-fl-dart-vm.md](docs/m1-fl-dart-vm.md) - milestone 1 brief
+* [docs/m1-exit.md](docs/m1-exit.md) - milestone 1 exit criteria and their evidence. Open: board runs
 * [docs/m1-status.md](docs/m1-status.md) - decisions and findings since the brief. Newer where they disagree
 * [docs/m1-s15-findings.md](docs/m1-s15-findings.md) - open embedding questions, answered from Dart and Flutter source
 

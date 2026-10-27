@@ -89,7 +89,7 @@ jobs:
           FL_DART_SDK_BIN: ${{ github.workspace }}/dart-sdk/bin/dart
         run: >-
           ci/annotate-on-fail.sh cargo "+$NIGHTLY" test -Zbuild-std --target "$TARGET"
-          -p fl-dart-cli --no-default-features --features jit --test run
+          -p fl-dart-cli --no-default-features --features jit --test run --test finalizer
       - name: Isolate cycles
         env:
           RUSTFLAGS: -Zsanitizer=${{ matrix.sanitizer }}

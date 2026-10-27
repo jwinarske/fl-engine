@@ -313,3 +313,13 @@ Found on the way:
 * An uninstrumented VM defines `__tsan_*` stubs (`runtime_entry.cc`), so it cannot stand in for the TSan one
 * `loop.dart` asserted an order Dart does not promise: a 20 ms timer and `Future()` (a zero-length timer) both due at the first loop turn fire in either order. Seen under TSan's slow start. The timer now starts from the future
 * Rebuilt archives are reproducible: run 11 changed only `jit-tsan`'s sum
+
+### Exit criteria closed, board kit (2026-10-27)
+
+* Exit report: docs/m1-exit.md. Only real-board runs open
+* Criterion 8 in CI: ci.yml `no C++ toolchain`, bare ubuntu:24.04, `ci/no-cxx.sh`. L2 9/9, no C++ runtime in `NEEDED`
+* Board kit: `tools/board-kit/`, built and tested under qemu by cross.yml, kept 90 days. `run.sh` checks criteria 2-6
+* qemu-aarch64 8.2.2 keeps ~39 kB per guest thread: a C loop of 8,000 empty threads, +311 MB (native +0.5 kB). Isolate-cycle RSS under qemu is not a leak signal; the kit reports it off-board and asserts it on a board
+* `new_finalizable` had no test. `tests/finalizer.rs`: 100 peers, each dropped once by isolate shutdown, none again at VM drop. Also in the sanitizer lanes
+* The brief's `FinalizableHandle<T>` is not a value: the API keeps the handle and promises the peer's lifetime
+

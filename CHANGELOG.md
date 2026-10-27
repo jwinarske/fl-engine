@@ -20,6 +20,10 @@ Not published, no versions yet.
 * Leak and soak lanes: 1,000 isolate cycles, 100 VM lifecycles, valgrind memcheck (AOT)
 * Racing posts to one `NativePort` from 8 threads, in L2 and soak
 * ASan and TSan lanes: sanitizer VM builds (`jit-asan`, `jit-tsan`), Rust built with `-Zsanitizer`
+* No-C++-toolchain lane (exit criterion 8)
+* Board kit for Pi 5 and VisionFive 2: `tools/board-kit/`, PASS/FAIL per exit criterion
+* Finalizable peer test
+* Exit report: docs/m1-exit.md
 
 ### Fixed
 
