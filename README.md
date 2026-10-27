@@ -50,7 +50,7 @@ Without a VM (lint, docs, compile-fail tests):
 
 ## Run
 
-Use the Dart SDK at the pinned version.
+Use the Dart SDK at the pinned version. `fl-dart` is `target/debug/fl-dart`. The AOT and JIT builds write the same binary, so rebuild when switching.
 
     dart compile aot-snapshot hello.dart -o hello.aot
     fl-dart run-aot hello.aot
@@ -83,4 +83,4 @@ Covers hello world, run loop (microtasks, timers, futures), uncaught exception w
 
 ## License
 
-BSD-3-Clause
+BSD-3-Clause, see [LICENSE](LICENSE)
