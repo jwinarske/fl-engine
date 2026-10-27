@@ -88,3 +88,20 @@ jobs:
           FL_DART_SDK_BIN: ${{ github.workspace }}/dart-sdk/bin/dart
           GITHUB_TOKEN: ${{ github.token }}
         run: ci/annotate-on-fail.sh cargo test -p fl-dart-cli --target ${{ matrix.target }}
+      # The board kit (tools/board-kit): fl-dart, the programs and run.sh for
+      # exit criterion 2 on a real board. Built here, run once under qemu as
+      # packaged (unpacked, run.sh under dash), and kept as an artifact.
+      - name: Board kit
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: ci/annotate-on-fail.sh tools/board-kit/build.sh ${{ matrix.target }} "$GITHUB_WORKSPACE/dart-sdk/bin/dart" kit
+      - name: Board kit under qemu
+        run: |
+          mkdir -p "$RUNNER_TEMP/kit" && tar xJf kit/fl-dart-board-kit-${{ matrix.target }}.tar.xz -C "$RUNNER_TEMP/kit"
+          ci/annotate-on-fail.sh env FL_DART_TEST_RUNNER="$RUNNER_CMD" dash "$RUNNER_TEMP/kit/fl-dart-board-kit-${{ matrix.target }}/run.sh"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fl-dart-board-kit-${{ matrix.target }}
+          path: kit/fl-dart-board-kit-${{ matrix.target }}.tar.xz
+          if-no-files-found: error
+          retention-days: 90

@@ -96,6 +96,23 @@ Cross, under qemu (see `.github/workflows/cross.yml`):
     FL_DART_SDK_BIN=/path/to/dart-sdk/bin/dart \
     cargo test -p fl-dart-cli --target aarch64-unknown-linux-gnu
 
+## Board run
+
+Exit criterion 2 on Raspberry Pi 5 and VisionFive 2. The cross lane builds a kit per target and keeps it 90 days (artifact `fl-dart-board-kit-<target>`), or build it:
+
+    tools/board-kit/build.sh aarch64-unknown-linux-gnu /path/to/dart-sdk/bin/dart kit
+
+On the board:
+
+    tar xJf fl-dart-board-kit-aarch64-unknown-linux-gnu.tar.xz
+    cd fl-dart-board-kit-aarch64-unknown-linux-gnu
+    ./run.sh | tee report.txt
+
+* One PASS/FAIL line per check: criteria 2-6. Exit 0 only if all pass
+* POSIX sh, no other dependency on the board
+* MANIFEST holds the commit and every file's sha256
+* Under qemu (FL_DART_TEST_RUNNER) RSS is reported, not asserted: qemu-user keeps about 39 kB per guest thread
+
 ## Docs
 
 * [docs/m1-fl-dart-vm.md](docs/m1-fl-dart-vm.md) - milestone 1 brief
