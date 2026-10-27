@@ -22,6 +22,7 @@ on:
 
 permissions:
   contents: read
+  checks: write
 
 env:
   CARGO_TERM_COLOR: always
@@ -72,4 +73,5 @@ jobs:
       - name: L2 suite
         env:
           FL_DART_SDK_BIN: ${{ github.workspace }}/dart-sdk/bin/dart
+          GITHUB_TOKEN: ${{ github.token }}
         run: ci/annotate-on-fail.sh cargo test -p fl-dart-cli ${{ matrix.flags }}
