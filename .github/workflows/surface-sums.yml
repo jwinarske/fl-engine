@@ -1,0 +1,28 @@
+# Surfaces a release asset's text content as annotations, which the REST API
+# serves. Exists because release assets and job logs both redirect to a blob
+# host that some working environments' proxies refuse, while annotations ride
+# the API those environments can reach. Twenty seconds, read-only.
+name: surface-sums
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to read SHA256SUMS from"
+        default: "dart-prebuilt-3.13.7"
+
+permissions:
+  contents: read
+
+jobs:
+  surface:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Annotate each line of SHA256SUMS
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern SHA256SUMS -O - \
+            | while IFS= read -r line; do echo "::notice title=SHA256SUMS::$line"; done
