@@ -1,135 +1,86 @@
 # fl-engine
 
-A Rust port of the Flutter engine, for embedded Linux.
+Rust port of the Flutter engine for embedded Linux.
 
-> **Status: milestone 1 of the port, in progress.** The Dart VM is hosted from
-> Rust: it starts, loads a program, runs `main()`, drains its message loop and
-> shuts down cleanly, in both the precompiled (AOT) and JIT runtimes. A
-> `libapp.so` built by the stock Flutter tooling runs and prints. Dart calls
-> into Rust over FFI, and Rust posts messages back into Dart from any thread.
-> All of that is tested on x86_64. The aarch64 and riscv64 VM builds exist but
-> have not been run yet. There is no `dart:ui` beyond `print` and no rendering,
-> so a real Flutter app stops at its first other `dart:ui` call, with an error
-> that names it. That is the next milestone.
+Status: milestone 1 (Dart VM hosted from Rust).
 
-## What is here
+* AOT and JIT runtimes
+* Runs libapp.so from the Flutter tooling
+* FFI both directions: Dart to Rust, Rust to Dart from any thread
+* Tested on x86_64. aarch64 and riscv64 VM builds exist, not yet run
+* No dart:ui beyond print, no rendering. A real Flutter app stops at its first other dart:ui call
 
-```
-crates/
-  fl-dart-sys   bindings to the Dart VM's embedding API, linked from a prebuilt VM
-  fl-dart-vm    the safe layer: Vm, Isolate, scopes, handles, ports, snapshots
-  fl-dart-cli   the `fl-dart` binary, a thin shell over fl-dart-vm
-xtask/          repository tooling: `cargo xtask bindgen | fetch-prebuilt`
-tools/dart-prebuilt/
-                the pipeline that builds the VM from dart-lang/sdk source
-```
+## Crates
 
-`fl-dart-vm` turns the embedding API's three crash-prone conventions into
-types:
+* fl-dart-sys - bindings to the Dart embedding API, links a prebuilt VM
+* fl-dart-vm - safe layer: Vm, Isolate, scopes, handles, ports, snapshots
+* fl-dart-cli - `fl-dart` binary
+* xtask - `cargo xtask bindgen`, `cargo xtask fetch-prebuilt`
 
-- An isolate is entered by one thread at a time, and `Isolate` is neither
-  `Send` nor `Sync`.
-- Entering returns a scope that exits on drop and cannot outlive the isolate.
-- A handle borrows the API scope that made it, so it cannot escape that scope.
+Isolate thread affinity, enter/exit pairing and handle lifetime are compile errors when misused. See `crates/fl-dart-vm/tests/compile_fail`.
 
-Each of these has a case under `crates/fl-dart-vm/tests/compile_fail` that must
-not compile.
+## Dart VM
 
-## The one C++ component
+Built from dart-lang/sdk at a pinned revision, consumed as a prebuilt static archive. Cargo does not build C++.
 
-The Dart VM is C++ and the Dart SDK publishes no library to link it from, so it
-is built from source at a pinned revision and consumed as a prebuilt archive.
-Cargo never builds C++. `fl-dart-sys` locates the archive, checks its `VERSION`
-against the revision its bindings were generated from, and links it, and that
-is all it does. Each archive is self-contained: the VM, `dart:io`'s embedder
-support (which `Timer` needs), ICU, zlib, BoringSSL and the toolchain's own
-libc++. Linking one needs no C++ runtime on the target.
+* Pin: Dart 3.13.7 (`416e33b0`), the `dart_revision` in Flutter stable's engine DEPS
+* Targets: x86_64 (jit, aot), aarch64 (aot), riscv64 (aot)
+* One archive per target/mode: VM, dart:io embedder, ICU, zlib, BoringSSL, libc++. No C++ runtime needed on target
+* Built by `.github/workflows/dart-prebuilt.yml` (`tools/dart-prebuilt/build.sh`), published as a release
+* Downloads are checked against `third_party/dart-prebuilt/<version>/SHA256SUMS`
 
-The archives come from `.github/workflows/dart-prebuilt.yml`, which runs
-`tools/dart-prebuilt/build.sh` for x86_64 (JIT and AOT), aarch64 (AOT) and
-riscv64 (AOT). They are published as a release. The checksums checked in at
-`third_party/dart-prebuilt/<version>/SHA256SUMS` are what decide whether a
-download is accepted.
+## Build
 
-The pin follows the Flutter release this tracks: the `dart_revision` in that
-release's engine `DEPS`. It is currently Dart 3.13.7 (`416e33b0`), Flutter
-stable.
+Toolchain is pinned in `rust-toolchain.toml` (1.94.1, Yocto wrynose). MSRV 1.85.
 
-## Building
+The repo is private, so fetching needs a token:
 
-The toolchain is pinned in `rust-toolchain.toml` (Rust 1.94.1, the version
-Yocto's wrynose ships). The minimum supported version is 1.85.
+    GITHUB_TOKEN=... cargo xtask fetch-prebuilt --target x86_64-unknown-linux-gnu --mode aot
+    cargo build -p fl-dart-cli
 
-Fetch the prebuilt VM for your host. The repository is private, so the fetch
-needs a token that can read it:
+JIT (x86_64 dev hosts only):
 
-```
-GITHUB_TOKEN=... cargo xtask fetch-prebuilt --target x86_64-unknown-linux-gnu --mode aot
-cargo build -p fl-dart-cli
-```
+    GITHUB_TOKEN=... cargo xtask fetch-prebuilt --target x86_64-unknown-linux-gnu --mode jit
+    cargo build -p fl-dart-cli --no-default-features --features jit
 
-AOT is the default. For the JIT runtime (x86_64 development hosts only), fetch
-`--mode jit` and build with `--no-default-features --features jit`.
+Without a VM (lint, docs, compile-fail tests):
 
-Everything that does not need to link the VM also builds without it.
-`FL_DART_SDK_OUT=none` asks for that explicitly, and anything that then tries to
-link fails loudly:
+    FL_DART_SDK_OUT=none cargo clippy --workspace --all-targets
+    FL_DART_SDK_OUT=none cargo test -p fl-dart-vm --features aot --lib --test compile_fail
 
-```
-FL_DART_SDK_OUT=none cargo clippy --workspace --all-targets
-FL_DART_SDK_OUT=none cargo test -p fl-dart-vm --features aot --lib --test compile_fail
-```
+## Run
 
-## Running
+Use the Dart SDK at the pinned version.
 
-Compile with the Dart SDK at the pinned version, then run:
+    dart compile aot-snapshot hello.dart -o hello.aot
+    fl-dart run-aot hello.aot
 
-```
-dart compile aot-snapshot hello.dart -o hello.aot
-fl-dart run-aot hello.aot
+JIT build:
 
-dart compile kernel hello.dart -o hello.dill     # JIT build of fl-dart
-fl-dart run hello.dill
-```
+    dart compile kernel hello.dart -o hello.dill
+    fl-dart run hello.dill
 
-A `libapp.so` from the Flutter tooling runs the same way. That means the one
-`flutter build linux --release` puts in the bundle's `lib/`, built with the
-Flutter release whose engine pins the same Dart revision:
+libapp.so from `flutter build linux --release`, using the Flutter release that pins the same Dart revision:
 
-```
-fl-dart run-aot build/linux/x64/release/bundle/lib/libapp.so
-```
+    fl-dart run-aot build/linux/x64/release/bundle/lib/libapp.so
 
-A snapshot from any other SDK is refused before it runs, with an error naming
-both versions. Opening a snapshot runs its code, so only open snapshots you
-would run as a binary.
+Notes:
 
-## Tests
+* A snapshot from another SDK is refused, with both versions named
+* Opening a snapshot runs its code. Only open snapshots you would run as a binary
 
-```
-FL_DART_SDK_BIN=/path/to/dart-sdk/bin/dart cargo test -p fl-dart-cli
-```
+## Test
 
-This compiles the programs under `crates/fl-dart-cli/tests/dart` with that
-`dart` and runs them through `fl-dart`. The suite covers:
+    FL_DART_SDK_BIN=/path/to/dart-sdk/bin/dart cargo test -p fl-dart-cli
 
-- hello world
-- the run loop draining microtasks, timers and futures
-- an uncaught exception arriving with its Dart stack trace
-- Dart calling Rust and Rust posting to Dart from another thread
-- a snapshot from another SDK being refused by name
+Covers hello world, run loop (microtasks, timers, futures), uncaught exception with Dart stack trace, FFI both directions, snapshot version mismatch. CI runs AOT and JIT on every push to main.
 
-CI runs the suite in both modes on every push to `main`.
+## Docs
 
-## Documents
-
-- [`docs/m1-fl-dart-vm.md`](docs/m1-fl-dart-vm.md): the milestone's brief.
-- [`docs/m1-status.md`](docs/m1-status.md): what has been decided and found
-  since. This is newer than the brief where they disagree.
-- [`docs/m1-s15-findings.md`](docs/m1-s15-findings.md): the embedding questions
-  the brief left open, answered from the Dart and Flutter source at the pin.
+* [docs/m1-fl-dart-vm.md](docs/m1-fl-dart-vm.md) - milestone 1 brief
+* [docs/m1-status.md](docs/m1-status.md) - decisions and findings since the brief. Newer where they disagree
+* [docs/m1-s15-findings.md](docs/m1-s15-findings.md) - open embedding questions, answered from Dart and Flutter source
 
 ## License
 
-BSD-3-Clause, matching the Flutter engine and the Dart SDK. Code ported from
-either keeps its own copyright notice.
+BSD-3-Clause
