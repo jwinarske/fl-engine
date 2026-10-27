@@ -1,7 +1,8 @@
-# The engine workspace's own lanes (brief §11). Two jobs: `no-vm` runs
+# The engine workspace's own lanes (brief §11). Three jobs: `no-vm` runs
 # everything that FL_DART_SDK_OUT=none admits -- format, clippy in both modes,
-# the unit and compile-fail suites, docs under -D warnings -- and `l2` links a
-# published VM artifact and runs real programs through the real binary.
+# the unit and compile-fail suites, docs under -D warnings -- `l2` links a
+# published VM artifact and runs real programs through the real binary, and
+# `no-cxx` does the same in a container with no C++ compiler (exit criterion 8).
 #
 # The L2 lane downloads the pinned stock SDK from dart-archive for `dart
 # compile`. Hosted runners reach it directly; the download is checked against
@@ -10,9 +11,8 @@
 # refuses by hash, and the suite asserts that refusal is a named error, not a
 # crash.
 #
-# Not here yet, recorded in docs/m1-status.md: the qemu aarch64/riscv64 lanes
-# and the ASan/leak lane (which needs a gen_snapshot of its own configuration;
-# see the feature-string finding).
+# The other lanes: cross.yml (aarch64, riscv64 under qemu), soak.yml (leaks,
+# soak, valgrind), sanitize.yml (ASan, TSan).
 name: ci
 
 on:
@@ -75,3 +75,20 @@ jobs:
           FL_DART_SDK_BIN: ${{ github.workspace }}/dart-sdk/bin/dart
           GITHUB_TOKEN: ${{ github.token }}
         run: ci/annotate-on-fail.sh cargo test -p fl-dart-cli ${{ matrix.flags }}
+
+  # Exit criterion 8: fl-dart-sys builds, and fl-dart links and runs, with no
+  # C++ toolchain present. A bare ubuntu:24.04, not the runner image, which
+  # ships g++ and clang; ci/no-cxx.sh installs gcc as rustc's linker driver
+  # only, proves no C++ compiler is on PATH, runs the L2 suite, and checks the
+  # binary needs no C++ runtime.
+  no-cxx:
+    name: no C++ toolchain
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    container: ubuntu:24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and run without a C++ toolchain
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: bash ci/no-cxx.sh
