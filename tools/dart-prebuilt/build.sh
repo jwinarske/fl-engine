@@ -90,8 +90,13 @@ case "$target" in
   riscv64gc-*) clang_triple="riscv64-unknown-linux-gnu" ;;
   *) clang_triple="${target%%-*}-unknown-linux-gnu" ;;
 esac
-clang="$(find "$sdk/buildtools" -type f -path "*/clang/bin/clang" -print -quit)"
-[[ -n "$clang" ]] || die "no clang under $sdk/buildtools"
+# Anchor on llvm-ar, which is a regular file; `bin/clang` is a symlink to
+# clang-NN in these packages, which a `-type f` find never returns -- run 5's
+# annotation is how that was learned. The two live in one bin directory.
+llvm_ar="$(find "$sdk/buildtools" -type f -name llvm-ar -print -quit)"
+[[ -n "$llvm_ar" ]] || die "no llvm-ar under $sdk/buildtools"
+clang="$(dirname "$llvm_ar")/clang"
+[[ -x "$clang" ]] || die "no clang beside $llvm_ar: $(ls "$(dirname "$llvm_ar")" | head -8 | tr '\n' ' ')"
 # The toolchain knows where its own runtime libraries are; asking it is the
 # answer that survives a package relayout. The find is a fallback for a clang
 # that answers with a bare name (what --print-file-name does for a miss).
@@ -117,9 +122,7 @@ dest="$stage/$version"
 lib="$dest/lib/$target/$mode"
 mkdir -p "$lib" "$dest/include"
 # An MRI script merges whole archives without extracting members whose names
-# collide across them.
-llvm_ar="$(find "$sdk/buildtools" -type f -name llvm-ar -print -quit)"
-[[ -n "$llvm_ar" ]] || die "no llvm-ar under $sdk/buildtools"
+# collide across them. llvm-ar was located above, beside clang.
 mri="$stage/merge.mri"
 {
   echo "CREATE $lib/libfl_dart_$mode.a"
