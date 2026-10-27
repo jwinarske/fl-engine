@@ -67,7 +67,7 @@ Flutter use, not yet from this embedder running.
 | Kernel consumable? | **Yes.** `dart compile kernel` links the platform by default; `Dart_CreateIsolateGroupFromKernel(app.dill)` then `Dart_LoadScriptFromKernel(app.dill)` is `dartvm`'s own fallback path, and is what `isolate_from_kernel` does. Verify at first run. |
 | Snapshot blobs | `Dart_Initialize` takes none. JIT from kernel needs none. A core snapshot (`gen_snapshot --snapshot_kind=core`) is an optional startup optimization, declined for M1. |
 | `print()` | Implemented as `dartutils.cc` does it, via `dart:_builtin`'s `_getPrintClosure` and a Rust `Builtin_PrintString`. Verify at first run that `dart:_builtin` is present in AOT snapshots; the fallback is an entry-point tear-off from the program's own root library. Microtask hooks (`_setScheduleImmediateClosure`, `_setupHooks`) are installed too. `entropy_source` is provided (without it `Random.secure()` throws). Null file callbacks are safe. |
-| Symbol visibility | `DynamicLibrary.process()` is `dlsym(RTLD_DEFAULT)` on every target. `-rdynamic` plus a `#[used]` table keeping the exports. Verify on all three targets. |
+| Symbol visibility | `DynamicLibrary.process()` is `dlsym(RTLD_DEFAULT)` on every target. `-rdynamic` plus a `#[used]` table keeping the exports. Verified: FFI test passes on x86_64 native, aarch64 and riscv64 under qemu. Boards still to confirm. |
 | Isolate flags | `Dart_IsolateFlagsInitialize` defaults are right. `null_safety` is forced on and ignored; AOT snapshots override group flags. Flutter sets only `snapshot_is_dontneed_safe`, an mmap optimization. |
 | AOT cross-targeting | `dart compile aot-snapshot --target-os linux --target-arch arm64|riscv64` works and downloads the cross `gen_snapshot` from dart-archive (tested in this container). Output is an `ELF DYN` with no `DT_NEEDED`; glibc `dlopen` loads it. Its features string is `product ... no-compressed-pointers`. |
 
@@ -266,3 +266,12 @@ no `dart:_builtin`, so `print` comes from `dart:ui._getPrintClosure`, whose
 resolved through `Dart_SetFfiNativeResolver` on `dart:ui`. This is the first
 engine native, done FFI-first (brief §13). Linux desktop Flutter does not use
 compressed pointers (`tools/gn`: Android only), matching the archive.
+
+### Cross lanes under qemu (2026-10-27)
+
+* aarch64 and riscv64 archives run for the first time: L2 7/7 and fl-dart-vm unit tests 10/10 on both, under qemu-user
+* FFI both directions passes on both, so `-rdynamic` export holds on all three targets
+* `.github/workflows/cross.yml`: cross linker from `gcc-<triple>`, cargo target runner and `FL_DART_TEST_RUNNER` set to `qemu-<arch> -L /usr/<triple>`
+* AOT programs compiled with `dart compile aot-snapshot --target-arch arm64|riscv64`, cross gen_snapshot fetched from dart-archive by the SDK
+* Harness fix found on the way: tests compiling the same program raced on one output file. Compiles are now cached per process
+* qemu is not a board. Pi 5 and VisionFive 2 runs still open

@@ -1,0 +1,75 @@
+# Cross lanes: the L2 suite and the fl-dart-vm unit tests for aarch64 and
+# riscv64, run under qemu-user on an x86_64 runner.
+#
+# Cargo's target runner runs the test binaries under qemu; FL_DART_TEST_RUNNER
+# runs fl-dart the same way, since cargo does not wrap a binary a test spawns.
+# AOT programs are compiled for the target by the stock SDK, which fetches the
+# matching cross gen_snapshot from dart-archive.
+#
+# qemu proves the archives run and FFI symbol export works on each target. It
+# does not stand in for a board: real hardware is still an exit criterion.
+name: cross
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+  checks: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  qemu:
+    name: L2 ${{ matrix.target }} (qemu)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: aarch64-unknown-linux-gnu, sys: aarch64-linux-gnu, qemu: qemu-aarch64, deb: arm64 }
+          - { target: riscv64gc-unknown-linux-gnu, sys: riscv64-linux-gnu, qemu: qemu-riscv64, deb: riscv64 }
+    env:
+      RUNNER_CMD: ${{ matrix.qemu }} -L /usr/${{ matrix.sys }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup show
+      - run: rustup target add ${{ matrix.target }}
+      - name: Cross toolchain and qemu
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq qemu-user gcc-${{ matrix.sys }} libc6-dev-${{ matrix.deb }}-cross
+      - name: Runner and linker for the target
+        run: |
+          t="$(echo '${{ matrix.target }}' | tr 'a-z-' 'A-Z_')"
+          {
+            echo "CARGO_TARGET_${t}_LINKER=${{ matrix.sys }}-gcc"
+            echo "CARGO_TARGET_${t}_RUNNER=$RUNNER_CMD"
+            echo "FL_DART_TEST_RUNNER=$RUNNER_CMD"
+          } >> "$GITHUB_ENV"
+      - name: Fetch the prebuilt VM
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: ci/annotate-on-fail.sh cargo xtask fetch-prebuilt --target ${{ matrix.target }} --mode aot
+      - name: Fetch the pinned stock SDK
+        run: |
+          base="https://storage.googleapis.com/dart-archive/channels/stable/release/3.13.7/sdk"
+          curl -fsSL --retry 3 -O "$base/dartsdk-linux-x64-release.zip"
+          curl -fsSL --retry 3 -O "$base/dartsdk-linux-x64-release.zip.sha256sum"
+          sha256sum -c dartsdk-linux-x64-release.zip.sha256sum
+          unzip -q dartsdk-linux-x64-release.zip
+          ./dart-sdk/bin/dart --version 2>&1 | grep -F "3.13.7" \
+            || { echo "SDK is not the pinned 3.13.7"; exit 1; }
+      - name: fl-dart-vm unit tests
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: ci/annotate-on-fail.sh cargo test -p fl-dart-vm --features aot --lib --target ${{ matrix.target }}
+      - name: L2 suite
+        env:
+          FL_DART_SDK_BIN: ${{ github.workspace }}/dart-sdk/bin/dart
+          GITHUB_TOKEN: ${{ github.token }}
+        run: ci/annotate-on-fail.sh cargo test -p fl-dart-cli --target ${{ matrix.target }}

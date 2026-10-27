@@ -7,7 +7,7 @@ Status: milestone 1 (Dart VM hosted from Rust).
 * AOT and JIT runtimes
 * Runs libapp.so from the Flutter tooling
 * FFI both directions: Dart to Rust, Rust to Dart from any thread
-* Tested on x86_64. aarch64 and riscv64 VM builds exist, not yet run
+* Tested on x86_64, and on aarch64 and riscv64 under qemu. Real boards not yet
 * No dart:ui beyond print, no rendering. A real Flutter app stops at its first other dart:ui call
 
 ## Crates
@@ -73,7 +73,15 @@ Notes:
 
     FL_DART_SDK_BIN=/path/to/dart-sdk/bin/dart cargo test -p fl-dart-cli
 
-Covers hello world, run loop (microtasks, timers, futures), uncaught exception with Dart stack trace, FFI both directions, snapshot version mismatch. CI runs AOT and JIT on every push to main.
+Covers hello world, run loop (microtasks, timers, futures), uncaught exception with Dart stack trace, FFI both directions, snapshot version mismatch. CI runs AOT and JIT on x86_64, and AOT on aarch64 and riscv64 under qemu, on every push to main.
+
+Cross, under qemu (see `.github/workflows/cross.yml`):
+
+    CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc \
+    CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_RUNNER="qemu-aarch64 -L /usr/aarch64-linux-gnu" \
+    FL_DART_TEST_RUNNER="qemu-aarch64 -L /usr/aarch64-linux-gnu" \
+    FL_DART_SDK_BIN=/path/to/dart-sdk/bin/dart \
+    cargo test -p fl-dart-cli --target aarch64-unknown-linux-gnu
 
 ## Docs
 

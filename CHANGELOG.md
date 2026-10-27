@@ -16,6 +16,7 @@ Not published, no versions yet.
 * Prebuilt VM archives for x86_64 (jit, aot), aarch64 and riscv64 (aot), built in CI, checksum-verified on fetch
 * dart:io linked through a C shim, needed for Timer
 * Bindings generated ahead of time (`cargo xtask bindgen`), no libclang at build time
+* aarch64 and riscv64 lanes under qemu: L2 and unit tests in CI
 
 ### Fixed
 
@@ -24,9 +25,11 @@ Not published, no versions yet.
 * Snapshot open closed its own library on return, VM read zeros
 * VM toolchain uses libc++ ABI v2 (`std::__2`); archive now carries its own libc++
 * dart:io network profiling disabled, needs the VM service which is not in milestone 1
+* `fl-dart run-aot hello.aot` failed for a bare file name (dlopen searched the loader path)
+* L2 tests compiling the same program raced on one output file
 
 ### Not yet
 
-* aarch64 and riscv64 runs (qemu, Raspberry Pi 5, VisionFive 2)
+* Real-board runs (Raspberry Pi 5, VisionFive 2)
 * Leak and soak lanes (`fl-dart cycle` is the entry point)
 * dart:ui and rendering (milestone 2)
