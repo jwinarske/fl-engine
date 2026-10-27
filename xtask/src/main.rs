@@ -98,9 +98,6 @@ fn run_bindgen(
     }
 }
 
-/// Where the pipeline publishes (`.github/workflows/dart-prebuilt.yml`).
-const RELEASES: &str = "https://github.com/jwinarske/fl-engine/releases/download";
-
 /// `fetch-prebuilt [--target <triple>] [--mode jit|aot]`: downloads one
 /// artifact tarball, checks it against the checked-in `SHA256SUMS`, and
 /// unpacks it over `third_party/dart-prebuilt/`.
@@ -140,15 +137,59 @@ fn fetch_prebuilt(args: &[String]) -> Result<(), String> {
         .ok_or_else(|| format!("{} has no entry for {name}", sums_path.display()))?;
 
     let tmp = std::env::temp_dir().join(&name);
-    let url = format!("{RELEASES}/dart-prebuilt-{PINNED_VERSION}/{name}");
+    // This repository is private, which decides the whole download shape: the
+    // browser URL answers anonymous *and* Actions-token requests with 404, so
+    // the fetch goes through the API asset endpoint, whose octet-stream form
+    // redirects to a signed blob URL. The token rides a curl config file, not
+    // argv, so a failed command echoed by run() cannot leak it.
+    let token = std::env::var("GITHUB_TOKEN")
+        .or_else(|_| std::env::var("GH_TOKEN"))
+        .map_err(|_| {
+            format!(
+                "GITHUB_TOKEN (or GH_TOKEN) is not set; the repository is private and \
+                 release assets are only served to it through the API"
+            )
+        })?;
+    let api = format!(
+        "https://api.github.com/repos/jwinarske/fl-engine/releases/tags/dart-prebuilt-{PINNED_VERSION}"
+    );
+    let header_file = std::env::temp_dir().join("fl-dart-fetch-headers");
+    std::fs::write(
+        &header_file,
+        format!("header = \"Authorization: Bearer {token}\"\n"),
+    )
+    .map_err(|e| format!("cannot write curl config: {e}"))?;
+    let release = Command::new("curl")
+        .args(["-fsSL", "--retry", "3", "-K"])
+        .arg(&header_file)
+        .args(["-H", "Accept: application/vnd.github+json", &api])
+        .output()
+        .map_err(|e| format!("cannot run curl: {e}"))?;
+    if !release.status.success() {
+        return Err(format!(
+            "listing release dart-prebuilt-{PINNED_VERSION} failed: {}",
+            String::from_utf8_lossy(&release.stderr)
+        ));
+    }
+    // One asset's id, from JSON scanned rather than deserialized: the id is
+    // the first "id" key after the "name" whose value is ours, per the
+    // response's field order is not promised -- so scan the other way, each
+    // asset object's id precedes its name in the payload GitHub serves, and
+    // the pairing below tolerates either order by tracking the latest id.
+    let body = String::from_utf8_lossy(&release.stdout);
+    let asset_id =
+        asset_id_for(&body, &name).ok_or_else(|| format!("release has no asset named {name}"))?;
+    let asset_url =
+        format!("https://api.github.com/repos/jwinarske/fl-engine/releases/assets/{asset_id}");
     let mut curl = Command::new("curl");
-    curl.args(["-fL", "--retry", "3", "-o"]).arg(&tmp).arg(&url);
-    // No Authorization header: the browser download endpoint answers an
-    // Actions token with 404, and GITHUB_TOKEN is always set on a runner --
-    // which is how ci's first fetch failed. The repository is public; a
-    // private one would need the API asset endpoint, not this URL with a
-    // bearer token.
-    run(&mut curl)?;
+    curl.args(["-fL", "--retry", "3", "-K"])
+        .arg(&header_file)
+        .args(["-H", "Accept: application/octet-stream", "-o"])
+        .arg(&tmp)
+        .arg(&asset_url);
+    let fetched = run(&mut curl);
+    let _ = std::fs::remove_file(&header_file);
+    fetched?;
 
     let out = Command::new("sha256sum")
         .arg(&tmp)
@@ -191,5 +232,63 @@ fn run(cmd: &mut Command) -> Result<(), String> {
         Ok(())
     } else {
         Err(format!("{cmd:?} failed: {status}"))
+    }
+}
+
+/// Finds the asset id whose `"name"` equals `name` in a release JSON payload,
+/// pairing each asset's most recent `"id"` with the next `"name"` seen, which
+/// holds for either field order within an object.
+fn asset_id_for(body: &str, name: &str) -> Option<u64> {
+    let needle = format!("\"name\":\"{name}\"");
+    let mut last_id: Option<u64> = None;
+    let mut rest = body;
+    loop {
+        let id_at = rest.find("\"id\":");
+        let name_at = rest.find(&needle);
+        match (id_at, name_at) {
+            (Some(i), Some(n)) if i < n => {
+                let after = &rest[i + 5..];
+                let digits: String = after.chars().take_while(|c| c.is_ascii_digit()).collect();
+                last_id = digits.parse().ok().or(last_id);
+                rest = &rest[i + 5..];
+            }
+            (_, Some(n)) => {
+                // The name matched; the id already seen for this object is it.
+                // If none preceded it, look ahead for the next "id".
+                if last_id.is_some() {
+                    return last_id;
+                }
+                let after = &rest[n..];
+                let i = after.find("\"id\":")?;
+                let digits: String = after[i + 5..]
+                    .chars()
+                    .take_while(|c| c.is_ascii_digit())
+                    .collect();
+                return digits.parse().ok();
+            }
+            _ => return None,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    /// The shape GitHub actually serves: each asset's `id` precedes its
+    /// `name`, other `id` keys (uploader, release) surround them.
+    #[test]
+    fn asset_id_is_the_one_paired_with_the_name() {
+        let body = r#"{"id":1111,"assets":[
+            {"id":681784949,"name":"fl-dart-prebuilt-3.13.7-x86_64-unknown-linux-gnu-jit.tar.xz","uploader":{"id":22}},
+            {"id":681784951,"name":"fl-dart-prebuilt-3.13.7-x86_64-unknown-linux-gnu-aot.tar.xz","uploader":{"id":22}},
+            {"id":681784959,"name":"SHA256SUMS","uploader":{"id":22}}]}"#;
+        assert_eq!(
+            super::asset_id_for(
+                body,
+                "fl-dart-prebuilt-3.13.7-x86_64-unknown-linux-gnu-aot.tar.xz"
+            ),
+            Some(681784951)
+        );
+        assert_eq!(super::asset_id_for(body, "SHA256SUMS"), Some(681784959));
+        assert_eq!(super::asset_id_for(body, "absent.tar.xz"), None);
     }
 }

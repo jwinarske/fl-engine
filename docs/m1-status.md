@@ -212,6 +212,17 @@ generics rustdoc reads as broken links and unclosed HTML under
 `-D warnings`. The allows live in `fl-dart-sys/src/lib.rs` beside the other
 bindgen allowances, not in the generated files, so a regenerate keeps them.
 
+**The repository is private, which decides the fetch shape.** Three fetch
+failures in a row were one fact wearing different masks: the browser download
+URL serves a private release to nobody -- not anonymously, and not to an
+Actions token, both 404. `fetch-prebuilt` now goes through the API asset
+endpoint (octet-stream, 302 to a signed blob URL), requires a token by name
+when it is absent, and carries it in a curl config file rather than argv so a
+failed command echoed into an annotation cannot leak it. The asset id comes
+from a scan of the release JSON that a unit test pins against the payload
+shape GitHub serves. Found by ci's annotated failures; the alias commit, the
+no-token attempt and this are its first three catches.
+
 Still not in the lanes, deliberately sequenced after a green L2: the qemu
 aarch64/riscv64 lanes, and the ASan/leak lane, which waits on a
 `gen_snapshot` of its own configuration (the feature-string finding above).
