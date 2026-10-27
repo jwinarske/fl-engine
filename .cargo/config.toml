@@ -1,0 +1,4 @@
+# `cargo xtask <cmd>` -- the alias every documented command assumes. Its absence
+# surfaced as ci's first annotated failure: "no such command: xtask".
+[alias]
+xtask = "run -p xtask --"
