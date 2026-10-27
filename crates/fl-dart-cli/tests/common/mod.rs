@@ -78,7 +78,23 @@ pub fn fl_dart_cmd() -> Command {
     }
 }
 
+/// Runs `fl-dart`. Under a cross runner, one rerun when qemu-user itself
+/// crashed: "QEMU internal SIGSEGV" is a fault in the emulator's own code
+/// (seen once in the racing-posts test on aarch64, addr=0x20, with the same
+/// commit green before and after), which qemu-user is prone to when a guest
+/// starts and ends many threads at once. A fault in fl-dart is a guest signal
+/// and never carries that text, and a second emulator crash fails the test.
 pub fn fl_dart(args: &[&std::ffi::OsStr]) -> Output {
+    let o = fl_dart_cmd().args(args).output().unwrap();
+    let emulator_crashed = std::env::var_os("FL_DART_TEST_RUNNER").is_some()
+        && String::from_utf8_lossy(&o.stderr).contains("QEMU internal SIGSEGV");
+    if !emulator_crashed {
+        return o;
+    }
+    eprintln!(
+        "qemu crashed in its own code, running once more: {}",
+        String::from_utf8_lossy(&o.stderr).trim()
+    );
     fl_dart_cmd().args(args).output().unwrap()
 }
 
