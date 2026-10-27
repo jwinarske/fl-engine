@@ -1,0 +1,8 @@
+# ThreadSanitizer suppressions for the sanitize lane, from the Dart SDK's own
+# (build/sanitizers/sanitizer_options.cc at the pin). Linked into Dart's
+# executables there; an archive cannot carry them, so they ride TSAN_OPTIONS.
+#
+# False positive in libc's tzset_internal (dartbug.com/54064). Not always
+# symbolized, so its closest symbolized caller too.
+race:tzset_internal
+race:dart::LocalTime
