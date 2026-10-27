@@ -64,6 +64,21 @@ jobs:
           unzip -q dartsdk-linux-x64-release.zip
           ./dart-sdk/bin/dart --version 2>&1 | grep -F "3.13.7" \
             || { echo "SDK is not the pinned 3.13.7"; exit 1; }
+      # The SDK fetches its cross gen_snapshot and runtime from dart-archive on
+      # the first cross compile. Done here, with retries, so a dropped download
+      # fails this step by name instead of whichever test compiled first.
+      - name: Cross compile tools
+        run: |
+          arch="$(case '${{ matrix.target }}' in aarch64*) echo arm64;; riscv64*) echo riscv64;; esac)"
+          echo 'void main() {}' > "$RUNNER_TEMP/warm.dart"
+          for i in 1 2 3; do
+            ./dart-sdk/bin/dart compile aot-snapshot --target-os linux --target-arch "$arch" \
+              "$RUNNER_TEMP/warm.dart" -o "$RUNNER_TEMP/warm.aot" && exit 0
+            echo "attempt $i failed"
+            rm -rf "$HOME/.dart/dartdev/sdk_cache/3.13.7"
+            sleep $((i * 10))
+          done
+          exit 1
       - name: fl-dart-vm unit tests
         env:
           GITHUB_TOKEN: ${{ github.token }}
