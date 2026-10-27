@@ -27,6 +27,7 @@ Not published, no versions yet.
 * dart:io network profiling disabled, needs the VM service which is not in milestone 1
 * `fl-dart run-aot hello.aot` failed for a bare file name (dlopen searched the loader path)
 * L2 tests compiling the same program raced on one output file
+* `main(List<String> args)` run with no arguments got null and threw; now an empty list
 
 ### Not yet
 

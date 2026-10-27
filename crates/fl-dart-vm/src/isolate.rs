@@ -433,11 +433,9 @@ impl<'s> HandleScope<'s> {
                 "the root library has no `main` function".into(),
             ));
         }
-        let argv = if args.is_empty() {
-            self.null()
-        } else {
-            self.new_string_list(args)?
-        };
+        // Always a list, as the standalone VM passes (`CreateRuntimeOptions`):
+        // a `main(List<String> args)` given null fails its own parameter type.
+        let argv = self.new_string_list(args)?;
         let isolate_lib = self.lookup_library("dart:isolate")?;
         self.invoke(isolate_lib, "_startMainIsolate", &[main, argv])
             .map(drop)

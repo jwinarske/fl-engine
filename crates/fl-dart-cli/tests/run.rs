@@ -200,3 +200,12 @@ fn missing_program_is_named() {
     let err = String::from_utf8_lossy(&o.stderr);
     assert!(err.contains("no-such-program"), "{err}");
 }
+
+#[test]
+fn main_taking_args_runs_with_none() {
+    // `main(List<String> args)` with no arguments gets an empty list, not
+    // null, which its parameter type would refuse.
+    let o = run("loop", &[]);
+    assert!(o.status.success(), "{o:?}");
+    assert!(stdout(&o).contains("args=\n"), "{}", stdout(&o));
+}
