@@ -1,0 +1,44 @@
+# One-shot: moves the dart-prebuilt-3.13.7 tag onto the rewritten history.
+# The tag still names a pre-rewrite commit, which keeps the old history
+# reachable. Removed again as soon as it has run.
+#
+# The refs are fixed rather than taken as inputs, so a dispatch can make this
+# one move and nothing else.
+name: move-tag
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  move:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      TAG: dart-prebuilt-3.13.7
+      OLD: 614bb9fe818fb4124a407a00dc97e5fa48622dee
+      NEW: 9d1cc9880d2d221f7c0fc838a7ba92e7fc579094
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Move the tag
+        run: |
+          set -euo pipefail
+          # Refuse unless the tag is still where it was and the target is a
+          # commit on main: a second dispatch, or a tag someone else moved,
+          # is left alone.
+          current="$(git ls-remote origin "refs/tags/$TAG" | cut -f1)"
+          if [ "$current" = "$NEW" ]; then
+            echo "tag already at $NEW; nothing to do"
+            exit 0
+          fi
+          [ "$current" = "$OLD" ] || { echo "::error::tag is at $current, expected $OLD"; exit 1; }
+          git merge-base --is-ancestor "$NEW" origin/main \
+            || { echo "::error::$NEW is not on main"; exit 1; }
+          git push --force origin "$NEW:refs/tags/$TAG"
+          moved="$(git ls-remote origin "refs/tags/$TAG" | cut -f1)"
+          [ "$moved" = "$NEW" ] || { echo "::error::tag is at $moved after the push"; exit 1; }
+          echo "moved $TAG: $OLD -> $NEW"
