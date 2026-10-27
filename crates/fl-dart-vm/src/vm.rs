@@ -102,9 +102,10 @@ impl Drop for Vm {
 }
 
 fn set_flags(flags: &[String]) -> Result<(), VmError> {
-    if flags.is_empty() {
-        return Ok(());
-    }
+    // Called even with no flags: Dart_Initialize fails with "VM Flags not
+    // initialized" until Dart_SetVMFlags has run once, whatever it was passed.
+    // (Confirmed against the linked VM: an empty argv is enough, skipping the
+    // call is not.)
     let owned: Vec<CString> = flags
         .iter()
         .map(|f| CString::new(f.as_str()).map_err(|_| VmError::Flags(format!("NUL in flag {f:?}"))))
