@@ -78,9 +78,23 @@ archive="$(find "$sdk/out/$conf" -name "libfl_dart_$mode.a" -print -quit)"
 # stays with the consumer's libgcc_s, which is what Rust links anyway; the
 # toolchain's libunwind is deliberately left out so there is one unwinder.
 clang_triple="${target%%-*}-unknown-linux-gnu"
-cxx_lib="$(find "$sdk/buildtools" -type d -path "*clang/lib/$clang_triple" -print -quit)"
-[[ -n "$cxx_lib" && -f "$cxx_lib/libc++.a" && -f "$cxx_lib/libc++abi.a" ]] \
-  || die "no static libc++ for $clang_triple under $sdk/buildtools"
+clang="$(find "$sdk/buildtools" -type f -path "*/clang/bin/clang" -print -quit)"
+[[ -n "$clang" ]] || die "no clang under $sdk/buildtools"
+# The toolchain knows where its own runtime libraries are; asking it is the
+# answer that survives a package relayout. The find is a fallback for a clang
+# that answers with a bare name (what --print-file-name does for a miss).
+cxx_a="$("$clang" --target="$clang_triple" --print-file-name=libc++.a)"
+if [[ ! -f "$cxx_a" ]]; then
+  cxx_a="$(find "$sdk/buildtools" -type f -name libc++.a -path "*${clang_triple%%-*}*" -print -quit)"
+fi
+if [[ ! -f "$cxx_a" ]]; then
+  echo "build.sh: libc++ candidates under buildtools:" >&2
+  find "$sdk/buildtools" -name 'libc++*' >&2 || true
+  die "no static libc++ for $clang_triple"
+fi
+cxx_lib="$(dirname "$cxx_a")"
+[[ -f "$cxx_lib/libc++abi.a" ]] || die "$cxx_lib has libc++.a but no libc++abi.a"
+echo "build.sh: using libc++ from $cxx_lib"
 
 stage="$(mktemp -d)"
 trap 'rm -rf "$stage"' EXIT
