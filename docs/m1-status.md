@@ -153,6 +153,28 @@ Not yet run: the first CI run is the first time `fl_dart/BUILD.gn` meets gn.
 Expect fixes there, most likely config names or `complete_static_lib` pulling
 in something unwanted.
 
+### Pipeline run 1 (2026-10-27): all four green; archives linked libc++ ABI v2
+
+The first run built all four artifacts without a `BUILD.gn` fix (8-13 min
+each). The x86_64 archives contain what they should (`Dart_Initialize`,
+`fl_dart_io_*`, ICU `u_strlen_77`, BoringSSL `SSL_new`). Linking `fl-dart`
+against them failed on undefined `std::__2::*` symbols: the SDK's toolchain
+is Fuchsia clang, which builds and links libc++ with its **unstable ABI v2**
+(`std::__2`), statically, into every SDK binary. A distro libc++ exports
+`std::__1` and can never satisfy it; libstdc++ never could. So the C++
+runtime is not a choice the consumer gets to make, and the brief's "one
+platform-conditional" (§14, `stdc++` vs `c++`) does not exist here: build.sh
+now merges the toolchain's `libc++.a` and `libc++abi.a` into the archive,
+the consumer links no C++ runtime at all, and a board needs none installed
+-- the same shape as `dartaotruntime`. Unwinding is the consumer's
+`libgcc_s`; the toolchain's `libunwind.a` is left out so there is one
+unwinder in the process.
+
+Also found: a second `publish` run for the same pin must replace the
+release's assets, since the tag exists; the job now does so. The checked-in
+`SHA256SUMS` is what pins consumers, so a replaced asset is inert until that
+file changes under review.
+
 ## What runs today
 
 Without a VM (`FL_DART_SDK_OUT=none`): clippy on the whole workspace in both
