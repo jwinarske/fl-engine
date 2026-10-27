@@ -214,7 +214,7 @@ impl Vm {
         // SAFETY: there is a current isolate (just created) for the whole block.
         let setup = unsafe {
             sys::Dart_EnterScope();
-            let r = load(()).and_then(|()| install_print_hook());
+            let r = load(()).and_then(|()| install_hooks());
             sys::Dart_ExitScope();
             r
         };
@@ -641,7 +641,12 @@ impl PersistentHandle {
     }
 }
 
-/// Points `print()` at the isolate's [`PrintSink`].
+/// The core-library hooks a standalone embedder installs: `print()` to the
+/// isolate's [`PrintSink`], and microtask scheduling.
+///
+/// Not yet installed: `VMLibraryHooks.eventHandlerSendData`, through which
+/// `Timer` asks the embedder for a wakeup. In the standalone VM and in Flutter
+/// that is dart:io's event handler; see `docs/m1-status.md`, "Timers".
 ///
 /// `print` in the VM's core libraries calls `dart:_internal`'s `_printClosure`,
 /// which throws until an embedder sets it. The standalone VM sets it to
@@ -652,7 +657,7 @@ impl PersistentHandle {
 ///
 /// # Safety
 /// A current isolate with an open scope.
-unsafe fn install_print_hook() -> Result<(), DartError> {
+unsafe fn install_hooks() -> Result<(), DartError> {
     // SAFETY: per this function's contract.
     unsafe {
         let lib = |uri: &str| -> Result<sys::Dart_Handle, DartError> {
@@ -677,6 +682,30 @@ unsafe fn install_print_hook() -> Result<(), DartError> {
             std::ptr::null_mut(),
         ))?;
         check(sys::Dart_SetField(internal, name("_printClosure"), print))?;
+
+        // Microtasks: dart:async schedules them through a closure the embedder
+        // installs, and dart:isolate's hooks install the timer factory. Both as
+        // `PrepareAsyncLibrary`/`PrepareIsolateLibrary` in dartutils.cc.
+        let isolate_lib = lib("dart:isolate")?;
+        let async_lib = lib("dart:async")?;
+        let mut sched = [check(sys::Dart_Invoke(
+            isolate_lib,
+            name("_getIsolateScheduleImmediateClosure"),
+            0,
+            std::ptr::null_mut(),
+        ))?];
+        check(sys::Dart_Invoke(
+            async_lib,
+            name("_setScheduleImmediateClosure"),
+            1,
+            sched.as_mut_ptr(),
+        ))?;
+        check(sys::Dart_Invoke(
+            isolate_lib,
+            name("_setupHooks"),
+            0,
+            std::ptr::null_mut(),
+        ))?;
     }
     Ok(())
 }

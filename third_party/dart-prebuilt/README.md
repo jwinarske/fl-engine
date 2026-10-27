@@ -26,9 +26,11 @@ are built rather than guessed at where they are consumed. One directive per
 line, blank lines and `#` comments ignored:
 
 ```
-static=dart_precompiled_runtime   # lib<name>.a in this directory
+static=dart_aotruntime_product   # lib<name>.a in this directory
+static=icuuc                     # ICU: mandatory, the regexp engine uses it
 cxx=stdc++                        # the C++ runtime the archives were built against
-system=dl                         # a system library
+system=dl                        # a system library
+system=pthread
 ```
 
 `cxx` is the one platform-conditional the brief allows; it is a line in this

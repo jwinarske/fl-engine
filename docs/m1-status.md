@@ -28,8 +28,8 @@ and `Dart_CreateIsolateGroup` takes `(snapshot_data, snapshot_text)`.
 all, so `Vm::init` needs nothing from the program — the brief's §7 "four
 snapshot symbols" and the dlopen description in §8 are superseded.
 
-**The snapshot header also carries a feature string** right after the hash —
-`product no-asan no-msan no-tsan ...` for the stock SDK's output. The VM
+**The snapshot header also carries a feature string** right after the hash:
+`product no-asan no-msan no-tsan ... no-compressed-pointers` for the stock SDK's output. The VM
 rejects a snapshot whose features differ from its own build. The AOT artifact
 must therefore be built in **product** mode to run snapshots from the stock
 `dart compile aot-snapshot`; a debug or sanitizer build of the runtime needs
@@ -55,28 +55,68 @@ the VM's group-cleanup callback; a borrowed `&[u8]` could not promise that.
 
 ## Bring-up list (§15)
 
-| Item | State |
+Resolved from source at the pin; citations in `docs/m1-s15-findings.md`.
+"Verify at first run" means the answer comes from code paths `dartvm` and
+Flutter use, not yet from this embedder running.
+
+| Item | Finding |
 |---|---|
-| GN targets for the JIT / precompiled-runtime static libs | open — research in progress |
-| Is `dart compile kernel` output directly consumable? | It includes the platform (8.6 MB for hello world; the platform dill's own SDK hash is `0000000000`). `isolate_from_kernel` creates the group from it and loads it as the script with `Dart_LoadScriptFromKernel`. To verify at first run. |
-| VM snapshot blobs `Dart_Initialize` needs (JIT) | `Dart_Initialize` takes none in 3.13 (see above). Whether a JIT VM needs a core snapshot for the *group*: open |
-| `print()` hook | `dart:_internal`'s `_printClosure` throws until set. Set, as `runtime/bin/dartutils.cc` does, to `dart:_builtin`'s `_getPrintClosure()`, with `Builtin_PrintString` resolved to Rust. Implemented; to verify that `dart:_builtin` survives AOT tree-shaking. |
-| Symbol visibility for `DynamicLibrary.process()` | `-rdynamic` on the CLI's link, plus a `#[used]` table so the linker keeps the exports. To verify on all three targets. |
-| Isolate flags | `Dart_IsolateFlagsInitialize` defaults, nothing set explicitly yet. `null_safety` is still a field (version 14 of the struct). Open. |
-| `dart compile aot-snapshot` cross-targeting | open |
+| GN targets | `//runtime:libdart{suffix}` is the one static library; `vm:libdart_vm`, `vm:libdart_lib`, `vm:libdart_compiler`, `platform:libdart_platform` and double-conversion are source sets inside it. Suffixes (`runtime/configs.gni`): **JIT = `libdart_jit.a`, AOT = `libdart_aotruntime_product.a`**. Plus `icuuc` (mandatory: regexp), `dl`, `pthread`. Nothing from `runtime/bin` is needed unless dart:io is (see Timers). GN args: exactly one of `is_debug`/`is_release`/`is_product`; JIT vs AOT is the target suffix, not `dart_runtime_mode`. |
+| Kernel consumable? | **Yes.** `dart compile kernel` links the platform by default; `Dart_CreateIsolateGroupFromKernel(app.dill)` then `Dart_LoadScriptFromKernel(app.dill)` is `dartvm`'s own fallback path, and is what `isolate_from_kernel` does. Verify at first run. |
+| Snapshot blobs | `Dart_Initialize` takes none. JIT from kernel needs none. A core snapshot (`gen_snapshot --snapshot_kind=core`) is an optional startup optimization, declined for M1. |
+| `print()` | Implemented as `dartutils.cc` does it, via `dart:_builtin`'s `_getPrintClosure` and a Rust `Builtin_PrintString`. Verify at first run that `dart:_builtin` is present in AOT snapshots; the fallback is an entry-point tear-off from the program's own root library. Microtask hooks (`_setScheduleImmediateClosure`, `_setupHooks`) are installed too. `entropy_source` is provided (without it `Random.secure()` throws). Null file callbacks are safe. |
+| Symbol visibility | `DynamicLibrary.process()` is `dlsym(RTLD_DEFAULT)` on every target. `-rdynamic` plus a `#[used]` table keeping the exports. Verify on all three targets. |
+| Isolate flags | `Dart_IsolateFlagsInitialize` defaults are right. `null_safety` is forced on and ignored; AOT snapshots override group flags. Flutter sets only `snapshot_is_dontneed_safe`, an mmap optimization. |
+| AOT cross-targeting | `dart compile aot-snapshot --target-os linux --target-arch arm64|riscv64` works and downloads the cross `gen_snapshot` from dart-archive (tested in this container). Output is an `ELF DYN` with no `DT_NEEDED`; glibc `dlopen` loads it. Its features string is `product ... no-compressed-pointers`. |
+
+### Timers (new, blocks part of exit criterion L2)
+
+`Timer` posts its wakeup request through `VMLibraryHooks.eventHandlerSendData`,
+which only dart:io's `_setupHooks` assigns. Without it, `Timer` (and so
+`Future.delayed`) fails, though microtasks and ports work. Options:
+
+1. **Link dart:io's embedder support** (`runtime/bin`: event handler, built-in
+   natives, which brings zlib and BoringSSL into the artifact). This is what
+   both `dartvm` and Flutter do, so it is the path M2+ needs anyway.
+   *Recommended.*
+2. An fl-dart Dart shim library compiled into the program, assigning
+   `eventHandlerSendData` to an `@Native` Rust timer service. Smaller, but a
+   private-API dependency Flutter does not have.
+
+`tests/run.rs`'s run-loop test exercises timers and will fail until one lands.
+
+### M2 finding (§13)
+
+`@Native` resolution tries a `Dart_SetFfiNativeResolver` on the declaring
+library first, then process `dlsym`. **M2 can be FFI-first**, and the resolver
+variant needs no symbol export at all. Tonic's native-resolver machinery need
+not be built.
 
 ## Artifact pipeline
 
-Not yet producible from this environment: `gclient` needs
-`*.googlesource.com` and CIPD (`chrome-infra-packages.appspot.com`), both
-refused by the session's network policy. `github.com` (git) and
-`storage.googleapis.com` work, so the pinned SDK *source* and the pinned SDK
-*binaries* are both available; only the dependency sync is not.
+`gclient` cannot run here: `*.googlesource.com` and CIPD are refused by the
+session's network policy. A build without them looks feasible:
+
+- SDK source at the pin from GitHub (done: `/home/user/src/dart-sdk`);
+  BoringSSL and Perfetto have GitHub mirrors at the pinned commits, and
+  Perfetto can be turned off (`dart_support_perfetto=false`).
+- System clang 18 in place of the CIPD toolchain; system ninja.
+- `gn`: Ubuntu's 2024 package is too old (`path_exists()` missing); an
+  unofficial GitHub mirror has a recent one, to be built.
+- **ICU is the hard part**: no mirror of Chromium's ICU fork, so it needs a
+  hand-written `third_party/icu/BUILD.gn` over upstream ICU or system libicu.
+- Platform dill and host plus cross `gen_snapshot` need not be built: the
+  pinned SDK and dart-archive ship them.
+- Cross libdart builds (aarch64, riscv64) also need a sysroot.
+
+In CI with googlesource access the pipeline is plain `gclient sync` + `gn gen`
++ `ninja libdart_jit libdart_aotruntime_product icuuc`. The container route
+above is a bring-up workaround, not the pipeline.
 
 ## What runs today
 
 Without a VM (`FL_DART_SDK_OUT=none`): clippy on the whole workspace in both
 modes, the header/port unit tests, and the seven compile-fail cases. With
 artifacts: `cargo test -p fl-dart-cli` (needs `FL_DART_SDK_BIN`) runs the L2
-suite — hello world, run-loop draining, exception with stack trace, both FFI
+suite: hello world, run-loop draining, exception with stack trace, both FFI
 crossings, version mismatch.
