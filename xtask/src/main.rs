@@ -238,7 +238,7 @@ fn run(cmd: &mut Command) -> Result<(), String> {
 /// pairing each asset's most recent `"id"` with the next `"name"` seen, which
 /// holds for either field order within an object.
 fn asset_id_for(body: &str, name: &str) -> Option<u64> {
-    let needle = format!("\"name\": \"{name}\"");
+    let needle = format!("\"name\":\"{name}\"");
     let mut last_id: Option<u64> = None;
     let mut rest = body;
     loop {
@@ -277,9 +277,9 @@ mod tests {
     #[test]
     fn asset_id_is_the_one_paired_with_the_name() {
         let body = r#"{"id":1111,"assets":[
-            {"id":681784949,"name": "fl-dart-prebuilt-3.13.7-x86_64-unknown-linux-gnu-jit.tar.xz","uploader":{"id":22}},
-            {"id":681784951,"name": "fl-dart-prebuilt-3.13.7-x86_64-unknown-linux-gnu-aot.tar.xz","uploader":{"id":22}},
-            {"id":681784959,"name": "SHA256SUMS","uploader":{"id":22}}]}"#;
+            {"id":681784949,"name":"fl-dart-prebuilt-3.13.7-x86_64-unknown-linux-gnu-jit.tar.xz","uploader":{"id":22}},
+            {"id":681784951,"name":"fl-dart-prebuilt-3.13.7-x86_64-unknown-linux-gnu-aot.tar.xz","uploader":{"id":22}},
+            {"id":681784959,"name":"SHA256SUMS","uploader":{"id":22}}]}"#;
         assert_eq!(
             super::asset_id_for(
                 body,
