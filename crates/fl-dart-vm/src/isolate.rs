@@ -214,7 +214,7 @@ impl Vm {
         // SAFETY: there is a current isolate (just created) for the whole block.
         let setup = unsafe {
             sys::Dart_EnterScope();
-            let r = load(()).and_then(|()| install_hooks());
+            let r = load(()).and_then(|()| install_hooks(&uri));
             sys::Dart_ExitScope();
             r
         };
@@ -642,11 +642,11 @@ impl PersistentHandle {
 }
 
 /// The core-library hooks a standalone embedder installs: `print()` to the
-/// isolate's [`PrintSink`], and microtask scheduling.
+/// isolate's [`PrintSink`], microtask scheduling, and dart:io.
 ///
-/// Not yet installed: `VMLibraryHooks.eventHandlerSendData`, through which
-/// `Timer` asks the embedder for a wakeup. In the standalone VM and in Flutter
-/// that is dart:io's event handler; see `docs/m1-status.md`, "Timers".
+/// Then dart:io's own setup, which brings timers: `Timer` asks for wakeups
+/// through `VMLibraryHooks.eventHandlerSendData`, and only dart:io's event
+/// handler answers it (as in both the standalone VM and Flutter).
 ///
 /// `print` in the VM's core libraries calls `dart:_internal`'s `_printClosure`,
 /// which throws until an embedder sets it. The standalone VM sets it to
@@ -657,7 +657,7 @@ impl PersistentHandle {
 ///
 /// # Safety
 /// A current isolate with an open scope.
-unsafe fn install_hooks() -> Result<(), DartError> {
+unsafe fn install_hooks(script_uri: &std::ffi::CStr) -> Result<(), DartError> {
     // SAFETY: per this function's contract.
     unsafe {
         let lib = |uri: &str| -> Result<sys::Dart_Handle, DartError> {
@@ -706,6 +706,12 @@ unsafe fn install_hooks() -> Result<(), DartError> {
             0,
             std::ptr::null_mut(),
         ))?;
+
+        // dart:io: its natives, and its `_setupHooks`, which is what assigns
+        // `VMLibraryHooks.eventHandlerSendData` and so makes `Timer` work.
+        // `exit()` stays enabled, as in Flutter: it ends the process the way
+        // it would under `dart`.
+        check(sys::fl_dart_io_setup_isolate(script_uri.as_ptr(), false))?;
     }
     Ok(())
 }

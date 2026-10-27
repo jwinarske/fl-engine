@@ -56,10 +56,17 @@ impl Vm {
         params.entropy_source = Some(entropy_source);
         params.start_kernel_isolate = false;
 
+        // dart:io's event handler, before the VM -- the order Flutter's
+        // DartVM uses. It is what services `Timer` wakeups.
+        // SAFETY: once per process, guarded by INITIALIZED above.
+        unsafe { sys::fl_dart_io_bootstrap() };
+
         // SAFETY: params is fully initialized and outlives the call; the
         // callbacks it names are `extern "C"` and never unwind.
         let err = unsafe { sys::Dart_Initialize(&mut params) };
         if !err.is_null() {
+            // SAFETY: undoes the bootstrap above; no VM exists to use it.
+            unsafe { sys::fl_dart_io_cleanup() };
             // SAFETY: Dart_Initialize returns a malloc'd message we now own.
             return Err(VmError::Init(unsafe { take_c_error(err) }));
         }
@@ -89,6 +96,8 @@ impl Drop for Vm {
                 take_c_error(err)
             });
         }
+        // SAFETY: after Dart_Cleanup, paired with the bootstrap in init.
+        unsafe { sys::fl_dart_io_cleanup() };
     }
 }
 

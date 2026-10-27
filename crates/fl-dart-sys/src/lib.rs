@@ -36,6 +36,27 @@ mod tools {
 #[cfg(feature = "tools")]
 pub use tools::*;
 
+/// dart:io's embedder support, through fl-engine's C shim
+/// (`tools/dart-prebuilt/fl_dart/fl_dart_io.h`). Bound by hand: three
+/// functions of our own, not the SDK's, compiled into every artifact.
+mod io {
+    use super::api::Dart_Handle;
+    extern "C" {
+        /// Process-wide, once, before `Dart_Initialize`: starts dart:io's
+        /// event handler thread, which is what makes `Timer` work.
+        pub fn fl_dart_io_bootstrap();
+        /// Process-wide, once, after `Dart_Cleanup`.
+        pub fn fl_dart_io_cleanup();
+        /// Per isolate, with a current isolate and open scope, after loading:
+        /// dart:io's natives and `_setupHooks`. `script_uri` may be null.
+        pub fn fl_dart_io_setup_isolate(
+            script_uri: *const ::core::ffi::c_char,
+            disable_exit: bool,
+        ) -> Dart_Handle;
+    }
+}
+pub use io::*;
+
 /// `ILLEGAL_PORT` is a cast in a macro, which bindgen does not translate.
 pub const ILLEGAL_PORT: Dart_Port = 0;
 

@@ -17,7 +17,9 @@ holding what cargo needs to link the VM and nothing cargo would have to build.
 The headers are checked in so the bindings in `fl-dart-sys` can be regenerated
 and reviewed without fetching anything (`cargo xtask bindgen`). The libraries
 are not: they are per target and per mode, and the pipeline that produces them
-(`docs/m1-status.md`, "Artifact pipeline") is the source of record.
+(`tools/dart-prebuilt/build.sh`, run by `.github/workflows/dart-prebuilt.yml`)
+is the source of record. `SHA256SUMS`, checked in beside `VERSION` once a
+release is published and reviewed, is what `cargo xtask fetch-prebuilt` trusts.
 
 ## `link.txt`
 
@@ -26,10 +28,9 @@ are built rather than guessed at where they are consumed. One directive per
 line, blank lines and `#` comments ignored:
 
 ```
-static=dart_aotruntime_product   # lib<name>.a in this directory
-static=icuuc                     # ICU: mandatory, the regexp engine uses it
-cxx=stdc++                        # the C++ runtime the archives were built against
-system=dl                        # a system library
+static=fl_dart_aot   # lib<name>.a here: VM + dart:io + ICU + zlib + BoringSSL + shim
+cxx=stdc++           # the C++ runtime the archive was built against
+system=dl            # a system library
 system=pthread
 ```
 

@@ -49,6 +49,8 @@ pins it. **`Isolate::enter` returns `Result`**: the types keep one isolate on on
 thread, but cannot see that the thread is already inside a *different*
 isolate, which `Dart_EnterIsolate` forbids; that is checked at run time.
 
+**The repository** is `jwinarske/fl-engine`, which you create; this session's integration cannot create repositories.
+
 **`isolate_from_kernel` copies the dill.** The VM reads kernel lazily for the
 group's whole life, so the bytes are owned by the group's data and released in
 the VM's group-cleanup callback; a borrowed `&[u8]` could not promise that.
@@ -69,21 +71,21 @@ Flutter use, not yet from this embedder running.
 | Isolate flags | `Dart_IsolateFlagsInitialize` defaults are right. `null_safety` is forced on and ignored; AOT snapshots override group flags. Flutter sets only `snapshot_is_dontneed_safe`, an mmap optimization. |
 | AOT cross-targeting | `dart compile aot-snapshot --target-os linux --target-arch arm64|riscv64` works and downloads the cross `gen_snapshot` from dart-archive (tested in this container). Output is an `ELF DYN` with no `DT_NEEDED`; glibc `dlopen` loads it. Its features string is `product ... no-compressed-pointers`. |
 
-### Timers (new, blocks part of exit criterion L2)
+### Timers: dart:io is linked (decided 2026-10-27)
 
 `Timer` posts its wakeup request through `VMLibraryHooks.eventHandlerSendData`,
-which only dart:io's `_setupHooks` assigns. Without it, `Timer` (and so
-`Future.delayed`) fails, though microtasks and ports work. Options:
+which only dart:io's `_setupHooks` assigns. Decision: **link dart:io's
+embedder support**, as `dartvm` and Flutter both do. dart:io's API
+(`runtime/include/bin/dart_io_api.h`) is C++, so the pipeline compiles a
+three-function C shim, `tools/dart-prebuilt/fl_dart/fl_dart_io.{h,cc}`, into
+the artifact; `fl-dart-sys` binds it by hand. `Vm::init` calls
+`fl_dart_io_bootstrap` before `Dart_Initialize` (starting the event handler
+thread), `Drop` calls `fl_dart_io_cleanup` after `Dart_Cleanup`, and each new
+isolate runs `fl_dart_io_setup_isolate` after the print and microtask hooks.
+`print` stays Rust-owned: dart:io registers its resolver on `dart:io` only.
 
-1. **Link dart:io's embedder support** (`runtime/bin`: event handler, built-in
-   natives, which brings zlib and BoringSSL into the artifact). This is what
-   both `dartvm` and Flutter do, so it is the path M2+ needs anyway.
-   *Recommended.*
-2. An fl-dart Dart shim library compiled into the program, assigning
-   `eventHandlerSendData` to an `@Native` Rust timer service. Smaller, but a
-   private-API dependency Flutter does not have.
-
-`tests/run.rs`'s run-loop test exercises timers and will fail until one lands.
+Cost: zlib and BoringSSL enter the artifact. `exit()` is left enabled, as in
+Flutter.
 
 ### M2 finding (§13)
 
@@ -92,26 +94,33 @@ library first, then process `dlsym`. **M2 can be FFI-first**, and the resolver
 variant needs no symbol export at all. Tonic's native-resolver machinery need
 not be built.
 
-## Artifact pipeline
+## Artifact pipeline (decided: CI, with googlesource)
 
-`gclient` cannot run here: `*.googlesource.com` and CIPD are refused by the
-session's network policy. A build without them looks feasible:
+`.github/workflows/dart-prebuilt.yml` runs `tools/dart-prebuilt/build.sh` once
+per (target, mode): x86_64 jit, and x86_64, aarch64 and riscv64 aot. Each job:
+depot_tools, `gclient sync --no-history` at the pinned revision (DEPS brings
+the toolchain and the multi-arch Debian sysroot), then the SDK's own
+`tools/build.py`. JIT builds in `release` mode and AOT in `product` mode; the
+stock SDK's snapshots declare `product`, and the VM refuses a snapshot whose
+features differ from its own.
 
-- SDK source at the pin from GitHub (done: `/home/user/src/dart-sdk`);
-  BoringSSL and Perfetto have GitHub mirrors at the pinned commits, and
-  Perfetto can be turned off (`dart_support_perfetto=false`).
-- System clang 18 in place of the CIPD toolchain; system ninja.
-- `gn`: Ubuntu's 2024 package is too old (`path_exists()` missing); an
-  unofficial GitHub mirror has a recent one, to be built.
-- **ICU is the hard part**: no mirror of Chromium's ICU fork, so it needs a
-  hand-written `third_party/icu/BUILD.gn` over upstream ICU or system libicu.
-- Platform dill and host plus cross `gen_snapshot` need not be built: the
-  pinned SDK and dart-archive ship them.
-- Cross libdart builds (aarch64, riscv64) also need a sysroot.
+The script grafts `fl_dart/BUILD.gn` into the checkout. It defines one
+`complete_static_lib` per mode (`libfl_dart_jit.a`, `libfl_dart_aot.a`), each
+holding the VM, dart:io's embedder support, ICU, zlib, BoringSSL and the shim.
+`link.txt` is therefore one archive plus `stdc++`, `dl`, `pthread`, `m`, and
+link order never comes up. The script refuses to run unless the checkout's
+HEAD and its recomputed snapshot hash both match `VERSION`.
 
-In CI with googlesource access the pipeline is plain `gclient sync` + `gn gen`
-+ `ninja libdart_jit libdart_aotruntime_product icuuc`. The container route
-above is a bring-up workaround, not the pipeline.
+Tarballs are deterministic, with mtime 0 and sorted entries. A
+`workflow_dispatch` with `publish: true` attaches them and a `SHA256SUMS` to
+release `dart-prebuilt-<version>`. Checking that `SHA256SUMS` into
+`third_party/dart-prebuilt/<version>/` is what makes `cargo xtask
+fetch-prebuilt` work. Until then, fetch-prebuilt refuses to download anything
+it cannot verify.
+
+Not yet run: the first CI run is the first time `fl_dart/BUILD.gn` meets gn.
+Expect fixes there, most likely config names or `complete_static_lib` pulling
+in something unwanted.
 
 ## What runs today
 

@@ -1,0 +1,51 @@
+# Copied to //fl_dart in a dart-lang/sdk checkout by build.sh. Each target is
+# one self-contained archive -- the VM, dart:io's embedder support, ICU, zlib,
+# BoringSSL and the shim -- so that fl-dart-sys links a single static library
+# and link order is never a question.
+#
+# JIT pairs with the non-product dart:io; the precompiled runtime with the
+# product one. Mixing them links, and then fails at run time on configuration
+# checks, so they are fixed here rather than chosen by the caller.
+
+template("fl_dart") {
+  static_library(target_name) {
+    complete_static_lib = true
+    configs += [
+      "//runtime:dart_arch_config",
+      "//runtime:dart_config",
+      "//runtime:dart_os_config",
+    ] + invoker.extra_configs
+    include_dirs = [
+      "//runtime",
+      "//runtime/include",
+    ]
+    sources = [
+      "fl_dart_io.cc",
+      "fl_dart_io.h",
+    ]
+    deps = [ "//third_party/icu:icuuc" ] + invoker.extra_deps
+  }
+}
+
+fl_dart("fl_dart_jit") {
+  extra_configs = [ "//runtime:dart_maybe_product_config" ]
+  extra_deps = [
+    "//runtime:libdart_jit",
+    "//runtime/bin:common_embedder_dart_io",
+  ]
+}
+
+fl_dart("fl_dart_aot") {
+  extra_configs = [ "//runtime:dart_product_config" ]
+  extra_deps = [
+    "//runtime:libdart_aotruntime_product",
+    "//runtime/bin:common_embedder_dart_io_product",
+  ]
+}
+
+group("all") {
+  deps = [
+    ":fl_dart_aot",
+    ":fl_dart_jit",
+  ]
+}

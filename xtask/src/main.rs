@@ -16,8 +16,8 @@ fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let result = match args.first().map(String::as_str) {
         Some("bindgen") => bindgen(),
-        Some("fetch-prebuilt") => fetch_prebuilt(),
-        _ => Err("usage: cargo xtask <bindgen | fetch-prebuilt>".to_owned()),
+        Some("fetch-prebuilt") => fetch_prebuilt(&args[1..]),
+        _ => Err("usage: cargo xtask bindgen\n       cargo xtask fetch-prebuilt [--target <triple>] [--mode jit|aot]".to_owned()),
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,
@@ -98,12 +98,97 @@ fn run_bindgen(
     }
 }
 
-fn fetch_prebuilt() -> Result<(), String> {
-    // No release carries the artifacts yet: the pipeline that builds them needs
-    // a gclient checkout, and the first one is still being brought up (see
-    // docs/m1-status.md). Saying so beats a download that 404s.
-    Err(format!(
-        "no published artifacts for Dart {PINNED_VERSION} yet; build them with \
-         the artifact pipeline and point FL_DART_SDK_OUT at the result"
-    ))
+/// Where the pipeline publishes (`.github/workflows/dart-prebuilt.yml`).
+const RELEASES: &str = "https://github.com/jwinarske/fl-engine/releases/download";
+
+/// `fetch-prebuilt [--target <triple>] [--mode jit|aot]`: downloads one
+/// artifact tarball, checks it against the checked-in `SHA256SUMS`, and
+/// unpacks it over `third_party/dart-prebuilt/`.
+///
+/// The checksum file is the trust root: it is reviewed into the repository
+/// when a release is published, so a tarball that changed after review does
+/// not unpack. Without it there is nothing to fetch, and this says so rather
+/// than downloading something unverified.
+fn fetch_prebuilt(args: &[String]) -> Result<(), String> {
+    let mut target = host_target().to_owned();
+    let mut mode = "aot".to_owned();
+    let mut it = args.iter();
+    while let Some(a) = it.next() {
+        let v = it.next().ok_or_else(|| format!("{a} needs a value"))?;
+        match a.as_str() {
+            "--target" => target = v.clone(),
+            "--mode" => mode = v.clone(),
+            _ => return Err(format!("unknown argument {a}")),
+        }
+    }
+    let dir = root().join("third_party/dart-prebuilt");
+    let sums_path = dir.join(PINNED_VERSION).join("SHA256SUMS");
+    let sums = std::fs::read_to_string(&sums_path).map_err(|e| {
+        format!(
+            "{}: {e}\nno artifacts for Dart {PINNED_VERSION} have been published and \
+             reviewed yet: run the dart-prebuilt workflow with publish=true, then check in \
+             its SHA256SUMS",
+            sums_path.display()
+        )
+    })?;
+    let name = format!("fl-dart-prebuilt-{PINNED_VERSION}-{target}-{mode}.tar.xz");
+    let want = sums
+        .lines()
+        .filter_map(|l| l.split_once(char::is_whitespace))
+        .find(|(_, f)| f.trim().trim_start_matches('*') == name)
+        .map(|(h, _)| h.to_owned())
+        .ok_or_else(|| format!("{} has no entry for {name}", sums_path.display()))?;
+
+    let tmp = std::env::temp_dir().join(&name);
+    let url = format!("{RELEASES}/dart-prebuilt-{PINNED_VERSION}/{name}");
+    let mut curl = Command::new("curl");
+    curl.args(["-fL", "--retry", "3", "-o"]).arg(&tmp).arg(&url);
+    // The repository may be private, where release downloads need a token.
+    if let Ok(token) = std::env::var("GITHUB_TOKEN") {
+        curl.args(["-H", &format!("Authorization: Bearer {token}")]);
+    }
+    run(&mut curl)?;
+
+    let out = Command::new("sha256sum")
+        .arg(&tmp)
+        .output()
+        .map_err(|e| format!("cannot run sha256sum: {e}"))?;
+    let got = String::from_utf8_lossy(&out.stdout)
+        .split_whitespace()
+        .next()
+        .unwrap_or("")
+        .to_owned();
+    if got != want {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(format!(
+            "{name}: sha256 is {got}, SHA256SUMS says {want}; not unpacked"
+        ));
+    }
+    run(Command::new("tar")
+        .arg("-xJf")
+        .arg(&tmp)
+        .arg("-C")
+        .arg(&dir))?;
+    let _ = std::fs::remove_file(&tmp);
+    println!("unpacked {name} into {}", dir.display());
+    Ok(())
+}
+
+fn host_target() -> &'static str {
+    match std::env::consts::ARCH {
+        "aarch64" => "aarch64-unknown-linux-gnu",
+        "riscv64" => "riscv64gc-unknown-linux-gnu",
+        _ => "x86_64-unknown-linux-gnu",
+    }
+}
+
+fn run(cmd: &mut Command) -> Result<(), String> {
+    let status = cmd
+        .status()
+        .map_err(|e| format!("cannot run {cmd:?}: {e}"))?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!("{cmd:?} failed: {status}"))
+    }
 }
