@@ -87,6 +87,37 @@ isolate runs `fl_dart_io_setup_isolate` after the print and microtask hooks.
 Cost: zlib and BoringSSL enter the artifact. `exit()` is left enabled, as in
 Flutter.
 
+### Candidate milestone: dart:io in Rust (recorded 2026-10-27, not scheduled)
+
+Raised and declined for M1. The case for it: linking dart:io made the "one
+C++ component" line into "one component and its two dependencies" (zlib,
+BoringSSL). A Rust dart:io would shrink the C++ surface to libdart proper,
+replace BoringSSL with rustls, and make the event handler ours -- all of
+which help the Yocto story.
+
+What it is: not an API reimplementation but a port of an internal ABI.
+dart:io's Dart half (`sdk/lib/_internal/vm/bin/*_patch.dart`) is compiled
+into the platform dill and every AOT snapshot, and binds to natives by name:
+185 entries in `runtime/bin/io_natives.cc`, backed by ~25k lines of Linux C++
+(event handler, process, file, socket, TLS filter, directory watch, stdio).
+A port implements those natives with the exact names, argument conventions
+and error behaviour that Dart side expects, since it is not ours to change.
+`socket_patch.dart` and `secure_socket_patch.dart` are the tightly coupled
+ones (epoll event-mask encoding, BoringSSL filter buffers).
+
+Preconditions, in order:
+1. M8 done, so there is a framework to break: Flutter's `Platform`, `File`,
+   `HttpClient`, `Process` use all run on dart:io.
+2. A conformance suite in the lanes before the first native is ported:
+   `tests/standalone/io` in the SDK (~1,000 tests) run against the linked
+   C++ as baseline, then against the port. Parity is measured, not asserted.
+3. Native by native behind a feature, with the C++ archive still linkable
+   until the suite is green on all three targets.
+
+The cheap partial (a Rust event handler only, no `runtime/bin` at all) was
+considered and rejected: it gets timers without BoringSSL, but leaves dart:io
+present in the snapshot and throwing at run time, which M8 cannot accept.
+
 ### M2 finding (§13)
 
 `@Native` resolution tries a `Dart_SetFfiNativeResolver` on the declaring
