@@ -19,6 +19,7 @@ Not published, no versions yet.
 * aarch64 and riscv64 lanes under qemu: L2 and unit tests in CI
 * Leak and soak lanes: 1,000 isolate cycles, 100 VM lifecycles, valgrind memcheck (AOT)
 * Racing posts to one `NativePort` from 8 threads, in L2 and soak
+* ASan and TSan lanes: sanitizer VM builds (`jit-asan`, `jit-tsan`), Rust built with `-Zsanitizer`
 
 ### Fixed
 
@@ -30,9 +31,10 @@ Not published, no versions yet.
 * `fl-dart run-aot hello.aot` failed for a bare file name (dlopen searched the loader path)
 * L2 tests compiling the same program raced on one output file
 * `main(List<String> args)` run with no arguments got null and threw; now an empty list
+* Archives no longer carry the unused ELF loader
+* Run loop test assumed an order between two due timers that Dart does not promise
 
 ### Not yet
 
 * Real-board runs (Raspberry Pi 5, VisionFive 2)
-* ASan, and TSan on `NativePort::post` (need a sanitizer VM build)
 * dart:ui and rendering (milestone 2)

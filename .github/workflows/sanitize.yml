@@ -1,0 +1,100 @@
+# Sanitizer lanes (brief §11): ASan (with LeakSanitizer) and TSan over the
+# JIT VM, both halves instrumented. The VM is the pipeline's jit-asan or
+# jit-tsan archive; the Rust side is built with -Zsanitizer and -Zbuild-std,
+# so std is instrumented too (TSan needs that to see std's synchronization).
+#
+# rustc links its sanitizer runtime and the archive carries none: one runtime
+# per process. The pinned nightly's LLVM (23) matches the Dart toolchain's
+# clang (23), so the archive's instrumentation calls a runtime that has it.
+# fl-dart-sys picks the archive from -Zsanitizer and refuses an uninstrumented
+# one.
+#
+# JIT only: a sanitized VM's AOT snapshot feature string names the sanitizer,
+# so AOT would need a matching gen_snapshot. AOT has valgrind (soak.yml).
+name: sanitize
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "41 10 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  checks: write
+
+env:
+  CARGO_TERM_COLOR: always
+  NIGHTLY: nightly-2026-10-13
+  TARGET: x86_64-unknown-linux-gnu
+
+jobs:
+  sanitize:
+    name: ${{ matrix.sanitizer }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { sanitizer: address, mode: jit-asan }
+          - { sanitizer: thread, mode: jit-tsan }
+    env:
+      # The options the Dart SDK's own sanitizer lanes use
+      # (tools/bots/test_matrix.json). LeakSanitizer is on with ASan.
+      ASAN_OPTIONS: abort_on_error=1:halt_on_error=1:symbolize=1:detect_leaks=1:handle_segv=0
+      LSAN_OPTIONS: abort_on_error=1:halt_on_error=1:symbolize=1:handle_segv=0
+      TSAN_OPTIONS: abort_on_error=1:halt_on_error=1:symbolize=1:handle_segv=0:suppressions=${{ github.workspace }}/ci/tsan.supp
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup show
+      - name: Nightly with rust-src
+        run: rustup toolchain install "$NIGHTLY" --profile minimal --component rust-src
+      - name: llvm-symbolizer
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq llvm
+          command -v llvm-symbolizer
+      # TSan's shadow memory needs the mmap layout of 28 bits of randomness;
+      # the runner kernel uses 32.
+      - name: mmap randomization for TSan
+        if: matrix.sanitizer == 'thread'
+        run: sudo sysctl vm.mmap_rnd_bits=28
+      # Before RUSTFLAGS is set: xtask builds on the pinned stable toolchain,
+      # which refuses -Z flags.
+      - name: Fetch the prebuilt VM
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: ci/annotate-on-fail.sh cargo xtask fetch-prebuilt --target "$TARGET" --mode ${{ matrix.mode }}
+      - name: Fetch the pinned stock SDK
+        run: |
+          base="https://storage.googleapis.com/dart-archive/channels/stable/release/3.13.7/sdk"
+          curl -fsSL --retry 3 -O "$base/dartsdk-linux-x64-release.zip"
+          curl -fsSL --retry 3 -O "$base/dartsdk-linux-x64-release.zip.sha256sum"
+          sha256sum -c dartsdk-linux-x64-release.zip.sha256sum
+          unzip -q dartsdk-linux-x64-release.zip
+          ./dart-sdk/bin/dart --version 2>&1 | grep -F "3.13.7" \
+            || { echo "SDK is not the pinned 3.13.7"; exit 1; }
+      - name: fl-dart-vm unit tests
+        env:
+          RUSTFLAGS: -Zsanitizer=${{ matrix.sanitizer }}
+        run: >-
+          ci/annotate-on-fail.sh cargo "+$NIGHTLY" test -Zbuild-std --target "$TARGET"
+          -p fl-dart-vm --features jit --lib
+      - name: L2 suite
+        env:
+          RUSTFLAGS: -Zsanitizer=${{ matrix.sanitizer }}
+          FL_DART_SDK_BIN: ${{ github.workspace }}/dart-sdk/bin/dart
+        run: >-
+          ci/annotate-on-fail.sh cargo "+$NIGHTLY" test -Zbuild-std --target "$TARGET"
+          -p fl-dart-cli --no-default-features --features jit --test run
+      - name: Isolate cycles
+        env:
+          RUSTFLAGS: -Zsanitizer=${{ matrix.sanitizer }}
+          FL_DART_SDK_BIN: ${{ github.workspace }}/dart-sdk/bin/dart
+        run: >-
+          ci/annotate-on-fail.sh cargo "+$NIGHTLY" test -Zbuild-std --target "$TARGET"
+          -p fl-dart-cli --no-default-features --features jit --test soak
+          -- --ignored --exact cycles_under_a_sanitizer

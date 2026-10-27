@@ -17,7 +17,7 @@ fn main() -> ExitCode {
     let result = match args.first().map(String::as_str) {
         Some("bindgen") => bindgen(),
         Some("fetch-prebuilt") => fetch_prebuilt(&args[1..]),
-        _ => Err("usage: cargo xtask bindgen\n       cargo xtask fetch-prebuilt [--target <triple>] [--mode jit|aot]".to_owned()),
+        _ => Err("usage: cargo xtask bindgen\n       cargo xtask fetch-prebuilt [--target <triple>] [--mode jit|aot|jit-asan|jit-tsan]".to_owned()),
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,
@@ -98,7 +98,7 @@ fn run_bindgen(
     }
 }
 
-/// `fetch-prebuilt [--target <triple>] [--mode jit|aot]`: downloads one
+/// `fetch-prebuilt [--target <triple>] [--mode jit|aot|jit-asan|jit-tsan]`: downloads one
 /// artifact tarball, checks it against the checked-in `SHA256SUMS`, and
 /// unpacks it over `third_party/dart-prebuilt/`.
 ///

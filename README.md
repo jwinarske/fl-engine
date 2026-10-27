@@ -24,7 +24,7 @@ Isolate thread affinity, enter/exit pairing and handle lifetime are compile erro
 Built from dart-lang/sdk at a pinned revision, consumed as a prebuilt static archive. Cargo does not build C++.
 
 * Pin: Dart 3.13.7 (`416e33b0`), the `dart_revision` in Flutter stable's engine DEPS
-* Targets: x86_64 (jit, aot), aarch64 (aot), riscv64 (aot)
+* Targets: x86_64 (jit, aot, jit-asan, jit-tsan), aarch64 (aot), riscv64 (aot)
 * One archive per target/mode: VM, dart:io embedder, ICU, zlib, BoringSSL, libc++. No C++ runtime needed on target
 * Built by `.github/workflows/dart-prebuilt.yml` (`tools/dart-prebuilt/build.sh`), published as a release
 * Downloads are checked against `third_party/dart-prebuilt/<version>/SHA256SUMS`
@@ -78,6 +78,15 @@ Covers hello world, run loop (microtasks, timers, futures), uncaught exception w
 Soak, release build. 1,000 isolate cycles per program, 100 VM lifecycles, valgrind (AOT, needs `valgrind`):
 
     FL_DART_SDK_BIN=/path/to/dart-sdk/bin/dart cargo test --release -p fl-dart-cli --test soak -- --ignored
+
+Sanitizers, x86_64 JIT, pinned nightly (see `.github/workflows/sanitize.yml`):
+
+    GITHUB_TOKEN=... cargo xtask fetch-prebuilt --mode jit-tsan
+    FL_DART_SDK_BIN=/path/to/dart-sdk/bin/dart RUSTFLAGS=-Zsanitizer=thread \
+      cargo +nightly-2026-10-13 test -Zbuild-std \
+      --target x86_64-unknown-linux-gnu -p fl-dart-cli --no-default-features --features jit
+
+`-Zsanitizer=address` with `jit-asan` for ASan.
 
 Cross, under qemu (see `.github/workflows/cross.yml`):
 

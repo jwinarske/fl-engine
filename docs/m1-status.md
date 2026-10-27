@@ -226,7 +226,7 @@ no-token attempt and this are its first three catches.
 Still not in the lanes, deliberately sequenced after a green L2: the qemu
 aarch64/riscv64 lanes, and the ASan/leak lane, which waits on a
 `gen_snapshot` of its own configuration (the feature-string finding above).
-Since done: qemu lanes, leak/soak lanes (valgrind). ASan and TSan still open.
+Since done: qemu lanes, leak/soak lanes (valgrind), ASan and TSan lanes.
 
 ## What runs today
 
@@ -255,7 +255,7 @@ Corrections to what commit 92beabf claimed: dlopen + dlsym of
 `dart compile aot-snapshot` output. The `Dart_LoadELF` embedder crashed
 identically for lack of `--precompilation`. `AotSnapshot` is back on dlopen,
 with the use-after-dlclose (placeholder struct's `Drop`) fixed. The
-`elf_loader` now in the archive is unused and can go at the next rebuild; the
+`elf_loader` was then unused and left the archives in pipeline run 9; the
 shim's `enable_network_profiling = false` from the same commit *is* needed.
 
 Flutter tooling: a `libapp.so` built the way `flutter_tools` builds it
@@ -291,4 +291,25 @@ compressed pointers (`tools/gn`: Android only), matching the archive.
 * JIT under valgrind aborts at startup (`virtual_memory_posix.cc` mmap failed: 22). Not a lane
 * burst: 8 threads post 1,000 messages each to one `NativePort` at once (`fl_dart_post_burst`). All arrive, each thread's in order. Also an L2 test
 * JIT cycles are slow, about 6 minutes for 4,000 (kernel load per isolate)
-* Not yet: ASan, and TSan on `NativePort::post`. Both need a sanitizer VM build in the pipeline, plus a gen_snapshot of the same configuration for AOT (feature-string finding above)
+* ASan and TSan: see below
+
+### Sanitizer lanes (2026-10-27)
+
+* `.github/workflows/sanitize.yml`: ASan (with LeakSanitizer) and TSan, push, PR and nightly
+* VM: pipeline modes `jit-asan`, `jit-tsan` (x86_64, `build.py --sanitizer`). JIT only: kernel has no snapshot feature string, AOT would need a sanitizer gen_snapshot
+* Rust: `nightly-2026-10-13`, `-Zsanitizer` and `-Zbuild-std`, so std is instrumented. Its LLVM (23.1.3) matches the Dart toolchain's clang 23
+* rustc links the sanitizer runtime. Archives carry none, one runtime per process
+* fl-dart-sys picks `lib/<target>/jit-asan|jit-tsan` from `-Zsanitizer`. Refuses an uninstrumented `link.txt` (no `sanitizer=` line), another sanitizer, an aot build
+* Runs: fl-dart-vm unit tests, L2 suite, `cycles_under_a_sanitizer` (25 isolate cycles per soak program)
+* Options as the Dart SDK's own lanes: `abort_on_error=1:halt_on_error=1`. TSan suppressions from Dart's `sanitizer_options.cc` in `ci/tsan.supp` (libc `tzset`)
+* Result, local and both modes: no reports. ASan L2 9/9, fl-dart-vm 10/10, cycles, LeakSanitizer clean. TSan the same, `racing_posts_all_arrive_in_order` included
+
+    RUSTFLAGS=-Zsanitizer=thread cargo +nightly-2026-10-13 test -Zbuild-std \
+      --target x86_64-unknown-linux-gnu -p fl-dart-cli --no-default-features --features jit
+
+Found on the way:
+
+* TSan builds use the SDK's own instrumented libc++ (`use_flutter_cxx`, namespace `std::_d`), added by BUILDCONFIG.gn to executables only. The archive now depends on `//third_party/libcxx`; build.sh skips the toolchain libc++ then
+* An uninstrumented VM defines `__tsan_*` stubs (`runtime_entry.cc`), so it cannot stand in for the TSan one
+* `loop.dart` asserted an order Dart does not promise: a 20 ms timer and `Future()` (a zero-length timer) both due at the first loop turn fire in either order. Seen under TSan's slow start. The timer now starts from the future
+* Rebuilt archives are reproducible: run 11 changed only `jit-tsan`'s sum
