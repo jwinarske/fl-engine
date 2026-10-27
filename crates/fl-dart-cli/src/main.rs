@@ -154,7 +154,12 @@ fn cycle(path: &str, n: u32) -> Result<(), Failure> {
         ..config(path)
     };
 
-    let mut before = None;
+    // Samples after the first cycle (which warms caches the VM keeps for its
+    // lifetime), after a tenth of the run, and at the end. Growth from the
+    // tenth to the end is what a per-cycle leak shows up in; the first
+    // cycle's one-time growth does not count against it.
+    let tenth = (n / 10).max(1);
+    let (mut warm, mut mid) = (None, None);
     for i in 0..n {
         #[cfg(feature = "jit")]
         let mut isolate = vm.isolate_from_kernel(&program, quiet.clone())?;
@@ -162,18 +167,23 @@ fn cycle(path: &str, n: u32) -> Result<(), Failure> {
         let mut isolate = vm.isolate_from_aot(&program, quiet.clone())?;
         run_main(&mut isolate, &[])?;
         isolate.shutdown();
-        // The first cycle warms caches the VM keeps for its lifetime; the
-        // baseline is taken after it, not before.
         if i == 0 {
-            before = Some(usage_now());
+            warm = Some(usage_now());
+        }
+        if i + 1 == tenth {
+            mid = Some(usage_now());
         }
     }
-    let after = usage_now();
-    let (rss0, fd0) = before.unwrap_or(after);
+    let end = usage_now();
+    let warm = warm.unwrap_or(end);
+    let mid = mid.unwrap_or(end);
     println!(
-        "cycles={n} rss_kb={rss0}->{} fds={fd0}->{} persistent_handles={}",
-        after.0,
-        after.1,
+        "cycles={n} rss_warm_kb={} rss_tenth_kb={} rss_end_kb={} fds_warm={} fds_end={} persistent_handles={}",
+        warm.0,
+        mid.0,
+        end.0,
+        warm.1,
+        end.1,
         fl_dart_vm::live_persistent_handles()
     );
     Ok(())

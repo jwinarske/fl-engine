@@ -75,6 +75,10 @@ Notes:
 
 Covers hello world, run loop (microtasks, timers, futures), uncaught exception with Dart stack trace, FFI both directions, snapshot version mismatch. CI runs AOT and JIT on x86_64, and AOT on aarch64 and riscv64 under qemu, on every push to main.
 
+Soak, release build. 1,000 isolate cycles per program, 100 VM lifecycles, valgrind (AOT, needs `valgrind`):
+
+    FL_DART_SDK_BIN=/path/to/dart-sdk/bin/dart cargo test --release -p fl-dart-cli --test soak -- --ignored
+
 Cross, under qemu (see `.github/workflows/cross.yml`):
 
     CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc \

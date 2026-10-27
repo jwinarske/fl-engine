@@ -226,6 +226,7 @@ no-token attempt and this are its first three catches.
 Still not in the lanes, deliberately sequenced after a green L2: the qemu
 aarch64/riscv64 lanes, and the ASan/leak lane, which waits on a
 `gen_snapshot` of its own configuration (the feature-string finding above).
+Since done: qemu lanes, leak/soak lanes (valgrind). ASan and TSan still open.
 
 ## What runs today
 
@@ -275,3 +276,19 @@ compressed pointers (`tools/gn`: Android only), matching the archive.
 * AOT programs compiled with `dart compile aot-snapshot --target-arch arm64|riscv64`, cross gen_snapshot fetched from dart-archive by the SDK
 * Harness fix found on the way: tests compiling the same program raced on one output file. Compiles are now cached per process
 * qemu is not a board. Pi 5 and VisionFive 2 runs still open
+
+### Leak and soak lanes (2026-10-27)
+
+* `crates/fl-dart-cli/tests/soak.rs`, `#[ignore]`d, run by `.github/workflows/soak.yml` on push, PR and nightly:
+
+    cargo test --release -p fl-dart-cli --test soak -- --ignored
+
+* 1,000 isolate cycles each of hello, loop, ffi and burst. RSS sampled after cycle 1, at cycle 100 and at the end
+* Limit: 512 kB growth from cycle 100 to the end, fds unchanged, 0 persistent handles. Measured AOT: 8-20 kB growth. fds and handles flat in both modes
+* Run with `MALLOC_ARENA_MAX=1`. glibc's default arenas made burst's RSS step 0.5-1.5 MB at random (3,000 cycles flat, 6,000 +1.5 MB). One arena: 6,000 cycles +40 kB
+* 100 processes of `run-aot hello`: full `Vm` init/cleanup each, all exit 0
+* valgrind memcheck, AOT only: hello, loop, ffi, burst, throws, and 100 ffi cycles. 0 errors, 0 definite or indirect leaks
+* JIT under valgrind aborts at startup (`virtual_memory_posix.cc` mmap failed: 22). Not a lane
+* burst: 8 threads post 1,000 messages each to one `NativePort` at once (`fl_dart_post_burst`). All arrive, each thread's in order. Also an L2 test
+* JIT cycles are slow, about 6 minutes for 4,000 (kernel load per isolate)
+* Not yet: ASan, and TSan on `NativePort::post`. Both need a sanitizer VM build in the pipeline, plus a gen_snapshot of the same configuration for AOT (feature-string finding above)
