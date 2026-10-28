@@ -12,6 +12,7 @@ Not published, no versions yet.
 * Paint decoded from dart:ui's ByteData
 * `tools/flutter-app/build.sh`: libapp.so from the pinned Flutter release, no desktop shell
 * Flutter app lane in CI
+* JIT timeline recorder off: isolate cycles no longer grow about 130 bytes each
 
 ### Milestone 1: Dart VM hosted from Rust
 

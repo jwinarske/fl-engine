@@ -46,9 +46,20 @@ impl Vm {
         // Flutter engine (`kDartPrecompilationArgs` in runtime/dart_vm.cc) both
         // pass --precompilation. Without it the VM runs AOT code with JIT
         // assumptions, and the first native call crashes in LinkNativeCall.
-        let mut flags = Vec::with_capacity(cfg.flags.len() + 1);
+        let mut flags = Vec::with_capacity(cfg.flags.len() + 2);
         if cfg!(feature = "aot") {
             flags.push("--precompilation".to_owned());
+        }
+        // No timeline recorder (JIT only). The non-product VM defaults to the
+        // ring recorder, which keeps metadata for every OS thread the VM ever
+        // started and never drops it (`AddTrackMetadataBasedOnThread`,
+        // timeline.cc): about 130 bytes per isolate cycle, unbounded. Its
+        // events are only readable through the VM service, which is off, so
+        // nothing is lost. The product VM (AOT) has no timeline and rejects
+        // the flag as unrecognized. Before the caller's flags, so
+        // `VmConfig::flags` can still choose a recorder (the last value wins).
+        if cfg!(feature = "jit") {
+            flags.push("--timeline_recorder=none".to_owned());
         }
         flags.extend(cfg.flags.iter().cloned());
         set_flags(&flags)?;
