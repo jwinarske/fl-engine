@@ -1,8 +1,8 @@
 # M2: dart:ui — first frame through emblema
 
-> Draft brief, 2026-10-28. Section 13 lists the decisions still open; the
-> recommendations there are what the rest of the brief assumes. Findings from
-> bring-up will go in `docs/m2-status.md`, newer where the two disagree.
+> Brief, 2026-10-28. The four decisions in §13 were taken the same day.
+> Findings from bring-up go in `docs/m2-status.md`, newer where the two
+> disagree.
 
 **A Flutter app's `libapp.so`, built by the stock Flutter tooling, runs on fl-engine and its frames are drawn by emblema. dart:ui is bound FFI-first: `@Native` symbols resolved by `Dart_SetFfiNativeResolver`, no tonic.**
 
@@ -25,7 +25,7 @@ Sources, read at the pin (Flutter 3.47.8, engine `cf636b1d`, Dart `416e33b0`): e
 * image decoding and codecs, `FragmentProgram`, platform views and external textures
 * multiple views, a Wayland or X11 window
 * hot reload, the VM service, plugins
-* text, unless decision D3 brings it in
+* text (D3: first item of M3)
 
 ## 2. The Contract Being Implemented
 
@@ -111,7 +111,6 @@ Built with `flutter build linux --release`, using the Flutter release that pins 
 * `shapes`: rects, rounded rects, paths, a clip, an opacity layer, a transform
 * `ticker`: an `AnimationController` driving a color, so frames after the first
 * `material`: `MaterialApp` with no text, for `flutter/restoration` and the scheduler under the real widget library
-* `text` (D3): one `Text`
 
 ## 9. Goldens
 
@@ -147,14 +146,13 @@ Built with `flutter build linux --release`, using the Flutter release that pins 
 4. **Frame loop.** vsync source, `_beginFrame`/`_drawFrame`, microtask flush. Exit criterion 3
 5. **Breadth.** The rest of §3's drawing set, `material`. Exit criterion 2
 6. **Boards.** KMS through emblema, board kit. Exit criterion 4
-7. **Text**, if D3 brings it in
 
-## 13. Open Decisions
+## 13. Decisions (2026-10-28)
 
-* **D1, first target.** Recommended: offscreen first, then KMS. CI gets pixels with no display, and KMS is one target swap later. A Wayland window is out of M2: every Wayland client crate needs `cc` and `pkg-config`, which the no-C++ rule and emblema's own deny list refuse, and emblema's GLES path cannot reach a Wayland `EGLDisplay` today
-* **D2, KMS stack.** Recommended: emblema's `DrmScanoutTarget` (drm-rs) for M2. drmkit's `PageFlip` gives better vsync data (sequence and timestamp per flip), and emblema's `ScanoutOutput` trait is built for another binding, so a drmkit output is a later change behind the trait. Taking drmkit now raises fl-engine's floor from Rust 1.85 to 1.94.1
-* **D3, text in M2.** Recommended: out of M2, first item of M3. Text is its own project: shaping, line breaking, font fallback, rasterizing into emblema's atlas, plus `FontManifest.json` from the asset bundle. Pure-Rust candidates exist (rustybuzz, skrifa, swash). Taking it into M2 roughly doubles it. Without it, any widget that draws text cannot be a test program yet
-* **D4, backend.** Recommended: Vulkan first (lavapipe in CI, V3D on Pi 5, the PowerVR driver on VisionFive 2), GLES second. emblema has both, so a second backend is a configuration change, not new code
+* **D1, first target: offscreen, then KMS.** CI gets pixels with no display, and KMS is one target swap later. No Wayland or X11 window in M2: every Wayland client crate needs `cc` and `pkg-config`, which the no-C++ rule and emblema's own deny list refuse, and emblema's GLES path cannot reach a Wayland `EGLDisplay` today
+* **D2, KMS stack: emblema's `DrmScanoutTarget`** (drm-rs). drmkit's `PageFlip` gives better vsync data (sequence and timestamp per flip), and emblema's `ScanoutOutput` trait is built for another binding, so a drmkit output is a later change behind the trait. Taking drmkit now would raise fl-engine's floor from Rust 1.85 to 1.94.1
+* **D3, text: out of M2, first item of M3.** Shaping, line breaking, font fallback, rasterizing into emblema's atlas, `FontManifest.json` from the asset bundle. Pure-Rust candidates: rustybuzz, skrifa, swash. Until then no test program draws text
+* **D4, backend: Vulkan first** (lavapipe in CI, V3D on Pi 5, the VisionFive 2's Vulkan driver), GLES second. emblema has both, so the second is a configuration change, not new code
 
 ## 14. Risks
 
