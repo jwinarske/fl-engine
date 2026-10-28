@@ -23,8 +23,20 @@ out="$(mktemp)"
 err="$(mktemp)"
 trap 'rm -f "$out" "$err"' EXIT
 
-# run <program> [args]: stdout to $out, stderr to $err, status in $rc
-run() { fl "$@" > "$out" 2> "$err"; rc=$?; }
+# run <program> [args]: stdout to $out, stderr to $err, status in $rc.
+# Under a runner, one rerun when qemu-user itself crashed ("QEMU internal
+# SIGSEGV": a fault in the emulator's code, not the guest's), as the L2
+# harness does (crates/fl-dart-cli/tests/common). A second crash stands, and
+# on a board there is no runner and no rerun.
+reruns=0
+run() {
+  fl "$@" > "$out" 2> "$err"; rc=$?
+  if [ -n "$FL_DART_TEST_RUNNER" ] && grep -q 'QEMU internal SIGSEGV' "$err"; then
+    reruns=$((reruns + 1))
+    echo "INFO  qemu crashed in its own code running '$*'; once more"
+    fl "$@" > "$out" 2> "$err"; rc=$?
+  fi
+}
 
 echo "fl-dart board run"
 echo "  kit:     $(sed -n 's/^commit=//p' MANIFEST) $(sed -n 's/^target=//p' MANIFEST)"
@@ -131,4 +143,5 @@ fi
 
 echo
 echo "$passes passed, $fails failed"
+[ $reruns -gt 0 ] && echo "($reruns rerun after a qemu-internal crash)"
 [ $fails -eq 0 ]
