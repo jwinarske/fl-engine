@@ -1,0 +1,18 @@
+[package]
+name = "fl-ui"
+description = "dart:ui's natives for fl-engine: platform configuration, painting, compositing"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+
+[features]
+jit = ["fl-dart-ffi/jit"]
+aot = ["fl-dart-ffi/aot"]
+
+[dependencies]
+fl-dart-ffi = { workspace = true }
+
+[lints]
+workspace = true

@@ -14,6 +14,9 @@ Status: milestone 1 (Dart VM hosted from Rust).
 
 * fl-dart-sys - bindings to the Dart embedding API, links a prebuilt VM
 * fl-dart-vm - safe layer: Vm, Isolate, scopes, handles, ports, snapshots
+* fl-dart-ffi - native binding layer: symbol tables, peers on native-field wrappers
+* fl-ui - dart:ui natives
+* fl-shell - embedder: views and the runtime hooks a framework isolate needs
 * fl-dart-cli - `fl-dart` binary
 * xtask - `cargo xtask bindgen`, `cargo xtask fetch-prebuilt`
 
@@ -63,6 +66,11 @@ JIT build:
 libapp.so from `flutter build linux --release`, using the Flutter release that pins the same Dart revision:
 
     fl-dart run-aot build/linux/x64/release/bundle/lib/libapp.so
+
+Flutter app, through dart:ui (milestone 2, in progress). Built with the pinned Flutter release's compilers; one line per frame:
+
+    tools/flutter-app/build.sh /path/to/flutter apps/colored_box out
+    fl-dart run-app out/colored_box.so 800x600@2
 
 Notes:
 
@@ -117,6 +125,7 @@ On the board:
 
 * [docs/m1-fl-dart-vm.md](docs/m1-fl-dart-vm.md) - milestone 1 brief
 * [docs/m2-dart-ui.md](docs/m2-dart-ui.md) - milestone 2 brief: dart:ui, first frame through emblema
+* [docs/m2-status.md](docs/m2-status.md) - milestone 2 progress and findings
 * [docs/m1-exit.md](docs/m1-exit.md) - milestone 1 exit criteria and their evidence. Open: board runs
 * [docs/m1-status.md](docs/m1-status.md) - decisions and findings since the brief. Newer where they disagree
 * [docs/m1-s15-findings.md](docs/m1-s15-findings.md) - open embedding questions, answered from Dart and Flutter source

@@ -1,0 +1,19 @@
+[package]
+name = "fl-shell"
+description = "The fl-engine embedder: views, the runtime hooks a framework isolate needs, frames"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+
+[features]
+jit = ["fl-dart-vm/jit", "fl-ui/jit"]
+aot = ["fl-dart-vm/aot", "fl-ui/aot"]
+
+[dependencies]
+fl-dart-vm = { workspace = true }
+fl-ui = { workspace = true }
+
+[lints]
+workspace = true

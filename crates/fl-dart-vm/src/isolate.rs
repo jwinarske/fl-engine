@@ -37,7 +37,17 @@ pub struct IsolateConfig {
     pub name: String,
     /// Receives each line `print()` writes. Defaults to the process's stdout.
     pub print: PrintSink,
+    /// Resolves `dart:ui` `@Native` symbols beyond the print hook this crate
+    /// provides itself: the embedder's dart:ui (fl-ui). `None` leaves them
+    /// unresolved, which the VM reports by name when Dart first calls one.
+    pub natives: Option<NativeResolver>,
 }
+
+/// Maps an `@Native` symbol name and its argument count to the function that
+/// implements it, or `None`. Called by the VM on the mutator thread, at most
+/// once per symbol, the first time Dart calls it. The returned pointer must
+/// be an `extern "C"` function whose signature matches the Dart declaration.
+pub type NativeResolver = fn(&str, usize) -> Option<*mut c_void>;
 
 impl Default for IsolateConfig {
     fn default() -> Self {
@@ -45,6 +55,7 @@ impl Default for IsolateConfig {
             script_uri: "main.dart".to_owned(),
             name: "main".to_owned(),
             print: Arc::new(|line| println!("{line}")),
+            natives: None,
         }
     }
 }
@@ -54,6 +65,7 @@ impl std::fmt::Debug for IsolateConfig {
         f.debug_struct("IsolateConfig")
             .field("script_uri", &self.script_uri)
             .field("name", &self.name)
+            .field("natives", &self.natives.is_some())
             .finish_non_exhaustive()
     }
 }
@@ -72,6 +84,7 @@ struct GroupData {
 /// Per-isolate state the callbacks into Rust need.
 struct IsolateData {
     print: PrintSink,
+    natives: Option<NativeResolver>,
 }
 
 /// An isolate created by this process. Not `Send`, not `Sync`: entering binds
@@ -182,6 +195,7 @@ impl Vm {
         let group = Arc::new(group);
         let data = Arc::new(IsolateData {
             print: Arc::clone(&cfg.print),
+            natives: cfg.natives,
         });
         let gd = Arc::into_raw(Arc::clone(&group)) as *mut c_void;
         let id = Arc::into_raw(Arc::clone(&data)) as *mut c_void;
@@ -468,6 +482,59 @@ impl<'s> HandleScope<'s> {
         }
     }
 
+    pub fn new_double(&mut self, v: f64) -> Result<Handle<'s>, DartError> {
+        // SAFETY: an open scope on the current isolate is all this needs.
+        self.wrap(unsafe { sys::Dart_NewDouble(v) })
+    }
+
+    pub fn new_bool(&mut self, v: bool) -> Result<Handle<'s>, DartError> {
+        // SAFETY: as above.
+        self.wrap(unsafe { sys::Dart_NewBoolean(v) })
+    }
+
+    /// A `Float64List`, which is a `List<double>`.
+    pub fn new_f64_list(&mut self, items: &[f64]) -> Result<Handle<'s>, DartError> {
+        self.typed_list(sys::Dart_TypedData_Type::Dart_TypedData_kFloat64, items)
+    }
+
+    /// An `Int64List`, which is a `List<int>`.
+    pub fn new_i64_list(&mut self, items: &[i64]) -> Result<Handle<'s>, DartError> {
+        self.typed_list(sys::Dart_TypedData_Type::Dart_TypedData_kInt64, items)
+    }
+
+    fn typed_list<T: Copy>(
+        &mut self,
+        ty: sys::Dart_TypedData_Type,
+        items: &[T],
+    ) -> Result<Handle<'s>, DartError> {
+        // SAFETY: an open scope; the length is the element count of `ty`.
+        let list = self.wrap(unsafe { sys::Dart_NewTypedData(ty, items.len() as isize) })?;
+        if items.is_empty() {
+            return Ok(list);
+        }
+        let mut kind = ty;
+        let mut data: *mut c_void = std::ptr::null_mut();
+        let mut len: isize = 0;
+        // SAFETY: list is a typed data object of this scope; the out-pointers
+        // are valid. Between acquire and release no other API call is made.
+        unsafe {
+            check(sys::Dart_TypedDataAcquireData(
+                list.raw, &mut kind, &mut data, &mut len,
+            ))?;
+            if len as usize == items.len() && !data.is_null() {
+                std::ptr::copy_nonoverlapping(items.as_ptr(), data as *mut T, items.len());
+            }
+            check(sys::Dart_TypedDataReleaseData(list.raw))?;
+        }
+        if len as usize != items.len() {
+            return Err(DartError::Api(format!(
+                "typed list of {} elements came back with {len}",
+                items.len()
+            )));
+        }
+        Ok(list)
+    }
+
     pub fn to_i64(&mut self, h: Handle<'s>) -> Result<i64, DartError> {
         let mut v = 0i64;
         // SAFETY: h belongs to this scope; v is a valid out-pointer.
@@ -674,6 +741,13 @@ unsafe fn install_hooks(script_uri: &std::ffi::CStr) -> Result<(), DartError> {
         // its `dart:ui` `_print` calls an `@Native` symbol instead. Either way
         // the closure lands in `dart:_internal._printClosure` and the native
         // lands in Rust.
+        // dart:ui's natives are `@Native` symbols resolved by name through
+        // Dart_SetFfiNativeResolver, no classic native resolver: print here,
+        // the rest through the embedder's `IsolateConfig::natives`.
+        let ui = lookup_optional("dart:ui")?;
+        if let Some(ui) = ui {
+            check(sys::Dart_SetFfiNativeResolver(ui, Some(resolve_ui_ffi)))?;
+        }
         let print_source = if let Some(builtin) = lookup_optional("dart:_builtin")? {
             check(sys::Dart_SetNativeResolver(
                 builtin,
@@ -681,11 +755,7 @@ unsafe fn install_hooks(script_uri: &std::ffi::CStr) -> Result<(), DartError> {
                 None,
             ))?;
             builtin
-        } else if let Some(ui) = lookup_optional("dart:ui")? {
-            // The first engine native this crate provides, and the shape M2's
-            // dart:ui bindings take: an `@Native` resolved by symbol name
-            // through Dart_SetFfiNativeResolver, no classic native resolver.
-            check(sys::Dart_SetFfiNativeResolver(ui, Some(resolve_ui_ffi)))?;
+        } else if let Some(ui) = ui {
             ui
         } else {
             return Err(DartError::Api(
@@ -798,10 +868,11 @@ unsafe fn lookup_optional(uri: &str) -> Result<Option<sys::Dart_Handle>, DartErr
     }
 }
 
-/// `dart:ui`'s `@Native` symbols this crate implements. M1 provides print only;
-/// every other dart:ui native resolves to null, which the VM reports as a
-/// named missing-symbol error when (and only when) Dart calls it.
-unsafe extern "C" fn resolve_ui_ffi(name: *const c_char, _args_n: usize) -> *mut c_void {
+/// `dart:ui`'s `@Native` symbols: print, which this crate implements, then
+/// the embedder's table (`IsolateConfig::natives`). A symbol neither knows
+/// resolves to null, which the VM reports as a named missing-symbol error
+/// when (and only when) Dart calls it.
+unsafe extern "C" fn resolve_ui_ffi(name: *const c_char, args_n: usize) -> *mut c_void {
     std::panic::catch_unwind(|| {
         if name.is_null() {
             return std::ptr::null_mut();
@@ -810,9 +881,22 @@ unsafe extern "C" fn resolve_ui_ffi(name: *const c_char, _args_n: usize) -> *mut
         let n = unsafe { std::ffi::CStr::from_ptr(name) }.to_bytes();
         match n {
             b"DartRuntimeHooks::Logger_PrintString"
-            | b"DartRuntimeHooks::Logger_PrintDebugString" => ui_logger_print_string as *mut c_void,
-            _ => std::ptr::null_mut(),
+            | b"DartRuntimeHooks::Logger_PrintDebugString" => {
+                return ui_logger_print_string as *mut c_void
+            }
+            _ => {}
         }
+        let Ok(n) = std::str::from_utf8(n) else {
+            return std::ptr::null_mut();
+        };
+        // SAFETY: the VM resolves natives on the mutator, with the isolate
+        // whose data this is current.
+        let data = unsafe { sys::Dart_CurrentIsolateData() } as *const IsolateData;
+        // SAFETY: the isolate data outlives the isolate (on_cleanup frees it).
+        let natives = unsafe { data.as_ref() }.and_then(|d| d.natives);
+        natives
+            .and_then(|resolve| resolve(n, args_n))
+            .unwrap_or(std::ptr::null_mut())
     })
     .unwrap_or(std::ptr::null_mut())
 }

@@ -31,7 +31,7 @@ mod vm;
 pub use error::{DartError, PortClosed, VmError};
 pub use isolate::{
     live_persistent_handles, Handle, HandleScope, Isolate, IsolateConfig, IsolateScope,
-    PersistentHandle, PrintSink,
+    NativeResolver, PersistentHandle, PrintSink,
 };
 pub use port::{CObject, NativePort};
 #[cfg(feature = "aot")]

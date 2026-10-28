@@ -13,6 +13,15 @@ name = "fl-dart-cli"
 version = "0.1.0"
 dependencies = [
  "fl-dart-vm",
+ "fl-shell",
+ "fl-ui",
+]
+
+[[package]]
+name = "fl-dart-ffi"
+version = "0.1.0"
+dependencies = [
+ "fl-dart-vm",
 ]
 
 [[package]]
@@ -26,6 +35,21 @@ dependencies = [
  "fl-dart-sys",
  "thiserror",
  "trybuild",
+]
+
+[[package]]
+name = "fl-shell"
+version = "0.1.0"
+dependencies = [
+ "fl-dart-vm",
+ "fl-ui",
+]
+
+[[package]]
+name = "fl-ui"
+version = "0.1.0"
+dependencies = [
+ "fl-dart-ffi",
 ]
 
 [[package]]

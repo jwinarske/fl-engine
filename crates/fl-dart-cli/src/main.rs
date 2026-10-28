@@ -3,6 +3,7 @@
 //! ```text
 //! fl-dart run hello.dill [args...]       # JIT, dev hosts (--features jit)
 //! fl-dart run-aot hello.aot [args...]    # precompiled runtime, every target
+//! fl-dart run-app libapp.so [WxH[@dpr]]   # a Flutter app, through dart:ui (M2)
 //! fl-dart cycle <program> <n>            # leak harness: n isolate lifecycles
 //! ```
 //!
@@ -33,6 +34,11 @@ fn main() -> ExitCode {
         "run" => run_kernel(path, &rest),
         #[cfg(feature = "aot")]
         "run-aot" => run_aot(path, &rest),
+        #[cfg(feature = "aot")]
+        "run-app" => match view_arg(rest.first().copied()) {
+            Some(view) => run_app(path, view),
+            None => return usage(),
+        },
         "cycle" => match rest.first().and_then(|n| n.parse().ok()) {
             Some(n) => cycle(path, n),
             None => return usage(),
@@ -65,6 +71,9 @@ fn usage() -> ExitCode {
         "file.aot"
     };
     eprintln!("usage: fl-dart {modes} [args...]\n       fl-dart cycle <{prog}> <n>");
+    if cfg!(feature = "aot") {
+        eprintln!("       fl-dart run-app <libapp.so> [WxH[@dpr]]");
+    }
     ExitCode::from(64)
 }
 
@@ -123,6 +132,79 @@ fn run_aot(path: &str, args: &[&str]) -> Result<(), Failure> {
     run_main(&mut isolate, args)?;
     isolate.shutdown();
     Ok(())
+}
+
+/// A Flutter app's `libapp.so`, with dart:ui's natives, run until it has
+/// nothing left to do. Each frame it renders is reported on stdout; an app
+/// that renders none is an error.
+#[cfg(feature = "aot")]
+fn run_app(path: &str, view: fl_shell::ViewConfig) -> Result<(), Failure> {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+
+    let snapshot = Arc::new(fl_dart_vm::AotSnapshot::open(path.as_ref())?);
+    let vm = start_vm()?;
+    let frames = Arc::new(AtomicUsize::new(0));
+    let counted = Arc::clone(&frames);
+    fl_ui::set_frame_sink(move |f| {
+        let n = counted.fetch_add(1, Ordering::SeqCst) + 1;
+        println!(
+            "frame {n}: view {} {}x{} {}",
+            f.view_id,
+            f.width,
+            f.height,
+            summary(&f.scene)
+        );
+    });
+    let mut isolate = vm.isolate_from_aot(&snapshot, fl_shell::isolate_config(path))?;
+    isolate.enter()?.with(|s| {
+        fl_shell::prepare(s, &view)?;
+        s.invoke_main(&[])?;
+        s.run_loop()
+    })?;
+    isolate.shutdown();
+    if frames.load(Ordering::SeqCst) == 0 {
+        return Err(Failure::Other(format!(
+            "{path}: ran to completion without rendering a frame"
+        )));
+    }
+    Ok(())
+}
+
+/// `layers=… pictures=… draws=…` for a frame line.
+#[cfg(feature = "aot")]
+fn summary(scene: &fl_ui::Scene) -> String {
+    use fl_ui::LayerOp;
+    let (mut layers, mut pictures, mut draws) = (0, 0, 0);
+    for op in &scene.ops {
+        match op {
+            LayerOp::PushTransform(_) | LayerOp::PushOffset { .. } => layers += 1,
+            LayerOp::AddPicture { picture, .. } => {
+                pictures += 1;
+                draws += picture.draws.len();
+            }
+            LayerOp::Pop => {}
+        }
+    }
+    format!("layers={layers} pictures={pictures} draws={draws}")
+}
+
+/// `WxH` or `WxH@dpr`, physical pixels; none is the default view.
+#[cfg(feature = "aot")]
+fn view_arg(arg: Option<&str>) -> Option<fl_shell::ViewConfig> {
+    let mut view = fl_shell::ViewConfig::default();
+    let Some(arg) = arg else { return Some(view) };
+    let (size, dpr) = match arg.split_once('@') {
+        Some((size, dpr)) => (size, Some(dpr)),
+        None => (arg, None),
+    };
+    let (w, h) = size.split_once('x')?;
+    view.width = w.parse().ok().filter(|v: &f64| *v > 0.0)?;
+    view.height = h.parse().ok().filter(|v: &f64| *v > 0.0)?;
+    if let Some(dpr) = dpr {
+        view.device_pixel_ratio = dpr.parse().ok().filter(|v: &f64| *v > 0.0)?;
+    }
+    Some(view)
 }
 
 fn config(path: &str) -> IsolateConfig {

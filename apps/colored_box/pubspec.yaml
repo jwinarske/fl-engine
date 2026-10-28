@@ -1,0 +1,8 @@
+name: colored_box
+description: fl-engine test program. The first frame (docs/m2-dart-ui.md §8).
+publish_to: none
+environment:
+  sdk: ^3.13.0
+dependencies:
+  flutter:
+    sdk: flutter

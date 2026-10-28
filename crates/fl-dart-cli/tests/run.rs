@@ -138,3 +138,13 @@ fn racing_posts_all_arrive_in_order() {
     assert!(o.status.success(), "{o:?}");
     assert_eq!(stdout(&o), "burst=8000 ok\n");
 }
+
+#[cfg(feature = "aot")]
+#[test]
+fn run_app_refuses_a_program_without_dart_ui() {
+    let prog = compile("hello", MODE.0);
+    let o = fl_dart(&["run-app".as_ref(), prog.as_os_str()]);
+    assert_eq!(o.status.code(), Some(255), "{o:?}");
+    let err = String::from_utf8_lossy(&o.stderr);
+    assert!(err.contains("dart:ui"), "names what is missing: {err}");
+}

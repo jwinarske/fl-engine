@@ -1,0 +1,18 @@
+[package]
+name = "fl-dart-ffi"
+description = "Native bindings for Dart, FFI-first: peers on native-field wrappers, symbol tables for @Native resolution"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+
+[features]
+jit = ["fl-dart-vm/jit"]
+aot = ["fl-dart-vm/aot"]
+
+[dependencies]
+fl-dart-vm = { workspace = true }
+
+[lints]
+workspace = true

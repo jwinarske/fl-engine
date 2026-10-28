@@ -4,6 +4,13 @@ Not published, no versions yet.
 
 ## Unreleased
 
+### Milestone 2: dart:ui (in progress)
+
+* `fl-dart-ffi`, `fl-ui`, `fl-shell`: dart:ui natives FFI-first, peers on native-field wrappers, the embedder's runtime hooks
+* `fl-dart run-app`: a Flutter app's libapp.so to its first frame (scene recorded, not yet drawn)
+* `tools/flutter-app/build.sh`: libapp.so from the pinned Flutter release, no desktop shell
+* Flutter app lane in CI
+
 ### Milestone 1: Dart VM hosted from Rust
 
 * AOT (`fl-dart run-aot`) and JIT (`fl-dart run`) runtimes

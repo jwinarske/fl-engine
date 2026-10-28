@@ -92,3 +92,47 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: bash ci/no-cxx.sh
+
+  # Flutter framework apps through dart:ui (docs/m2-dart-ui.md §8). The app
+  # is compiled by the pinned Flutter release's own frontend_server and
+  # gen_snapshot (tools/flutter-app/build.sh), so the lane needs that
+  # release: a clone at its tag, checked against the commit Flutter's
+  # release index names, with only the Linux artifacts precached.
+  app:
+    name: Flutter apps (aot)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      FLUTTER_VERSION: 3.47.8
+      FLUTTER_COMMIT: 737ba8f885dc774b53b442759999a312c9461e4e
+      FLUTTER_ROOT: ${{ github.workspace }}/../flutter
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup show
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ${{ env.FLUTTER_ROOT }}
+            ~/.pub-cache
+          key: flutter-${{ env.FLUTTER_VERSION }}-${{ env.FLUTTER_COMMIT }}
+      - name: Pinned Flutter release
+        run: |
+          if [[ ! -x "$FLUTTER_ROOT/bin/flutter" ]]; then
+            git clone -q --depth 1 --branch "$FLUTTER_VERSION" https://github.com/flutter/flutter.git "$FLUTTER_ROOT"
+          fi
+          head="$(git -C "$FLUTTER_ROOT" rev-parse HEAD)"
+          [[ "$head" == "$FLUTTER_COMMIT" ]] || { echo "Flutter is at $head, not $FLUTTER_COMMIT"; exit 1; }
+          "$FLUTTER_ROOT/bin/flutter" --disable-analytics >/dev/null
+          "$FLUTTER_ROOT/bin/flutter" precache --linux --no-android --no-ios --no-web --no-macos --no-windows --no-fuchsia
+          "$FLUTTER_ROOT/bin/cache/dart-sdk/bin/dart" --version 2>&1 | grep -F "3.13.7" \
+            || { echo "Flutter's Dart is not the pinned 3.13.7"; exit 1; }
+      - name: Fetch the prebuilt VM
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: ci/annotate-on-fail.sh cargo xtask fetch-prebuilt --target x86_64-unknown-linux-gnu --mode aot
+      - name: Apps
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: ci/annotate-on-fail.sh cargo test -p fl-dart-cli --test app -- --ignored
+      - name: dart:ui unit tests
+        run: ci/annotate-on-fail.sh cargo test -p fl-dart-ffi -p fl-ui --features aot --lib

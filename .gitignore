@@ -4,3 +4,6 @@
 /third_party/dart-prebuilt/*/lib/
 /third_party/dart-prebuilt/*/bin/
 /third_party/dart-prebuilt/*/snapshots/
+
+# Flutter apps: pub's working state. pubspec.lock is kept.
+/apps/*/.dart_tool/
