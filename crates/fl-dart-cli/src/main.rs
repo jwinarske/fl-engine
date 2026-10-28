@@ -4,7 +4,8 @@
 //! fl-dart run hello.dill [args...]       # JIT, dev hosts (--features jit)
 //! fl-dart run-aot hello.aot [args...]    # precompiled runtime, every target
 //! fl-dart run-app libapp.so [WxH[@dpr]] [--png out.png] [--ops] [--frames N] [--hz H]
-//!                                       # a Flutter app, through dart:ui (M2)
+//!                                       # a Flutter app, through dart:ui (M2);
+//!                                       # JIT takes the app's kernel instead
 //! fl-dart app-cycle libapp.so <n> [run-app options]
 //!                                       # leak harness: n app lifecycles
 //! fl-dart cycle <program> <n>            # leak harness: n isolate lifecycles
@@ -37,12 +38,10 @@ fn main() -> ExitCode {
         "run" => run_kernel(path, &rest),
         #[cfg(feature = "aot")]
         "run-aot" => run_aot(path, &rest),
-        #[cfg(feature = "aot")]
         "run-app" => match app_args(&rest) {
             Some(app) => run_app(path, app),
             None => return usage(),
         },
-        #[cfg(feature = "aot")]
         "app-cycle" => match (
             rest.first().and_then(|n| n.parse().ok()),
             app_args(rest.get(1..).unwrap_or_default()),
@@ -82,11 +81,14 @@ fn usage() -> ExitCode {
         "file.aot"
     };
     eprintln!("usage: fl-dart {modes} [args...]\n       fl-dart cycle <{prog}> <n>");
-    if cfg!(feature = "aot") {
-        eprintln!(
-            "       fl-dart run-app <libapp.so> [WxH[@dpr]] [--png out.png] [--ops] [--frames N] [--hz H]\n       fl-dart app-cycle <libapp.so> <n> [run-app options]"
-        );
-    }
+    let app = if cfg!(feature = "jit") {
+        "app.dill"
+    } else {
+        "libapp.so"
+    };
+    eprintln!(
+        "       fl-dart run-app <{app}> [WxH[@dpr]] [--png out.png] [--ops] [--frames N] [--hz H]\n       fl-dart app-cycle <{app}> <n> [run-app options]"
+    );
     ExitCode::from(64)
 }
 
@@ -153,12 +155,11 @@ fn run_aot(path: &str, args: &[&str]) -> Result<(), Failure> {
 /// is an error. With `--png`, every frame is drawn by emblema offscreen on
 /// the raster thread and the last one written there. With frames begun at
 /// vsync, a `vsync:` line reports their spacing.
-#[cfg(feature = "aot")]
 fn run_app(path: &str, app: AppArgs) -> Result<(), Failure> {
-    let snapshot = std::sync::Arc::new(fl_dart_vm::AotSnapshot::open(path.as_ref())?);
+    let program = load_app(path)?;
     let vm = start_vm()?;
     let raster = raster_for(&app)?;
-    let run = app_once(&vm, &snapshot, path, &app, raster.as_ref(), true)?;
+    let run = app_once(&vm, &program, path, &app, raster.as_ref(), true)?;
     if let Some(line) = vsync_line(&run.report.frame_times_us) {
         println!("{line}");
     }
@@ -170,9 +171,8 @@ fn run_app(path: &str, app: AppArgs) -> Result<(), Failure> {
 /// Reports what `cycle` reports, and the frames rendered in all. With
 /// `--png` one raster thread draws every cycle's frames, so the raster side
 /// churns too; it is made once, as a device is.
-#[cfg(feature = "aot")]
 fn app_cycle(path: &str, n: u32, app: AppArgs) -> Result<(), Failure> {
-    let snapshot = std::sync::Arc::new(fl_dart_vm::AotSnapshot::open(path.as_ref())?);
+    let program = load_app(path)?;
     let vm = start_vm()?;
     let raster = raster_for(&app)?;
     // Sampled as `cycle` samples: after the first cycle, after a tenth,
@@ -180,7 +180,7 @@ fn app_cycle(path: &str, n: u32, app: AppArgs) -> Result<(), Failure> {
     let tenth = (n / 10).max(1);
     let (mut warm, mut mid, mut frames) = (None, None, 0u64);
     for i in 0..n {
-        frames += app_once(&vm, &snapshot, path, &app, raster.as_ref(), false)?.rendered;
+        frames += app_once(&vm, &program, path, &app, raster.as_ref(), false)?.rendered;
         if i == 0 {
             warm = Some(usage_now());
         }
@@ -204,8 +204,23 @@ fn app_cycle(path: &str, n: u32, app: AppArgs) -> Result<(), Failure> {
     Ok(())
 }
 
-/// What one run of an app did.
+/// An app as this build runs it: AOT, its `libapp.so`; JIT, its kernel,
+/// built against Flutter's non-product platform with that platform linked
+/// in (`tools/flutter-app/build.sh ... kernel`).
 #[cfg(feature = "aot")]
+type AppProgram = std::sync::Arc<fl_dart_vm::AotSnapshot>;
+#[cfg(feature = "jit")]
+type AppProgram = Vec<u8>;
+
+fn load_app(path: &str) -> Result<AppProgram, Failure> {
+    #[cfg(feature = "aot")]
+    let program = std::sync::Arc::new(fl_dart_vm::AotSnapshot::open(path.as_ref())?);
+    #[cfg(feature = "jit")]
+    let program = std::fs::read(path).map_err(|e| Failure::Other(format!("{path}: {e}")))?;
+    Ok(program)
+}
+
+/// What one run of an app did.
 struct AppRun {
     rendered: u64,
     report: fl_shell::Report,
@@ -214,10 +229,9 @@ struct AppRun {
 /// One run of an app in `vm`: prepare, `main`, the frame loop, shutdown.
 /// With `echo`, frames (and `--ops`) go to stdout and `print` to stdout;
 /// without, both are dropped. An app that renders nothing is an error.
-#[cfg(feature = "aot")]
 fn app_once(
     vm: &Vm,
-    snapshot: &std::sync::Arc<fl_dart_vm::AotSnapshot>,
+    program: &AppProgram,
     path: &str,
     app: &AppArgs,
     raster: Option<&std::sync::Arc<fl_raster::RasterThread>>,
@@ -254,7 +268,10 @@ fn app_once(
     if !echo {
         cfg.print = Arc::new(|_| {});
     }
-    let mut isolate = vm.isolate_from_aot(snapshot, cfg)?;
+    #[cfg(feature = "aot")]
+    let mut isolate = vm.isolate_from_aot(program, cfg)?;
+    #[cfg(feature = "jit")]
+    let mut isolate = vm.isolate_from_kernel(program, cfg)?;
     let view = app.view;
     let period = std::time::Duration::from_secs_f64(1.0 / view.refresh_rate);
     let limit = app.frames;
@@ -286,7 +303,6 @@ fn app_once(
 }
 
 /// A raster thread at the view's size if `--png` asks for pixels.
-#[cfg(feature = "aot")]
 fn raster_for(app: &AppArgs) -> Result<Option<std::sync::Arc<fl_raster::RasterThread>>, Failure> {
     if app.png.is_none() {
         return Ok(None);
@@ -302,7 +318,6 @@ fn raster_for(app: &AppArgs) -> Result<Option<std::sync::Arc<fl_raster::RasterTh
 
 /// Stops the raster thread and writes its last frame to `--png`. Its first
 /// failure is the run's.
-#[cfg(feature = "aot")]
 fn finish_raster(
     raster: Option<std::sync::Arc<fl_raster::RasterThread>>,
     app: &AppArgs,
@@ -326,7 +341,6 @@ fn finish_raster(
 /// `vsync: frames=… interval_us=…`: how many frames were begun at vsync, and
 /// the spacing of their times, each interval in microseconds. `None` with
 /// fewer than two.
-#[cfg(feature = "aot")]
 fn vsync_line(times: &[i64]) -> Option<String> {
     if times.len() < 2 {
         return None;
@@ -343,7 +357,6 @@ fn vsync_line(times: &[i64]) -> Option<String> {
 }
 
 /// `layers=… pictures=… draws=…` for a frame line.
-#[cfg(feature = "aot")]
 fn summary(scene: &fl_ui::Scene) -> String {
     use fl_ui::LayerOp;
     let (mut layers, mut pictures, mut draws) = (0, 0, 0);
@@ -363,7 +376,6 @@ fn summary(scene: &fl_ui::Scene) -> String {
 /// A scene's operations, one per line, each picture's draws indented under
 /// it: the kinds only, no geometry, so a test can check the structure the
 /// framework built while the golden checks the pixels.
-#[cfg(feature = "aot")]
 fn outline(scene: &fl_ui::Scene) -> String {
     use fl_ui::{Draw, LayerOp};
     use std::fmt::Write;
@@ -400,7 +412,6 @@ fn outline(scene: &fl_ui::Scene) -> String {
 }
 
 /// `run-app`'s options.
-#[cfg(feature = "aot")]
 #[derive(Debug, Default)]
 struct AppArgs {
     view: fl_shell::ViewConfig,
@@ -413,7 +424,6 @@ struct AppArgs {
 /// order; no size is the default view. Sizes are physical pixels. `--ops`
 /// prints each frame's [`outline`]; `--frames` stops after N frames
 /// rendered; `--hz` sets the vsync rate (60 by default).
-#[cfg(feature = "aot")]
 fn app_args(args: &[&str]) -> Option<AppArgs> {
     let mut app = AppArgs::default();
     let mut it = args.iter();

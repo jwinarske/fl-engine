@@ -9,6 +9,9 @@
 # fl-dart-sys picks the archive from -Zsanitizer and refuses an uninstrumented
 # one.
 #
+# The M2 apps run here too, from kernel (`apps_under_a_sanitizer`): the UI
+# side only, with no raster thread, whose Vulkan driver is not instrumented.
+#
 # JIT only: a sanitized VM's AOT snapshot feature string names the sanitizer,
 # so AOT would need a matching gen_snapshot. AOT has valgrind (soak.yml).
 name: sanitize
@@ -29,6 +32,10 @@ env:
   CARGO_TERM_COLOR: always
   NIGHTLY: nightly-2026-10-13
   TARGET: x86_64-unknown-linux-gnu
+  FLUTTER_VERSION: 3.47.8
+  FLUTTER_COMMIT: 737ba8f885dc774b53b442759999a312c9461e4e
+  # Inside the workspace: actions/cache refuses paths with "..".
+  FLUTTER_ROOT: ${{ github.workspace }}/.flutter
 
 jobs:
   sanitize:
@@ -77,6 +84,22 @@ jobs:
           unzip -q dartsdk-linux-x64-release.zip
           ./dart-sdk/bin/dart --version 2>&1 | grep -F "3.13.7" \
             || { echo "SDK is not the pinned 3.13.7"; exit 1; }
+      # The M2 apps, compiled to kernel by the pinned Flutter release.
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ${{ env.FLUTTER_ROOT }}
+            ~/.pub-cache
+          key: flutter-${{ env.FLUTTER_VERSION }}-${{ env.FLUTTER_COMMIT }}
+      - name: Pinned Flutter release
+        run: |
+          if [[ ! -x "$FLUTTER_ROOT/bin/flutter" ]]; then
+            git clone -q --depth 1 --branch "$FLUTTER_VERSION" https://github.com/flutter/flutter.git "$FLUTTER_ROOT"
+          fi
+          head="$(git -C "$FLUTTER_ROOT" rev-parse HEAD)"
+          [[ "$head" == "$FLUTTER_COMMIT" ]] || { echo "Flutter is at $head, not $FLUTTER_COMMIT"; exit 1; }
+          "$FLUTTER_ROOT/bin/flutter" --disable-analytics >/dev/null
+          "$FLUTTER_ROOT/bin/flutter" precache --linux --no-android --no-ios --no-web --no-macos --no-windows --no-fuchsia
       - name: fl-dart-vm unit tests
         env:
           RUSTFLAGS: -Zsanitizer=${{ matrix.sanitizer }}
@@ -98,3 +121,11 @@ jobs:
           ci/annotate-on-fail.sh cargo "+$NIGHTLY" test -Zbuild-std --target "$TARGET"
           -p fl-dart-cli --no-default-features --features jit --test soak
           -- --ignored --exact cycles_under_a_sanitizer
+      - name: App cycles
+        env:
+          RUSTFLAGS: -Zsanitizer=${{ matrix.sanitizer }}
+          FL_DART_SDK_BIN: ${{ github.workspace }}/dart-sdk/bin/dart
+        run: >-
+          ci/annotate-on-fail.sh cargo "+$NIGHTLY" test -Zbuild-std --target "$TARGET"
+          -p fl-dart-cli --no-default-features --features jit --test soak
+          -- --ignored --exact apps_under_a_sanitizer

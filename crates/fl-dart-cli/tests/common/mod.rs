@@ -108,8 +108,9 @@ pub fn repo() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
 }
 
-/// Builds `apps/<name>` once per test process: tests run in parallel, and
-/// two builds of one app would write the same file at once.
+/// Builds `apps/<name>` once per test process, as this build of fl-dart
+/// runs it (AOT `libapp.so`, JIT kernel): tests run in parallel, and two
+/// builds of one app would write the same file at once.
 pub fn build_app(name: &str) -> PathBuf {
     static BUILT: Mutex<Vec<(String, PathBuf)>> = Mutex::new(Vec::new());
     let mut built = BUILT.lock().unwrap_or_else(|e| e.into_inner());
@@ -126,10 +127,17 @@ fn build_app_now(name: &str) -> PathBuf {
         .expect("FLUTTER_ROOT must name the pinned Flutter release");
     let repo = repo();
     let out = out_dir().join("apps");
+    // What this build of fl-dart runs: AOT, libapp.so; JIT, kernel.
+    let (kind, file) = if cfg!(feature = "jit") {
+        (Some("kernel"), format!("{name}.dill"))
+    } else {
+        (None, format!("{name}.so"))
+    };
     let st = Command::new(repo.join("tools/flutter-app/build.sh"))
         .arg(&flutter)
         .arg(repo.join("apps").join(name))
         .arg(&out)
+        .args(kind)
         .output()
         .unwrap();
     assert!(
@@ -137,5 +145,5 @@ fn build_app_now(name: &str) -> PathBuf {
         "building {name}: {}",
         String::from_utf8_lossy(&st.stderr)
     );
-    out.join(format!("{name}.so"))
+    out.join(file)
 }

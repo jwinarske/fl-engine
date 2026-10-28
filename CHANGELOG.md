@@ -15,6 +15,7 @@ Not published, no versions yet.
 * JIT timeline recorder off: isolate cycles no longer grow about 130 bytes each
 * The drawing set: Canvas, Path, clip and opacity layers; 79 natives in all. `shapes` matches the stock engine's golden within its recorded tolerance
 * `fl-dart run-app --ops`: a frame's layers and draws
+* M2 apps on the JIT VM from kernel (`build.sh ... kernel`), frames identical to AOT; under ASan and TSan, clean
 * `fl-dart app-cycle` and `run-app --hz`: M2 apps in the soak lane, 1,000 lifecycles and 10,000 ticker frames flat; three under valgrind memcheck, clean
 * `material`: MaterialApp to its golden; `flutter/restoration` answered asynchronously; `SceneBuilder::addRetained`. 83 natives
 * The frame loop: `ScheduleFrame`, a 60 Hz vsync clock, `_beginFrame`/microtasks/`_drawFrame`; a raster thread owning the device. `ticker` and `frame_order` apps; `run-app --frames N`

@@ -139,7 +139,25 @@ Exit criterion 7, the soak half.
 * The soak AOT leg takes the pinned Flutter release and lavapipe, as the app lane does
 * A first look at 1,000 colored_box cycles grew 88 kB; 3,000 grew none past the tenth. Warm-up, not a leak
 
-Next: the sanitizer half, apps under the ASan and TSan VMs. Those are JIT builds, so `run-app` needs a JIT path: the app's kernel against Flutter's non-product platform.
+## Apps under the sanitizers, and on the JIT VM (2026-10-28)
+
+Exit criterion 7, the sanitizer half. With the soak half, criterion 7 is met.
+
+    tools/flutter-app/build.sh $FLUTTER_ROOT apps/colored_box out kernel
+    fl-dart run-app out/colored_box.dill 800x600@2     # a JIT build of fl-dart
+
+* `tools/flutter-app/build.sh ... kernel`: the app's kernel against Flutter's non-product platform (`flutter_patched_sdk`), `--link-platform`, one file (37 MB for colored_box). The JIT VM runs it as built: dart:ui comes from the kernel, its natives from fl-ui, no engine snapshot needed
+* `run-app` and `app-cycle` in both builds: AOT takes `libapp.so`, JIT the kernel. One code path (`app_once`); the program type is the only difference
+* JIT frames are byte-identical to AOT's: colored_box's PNG compared, and the app suite in JIT gives shapes 0.628% and material 0.067% against the goldens, as AOT does
+* soak.rs `apps_under_a_sanitizer`: colored_box, shapes and material 3 cycles each, ticker 2 of 20 frames at 1 kHz. ASan with LeakSanitizer: clean, 39 s. TSan: clean, 103 s, `ci/tsan.supp` unchanged. UI side only: no `--png`, since lavapipe is not instrumented
+* CI: the app lane runs the app suite in JIT too; sanitize.yml takes the pinned Flutter and runs `apps_under_a_sanitizer`; soak.yml's JIT leg runs it uninstrumented
+* Test harness: `build_app` builds what the fl-dart under test runs, `libapp.so` or kernel
+
+Found on the way:
+
+* nightly's std adds `impl AsRef<ByteStr> for str`, so `.map(|x| x.as_ref())` over `&str` no longer infers. `OsStr::new` instead
+
+Next: criteria 5 and 6 (a test for every native, the peer-borrow compile-fail case), then M3 or stage 6.
 
 Next: stage 6, KMS on the boards (needs the hardware). Before it: images and text (M3), or more of the drawing set.
 

@@ -5,7 +5,8 @@
 # lifecycles (one per process). AOT also runs under valgrind memcheck; JIT
 # cannot, its code-memory reservation is an mmap valgrind refuses. AOT also
 # cycles the M2 Flutter apps (`app-cycle`), and runs three of them under
-# memcheck, so it takes the pinned Flutter release and lavapipe.
+# memcheck, so it takes the pinned Flutter release and lavapipe. JIT runs the
+# apps from kernel, as the sanitizer lanes do.
 #
 # The soak tests are #[ignore]d, so the L2 lanes list them as ignored. Here
 # they run with --ignored.
@@ -49,16 +50,15 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq valgrind
-      # The apps' leg, as ci.yml's app lane sets it up.
+      # The apps, as ci.yml's app lane sets them up. Both legs: JIT runs
+      # apps_under_a_sanitizer here without a sanitizer, from kernel.
       - uses: actions/cache@v4
-        if: matrix.mode == 'aot'
         with:
           path: |
             ${{ env.FLUTTER_ROOT }}
             ~/.pub-cache
           key: flutter-${{ env.FLUTTER_VERSION }}-${{ env.FLUTTER_COMMIT }}
       - name: Pinned Flutter release
-        if: matrix.mode == 'aot'
         run: |
           if [[ ! -x "$FLUTTER_ROOT/bin/flutter" ]]; then
             git clone -q --depth 1 --branch "$FLUTTER_VERSION" https://github.com/flutter/flutter.git "$FLUTTER_ROOT"

@@ -85,7 +85,7 @@ fn app_cycles_stay_flat() {
     let png = common::out_dir().join("apps/ticker-soak.png");
     let ticker: Vec<&std::ffi::OsStr> = ["200x100", "--frames", "100", "--hz", "1000", "--png"]
         .iter()
-        .map(|a| a.as_ref())
+        .map(std::ffi::OsStr::new)
         .chain([png.as_os_str()])
         .collect();
     // App, cycles, frames each cycle renders, its options. colored_box,
@@ -220,6 +220,38 @@ fn valgrind_finds_no_errors_or_leaks_in_app_cycles() {
         );
         assert!(o.status.success(), "{name}: {o:?}\n{log}");
         assert!(log.contains("ERROR SUMMARY: 0 errors"), "{name}:\n{log}");
+    }
+}
+
+/// The sanitizer lanes' app check: the M2 apps, JIT from kernel, through a
+/// few lifecycles each and a short ticker run, under ASan or TSan. The UI
+/// side only: no `--png`, so no raster thread, whose Vulkan driver is not
+/// instrumented. That leaves dart:ui's natives, the peers and their
+/// finalizers, the frame loop and the notify callback that reaches it from
+/// the VM's own threads.
+#[test]
+#[ignore = "sanitizer lanes: see .github/workflows/sanitize.yml"]
+fn apps_under_a_sanitizer() {
+    let runs: [(&str, &[&str]); 4] = [
+        ("colored_box", &["3"]),
+        ("shapes", &["3", "--frames", "2"]),
+        ("material", &["3"]),
+        (
+            "ticker",
+            &["2", "200x100", "--frames", "20", "--hz", "1000"],
+        ),
+    ];
+    for (name, args) in runs {
+        let app = common::build_app(name);
+        let mut a: Vec<&std::ffi::OsStr> = vec!["app-cycle".as_ref(), app.as_os_str()];
+        a.extend(args.iter().map(std::ffi::OsStr::new));
+        let o = fl_dart(&a);
+        assert!(
+            o.status.success(),
+            "{name}: {}\n{}",
+            o.status,
+            String::from_utf8_lossy(&o.stderr)
+        );
     }
 }
 

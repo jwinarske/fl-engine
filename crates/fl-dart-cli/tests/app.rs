@@ -1,12 +1,12 @@
 //! Flutter framework apps through dart:ui (brief M2 §8), via the real binary.
 //!
 //! Each app under `apps/` is built with the pinned Flutter release's own
-//! compilers (`tools/flutter-app/build.sh`), so these need `FLUTTER_ROOT`
-//! and are `#[ignore]`d; the app lane in ci.yml runs them:
+//! compilers (`tools/flutter-app/build.sh`): AOT as `libapp.so`, JIT as
+//! kernel. So these need `FLUTTER_ROOT` and are `#[ignore]`d; the app lane
+//! in ci.yml runs them in both modes:
 //!
 //!     FLUTTER_ROOT=/path/to/flutter cargo test -p fl-dart-cli --test app -- --ignored
 
-#![cfg(feature = "aot")]
 #![allow(clippy::unwrap_used, clippy::panic)]
 
 mod common;

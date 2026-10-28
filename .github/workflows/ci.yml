@@ -100,7 +100,7 @@ jobs:
   # release: a clone at its tag, checked against the commit Flutter's
   # release index names, with only the Linux artifacts precached.
   app:
-    name: Flutter apps (aot)
+    name: Flutter apps
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     env:
@@ -150,5 +150,14 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: ci/annotate-on-fail.sh cargo test -p fl-dart-cli --test app -- --ignored
+      # The same apps from kernel on the JIT VM: what the sanitizer lanes run.
+      - name: Fetch the prebuilt JIT VM
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: ci/annotate-on-fail.sh cargo xtask fetch-prebuilt --target x86_64-unknown-linux-gnu --mode jit
+      - name: Apps (jit)
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: ci/annotate-on-fail.sh cargo test -p fl-dart-cli --no-default-features --features jit --test app -- --ignored
       - name: dart:ui and shell unit tests
         run: ci/annotate-on-fail.sh cargo test -p fl-dart-ffi -p fl-ui -p fl-raster -p fl-shell --features aot --lib
