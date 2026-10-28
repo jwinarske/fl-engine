@@ -12,7 +12,7 @@
 //! are the failure goldens exist to catch, and they would catch it late.
 
 use std::marker::PhantomData;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver, SyncSender};
 use std::sync::Arc;
 use std::thread::JoinHandle;
@@ -138,11 +138,24 @@ impl RasterThread {
     /// Starts the thread and makes its target there. A target that cannot be
     /// made is this call's error.
     pub fn spawn(width: u32, height: u32) -> Result<RasterThread, RasterError> {
+        RasterThread::spawn_capturing(width, height, None)
+    }
+
+    /// As [`RasterThread::spawn`], and with `capture` every frame drawn is
+    /// also written there as `frame-NNNN.png`, numbered from 1: a frame
+    /// sequence to look at, not only the last. The directory must exist. A
+    /// frame that cannot be written is the run's failure, as one that cannot
+    /// be drawn is.
+    pub fn spawn_capturing(
+        width: u32,
+        height: u32,
+        capture: Option<PathBuf>,
+    ) -> Result<RasterThread, RasterError> {
         let (tx, rx) = mpsc::sync_channel::<Arc<Scene>>(1);
         let (ready_tx, ready_rx) = mpsc::channel::<Result<(), RasterError>>();
         let thread = std::thread::Builder::new()
             .name("fl-raster".into())
-            .spawn(move || raster_main(width, height, &rx, &ready_tx))
+            .spawn(move || raster_main(width, height, capture.as_deref(), &rx, &ready_tx))
             .map_err(|e| RasterError::Unsupported(format!("raster thread: {e}")))?;
         match ready_rx.recv() {
             Ok(Ok(())) => Ok(RasterThread {
@@ -195,6 +208,7 @@ impl Drop for RasterThread {
 fn raster_main(
     width: u32,
     height: u32,
+    capture: Option<&Path>,
     rx: &Receiver<Arc<Scene>>,
     ready: &mpsc::Sender<Result<(), RasterError>>,
 ) -> Rastered {
@@ -222,6 +236,12 @@ fn raster_main(
         match target.render(&scene) {
             Ok(pixels) => {
                 r.frames += 1;
+                if let Some(dir) = capture {
+                    let file = dir.join(format!("frame-{:04}.png", r.frames));
+                    if let Err(e) = write_png(&file, width, height, &pixels) {
+                        r.error = Some(format!("frame {}: {e}", r.frames));
+                    }
+                }
                 r.last = Some(pixels);
             }
             Err(e) => r.error = Some(format!("frame {}: {e}", r.frames + 1)),

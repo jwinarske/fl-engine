@@ -178,6 +178,12 @@ Found on the way:
 * An `assert` reading `fillType` reached nothing in a release build; asserts are compiled out. A real check instead
 * `SetSemanticsTreeEnabled` is called by the framework only when the platform turns semantics on. The app calls it once, off
 
+## Frame captures kept (2026-10-28)
+
+* `run-app --frames-dir DIR`: every frame drawn, `frame-NNNN.png` from 1, written by the raster thread (`RasterThread::spawn_capturing`). A frame that cannot be written fails the run
+* The golden check writes `<app>-diff.png` beside each frame: the golden faded, every differing pixel red, brighter with the difference
+* ci.yml app lane, `Frame captures` and artifact `m2-frames`, uploaded pass or fail: colored_box; shapes, material, natives each with golden and diff; ticker's frame from its test and its 30 frames in `ticker/`, with the vsync line. Untimed: the ticker test is what checks vsync
+
 Next: M3 (images, then text), or stage 6 on the boards.
 
 Next: stage 6, KMS on the boards (needs the hardware). Before it: images and text (M3), or more of the drawing set.

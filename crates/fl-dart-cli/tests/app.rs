@@ -57,6 +57,16 @@ fn colored_box_draws_its_color_in_every_pixel() {
     assert_eq!(wrong, 0, "pixels other than Color(0xFF2196F3)");
 }
 
+/// Writes RGBA8 `pixels` of `size` as a PNG.
+fn write_png(path: &Path, size: (u32, u32), pixels: &[u8]) {
+    let file = std::fs::File::create(path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+    let mut enc = png::Encoder::new(std::io::BufWriter::new(file), size.0, size.1);
+    enc.set_color(png::ColorType::Rgba);
+    enc.set_depth(png::BitDepth::Eight);
+    let mut w = enc.write_header().unwrap();
+    w.write_image_data(pixels).unwrap();
+}
+
 /// The RGBA8 pixels of a PNG of `size`.
 fn read_png(path: &Path, size: (u32, u32)) -> Vec<u8> {
     let file = std::fs::File::open(path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
@@ -254,6 +264,9 @@ fn matches_golden(name: &str) {
             .unwrap_or_else(|| panic!("{name}.tolerance: no {key}"))
     };
     let (mut differ, mut over_32) = (0usize, 0usize);
+    // Beside the frame, for the artifact: the golden faded to a tenth, and
+    // in red, as bright as the difference, every pixel that differs.
+    let mut diff = Vec::with_capacity(ours.len());
     for (a, b) in ours.chunks_exact(4).zip(theirs.chunks_exact(4)) {
         let d = a
             .iter()
@@ -263,15 +276,25 @@ fn matches_golden(name: &str) {
             .unwrap_or(0);
         differ += usize::from(d > 0);
         over_32 += usize::from(d > 32);
+        if d > 0 {
+            let fade = 255 - d.saturating_mul(2);
+            diff.extend([255, fade, fade, 255]);
+        } else {
+            diff.extend(b[..3].iter().map(|c| 230 + c / 10));
+            diff.push(255);
+        }
     }
+    let diff_png = png.with_file_name(format!("{name}-diff.png"));
+    write_png(&diff_png, (800, 600), &diff);
     let pct = |n: usize| 100.0 * n as f64 / (800.0 * 600.0);
     let report = format!(
-        "{:.3}% differ (limit {}), {:.3}% by more than 32 (limit {}); frame at {}",
+        "{:.3}% differ (limit {}), {:.3}% by more than 32 (limit {}); frame at {}, diff at {}",
         pct(differ),
         limit("differ"),
         pct(over_32),
         limit("differ_over_32"),
-        png.display()
+        png.display(),
+        diff_png.display()
     );
     assert!(pct(differ) <= limit("differ"), "{name}: {report}");
     assert!(pct(over_32) <= limit("differ_over_32"), "{name}: {report}");

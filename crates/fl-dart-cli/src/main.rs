@@ -3,7 +3,7 @@
 //! ```text
 //! fl-dart run hello.dill [args...]       # JIT, dev hosts (--features jit)
 //! fl-dart run-aot hello.aot [args...]    # precompiled runtime, every target
-//! fl-dart run-app libapp.so [WxH[@dpr]] [--png out.png] [--ops] [--natives] [--frames N] [--hz H]
+//! fl-dart run-app libapp.so [WxH[@dpr]] [--png out.png] [--frames-dir DIR] [--ops] [--natives] [--frames N] [--hz H]
 //!                                       # a Flutter app, through dart:ui (M2);
 //!                                       # JIT takes the app's kernel instead
 //! fl-dart app-cycle libapp.so <n> [run-app options]
@@ -87,7 +87,7 @@ fn usage() -> ExitCode {
         "libapp.so"
     };
     eprintln!(
-        "       fl-dart run-app <{app}> [WxH[@dpr]] [--png out.png] [--ops] [--natives] [--frames N] [--hz H]\n       fl-dart app-cycle <{app}> <n> [run-app options]"
+        "       fl-dart run-app <{app}> [WxH[@dpr]] [--png out.png] [--frames-dir DIR] [--ops] [--natives] [--frames N] [--hz H]\n       fl-dart app-cycle <{app}> <n> [run-app options]"
     );
     ExitCode::from(64)
 }
@@ -307,14 +307,18 @@ fn app_once(
 
 /// A raster thread at the view's size if `--png` asks for pixels.
 fn raster_for(app: &AppArgs) -> Result<Option<std::sync::Arc<fl_raster::RasterThread>>, Failure> {
-    if app.png.is_none() {
+    if app.png.is_none() && app.frames_dir.is_none() {
         return Ok(None);
+    }
+    if let Some(dir) = &app.frames_dir {
+        std::fs::create_dir_all(dir)
+            .map_err(|e| Failure::Other(format!("{}: {e}", dir.display())))?;
     }
     let (w, h) = (
         app.view.width.round() as u32,
         app.view.height.round() as u32,
     );
-    fl_raster::RasterThread::spawn(w, h)
+    fl_raster::RasterThread::spawn_capturing(w, h, app.frames_dir.clone())
         .map(|r| Some(std::sync::Arc::new(r)))
         .map_err(|e| Failure::Other(format!("offscreen target: {e}")))
 }
@@ -419,14 +423,16 @@ fn outline(scene: &fl_ui::Scene) -> String {
 struct AppArgs {
     view: fl_shell::ViewConfig,
     png: Option<std::path::PathBuf>,
+    frames_dir: Option<std::path::PathBuf>,
     ops: bool,
     natives: bool,
     frames: Option<u64>,
 }
 
-/// `[WxH[@dpr]] [--png out.png] [--ops] [--natives] [--frames N] [--hz H]`,
+/// `[WxH[@dpr]] [--png out.png] [--frames-dir DIR] [--ops] [--natives] [--frames N] [--hz H]`,
 /// in any order; no size is the default view. Sizes are physical pixels.
-/// `--ops` prints each frame's [`outline`]; `--natives`, at the end, every
+/// `--frames-dir` writes every frame there, `frame-NNNN.png`, as `--png`
+/// writes the last. `--ops` prints each frame's [`outline`]; `--natives`, at the end, every
 /// dart:ui native the app called; `--frames` stops after N frames rendered;
 /// `--hz` sets the vsync rate (60 by default).
 fn app_args(args: &[&str]) -> Option<AppArgs> {
@@ -435,6 +441,7 @@ fn app_args(args: &[&str]) -> Option<AppArgs> {
     while let Some(a) = it.next() {
         match *a {
             "--png" => app.png = Some(std::path::PathBuf::from(it.next()?)),
+            "--frames-dir" => app.frames_dir = Some(std::path::PathBuf::from(it.next()?)),
             "--ops" => app.ops = true,
             "--natives" => app.natives = true,
             "--frames" => app.frames = Some(it.next()?.parse().ok().filter(|n| *n > 0)?),

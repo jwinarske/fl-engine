@@ -151,6 +151,27 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: ci/annotate-on-fail.sh cargo test -p fl-dart-cli --test app -- --ignored
+      # What the exit criteria look like, kept: each app's frame from the
+      # tests above with its golden and diff, and ticker's 30 frames. After
+      # the AOT run and before the JIT one, which writes the same files.
+      # Untimed: the ticker test above is the one that checks vsync.
+      - name: Frame captures
+        if: always()
+        run: |
+          out=target/tmp/dart/captures
+          mkdir -p "$out"
+          cp target/tmp/dart/apps/*.png "$out/" || true
+          for app in shapes material natives; do
+            cp "apps/$app/test/goldens/$app.png" "$out/$app-golden.png"
+          done
+          ./target/debug/fl-dart run-app target/tmp/dart/apps/ticker.so 200x100 \
+            --frames 30 --frames-dir "$out/ticker" > "$out/ticker.txt"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: m2-frames
+          path: target/tmp/dart/captures
+          if-no-files-found: error
       # The same apps from kernel on the JIT VM: what the sanitizer lanes run.
       - name: Fetch the prebuilt JIT VM
         env:
