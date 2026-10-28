@@ -1,0 +1,8 @@
+error: lifetime may not live long enough
+ --> tests/compile_fail/peer_borrow_escapes_its_call.rs:8:44
+  |
+8 |     unsafe { peer::with::<u32, _>(raw, |v| v) }
+  |                                         -- ^ returning this value requires that `'1` must outlive `'2`
+  |                                         ||
+  |                                         |return type of closure is &'2 mut u32
+  |                                         has type `&'1 mut u32`

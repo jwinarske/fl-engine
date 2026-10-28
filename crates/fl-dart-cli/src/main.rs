@@ -3,7 +3,7 @@
 //! ```text
 //! fl-dart run hello.dill [args...]       # JIT, dev hosts (--features jit)
 //! fl-dart run-aot hello.aot [args...]    # precompiled runtime, every target
-//! fl-dart run-app libapp.so [WxH[@dpr]] [--png out.png] [--ops] [--frames N] [--hz H]
+//! fl-dart run-app libapp.so [WxH[@dpr]] [--png out.png] [--ops] [--natives] [--frames N] [--hz H]
 //!                                       # a Flutter app, through dart:ui (M2);
 //!                                       # JIT takes the app's kernel instead
 //! fl-dart app-cycle libapp.so <n> [run-app options]
@@ -87,7 +87,7 @@ fn usage() -> ExitCode {
         "libapp.so"
     };
     eprintln!(
-        "       fl-dart run-app <{app}> [WxH[@dpr]] [--png out.png] [--ops] [--frames N] [--hz H]\n       fl-dart app-cycle <{app}> <n> [run-app options]"
+        "       fl-dart run-app <{app}> [WxH[@dpr]] [--png out.png] [--ops] [--natives] [--frames N] [--hz H]\n       fl-dart app-cycle <{app}> <n> [run-app options]"
     );
     ExitCode::from(64)
 }
@@ -162,6 +162,9 @@ fn run_app(path: &str, app: AppArgs) -> Result<(), Failure> {
     let run = app_once(&vm, &program, path, &app, raster.as_ref(), true)?;
     if let Some(line) = vsync_line(&run.report.frame_times_us) {
         println!("{line}");
+    }
+    if app.natives {
+        println!("natives: {}", fl_ui::resolved().join(","));
     }
     finish_raster(raster, &app)
 }
@@ -417,13 +420,15 @@ struct AppArgs {
     view: fl_shell::ViewConfig,
     png: Option<std::path::PathBuf>,
     ops: bool,
+    natives: bool,
     frames: Option<u64>,
 }
 
-/// `[WxH[@dpr]] [--png out.png] [--ops] [--frames N] [--hz H]`, in any
-/// order; no size is the default view. Sizes are physical pixels. `--ops`
-/// prints each frame's [`outline`]; `--frames` stops after N frames
-/// rendered; `--hz` sets the vsync rate (60 by default).
+/// `[WxH[@dpr]] [--png out.png] [--ops] [--natives] [--frames N] [--hz H]`,
+/// in any order; no size is the default view. Sizes are physical pixels.
+/// `--ops` prints each frame's [`outline`]; `--natives`, at the end, every
+/// dart:ui native the app called; `--frames` stops after N frames rendered;
+/// `--hz` sets the vsync rate (60 by default).
 fn app_args(args: &[&str]) -> Option<AppArgs> {
     let mut app = AppArgs::default();
     let mut it = args.iter();
@@ -431,6 +436,7 @@ fn app_args(args: &[&str]) -> Option<AppArgs> {
         match *a {
             "--png" => app.png = Some(std::path::PathBuf::from(it.next()?)),
             "--ops" => app.ops = true,
+            "--natives" => app.natives = true,
             "--frames" => app.frames = Some(it.next()?.parse().ok().filter(|n| *n > 0)?),
             "--hz" => app.view.refresh_rate = it.next()?.parse().ok().filter(|v: &f64| *v > 0.0)?,
             _ => {

@@ -157,7 +157,28 @@ Found on the way:
 
 * nightly's std adds `impl AsRef<ByteStr> for str`, so `.map(|x| x.as_ref())` over `&str` no longer infers. `OsStr::new` instead
 
-Next: criteria 5 and 6 (a test for every native, the peer-borrow compile-fail case), then M3 or stage 6.
+## Every native called, and the peer borrow typed (2026-10-28)
+
+Exit criteria 5 and 6. With these, every M2 criterion but the boards' (4) is met.
+
+    fl-dart run-app out/natives.so 800x600@2 --natives --frames 1
+    natives: Canvas::Create,Canvas::clipPath,…   # 84 across the six apps
+
+* `fl_ui::resolved()`: every native the VM has resolved. It resolves an `@Native` the first time Dart calls it, so this is exactly what the programs called. `run-app --natives` prints it
+* `apps/natives`: a 4x4 grid, one cell per group of natives no other app reached: drawOval, drawDRRect, drawArc both ways, quad/cubic/conic, arcTo/arcToPoint/relative, evenOdd with addOval/addRect, the relative ops and addPolygon, addArc/addRRect, addPath/addPathWithMatrix/shift/transform/clone/getBounds/reset, clipPath with drawPaint, clipRect difference with drawColor, saveLayer with and without bounds, scale/rotate/skew, getSaveCount/restoreToCount, drawPicture, blend modulate and miter/bevel joins; over it, ClipPath and ClipRRect around Opacity
+* Golden from flutter_tester: 5.048% differ, 0.335% by more than 32. Edges, and inside the translucent layers pixels one level off from alpha rounding (by more than 2: 1.39%). Tolerance 7% and 0.6%
+* app.rs `every_native_is_called_by_an_app`: the six apps' `--natives` together cover all 84 of `fl_ui::NATIVES`; a native added without an app reaching it fails. No exemptions
+* `Path::contains`, 84 natives: the framework asks it of every clip-path layer when it looks for annotations after a frame. Winding number over the contours closed and curves flattened to 16 lines, by fill type; tested on holes both ways and on a circle's corners
+* Criterion 6: fl-dart-ffi compile-fail case `peer_borrow_escapes_its_call`. `peer::with` lends the value to a closure that must take a borrow of any lifetime, so returning it does not compile; it already held, now it is checked. ci.yml no-vm lane runs it
+* The app lane's goldens step covers natives too
+
+Found on the way:
+
+* `BlendMode.multiply` fails the frame on lavapipe: emblema refuses advanced blend modes on a device without the extension, rather than approximating. The cell uses `modulate`; advanced modes want a board that has the extension
+* An `assert` reading `fillType` reached nothing in a release build; asserts are compiled out. A real check instead
+* `SetSemanticsTreeEnabled` is called by the framework only when the platform turns semantics on. The app calls it once, off
+
+Next: M3 (images, then text), or stage 6 on the boards.
 
 Next: stage 6, KMS on the boards (needs the hardware). Before it: images and text (M3), or more of the drawing set.
 

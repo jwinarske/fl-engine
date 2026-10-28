@@ -144,6 +144,51 @@ fn material_matches_its_golden() {
     matches_golden("material");
 }
 
+/// The natives no other app reaches, one cell each, against their golden.
+#[test]
+#[ignore = "app lane: needs FLUTTER_ROOT and a Vulkan driver"]
+fn natives_matches_its_golden() {
+    matches_golden("natives");
+}
+
+/// Exit criterion 5: every native fl-ui implements is called by one of the
+/// apps here. `--natives` lists what a run resolved, and the VM resolves a
+/// native the first time Dart calls it. A native added to the table that no
+/// app reaches fails this until an app does.
+#[test]
+#[ignore = "app lane: needs FLUTTER_ROOT"]
+fn every_native_is_called_by_an_app() {
+    let runs: [(&str, &[&str]); 6] = [
+        ("colored_box", &[]),
+        ("shapes", &["--frames", "1"]),
+        ("material", &[]),
+        ("natives", &["--frames", "1"]),
+        ("frame_order", &[]),
+        ("ticker", &["--frames", "5"]),
+    ];
+    let mut called = std::collections::BTreeSet::new();
+    for (name, opts) in runs {
+        let app = build_app(name);
+        let mut args: Vec<&std::ffi::OsStr> = vec!["run-app".as_ref(), app.as_os_str()];
+        args.extend(opts.iter().map(std::ffi::OsStr::new));
+        args.push("--natives".as_ref());
+        let o = common::fl_dart(&args);
+        assert!(o.status.success(), "{name}: {o:?}");
+        let out = String::from_utf8_lossy(&o.stdout);
+        let line = out
+            .lines()
+            .find_map(|l| l.strip_prefix("natives: "))
+            .unwrap_or_else(|| panic!("{name}: no natives line"));
+        called.extend(line.split(',').map(str::to_owned));
+    }
+    let missing: Vec<&str> = fl_ui::NATIVES
+        .iter()
+        .map(|s| s.name)
+        .filter(|n| !called.contains(*n))
+        .collect();
+    assert!(missing.is_empty(), "no app calls: {missing:?}");
+}
+
 /// Its scene: the root transform, Scaffold's two offsets, the background
 /// and the card in one picture. Then the frame the framework schedules after
 /// the first, the same layers reused through `addRetained`.

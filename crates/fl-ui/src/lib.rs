@@ -9,7 +9,9 @@
 //! `PlatformConfigurationNativeApi::Render` hands each frame to the sink set
 //! with [`set_frame_sink`], on the UI thread.
 
+use std::collections::BTreeSet;
 use std::ffi::c_void;
+use std::sync::Mutex;
 
 use fl_dart_ffi::{lookup, Symbol};
 
@@ -147,6 +149,7 @@ pub static NATIVES: &[Symbol] = &[
     fl_dart_ffi::symbol!("Path::reset", 1, path::reset),
     fl_dart_ffi::symbol!("Path::shift", 4, path::shift),
     fl_dart_ffi::symbol!("Path::transform", 3, path::transform),
+    fl_dart_ffi::symbol!("Path::contains", 3, path::contains),
     fl_dart_ffi::symbol!("Path::getBounds", 1, path::get_bounds),
     // compositing.dart
     fl_dart_ffi::symbol!("SceneBuilder::Create", 1, compositing::builder_create),
@@ -217,8 +220,30 @@ pub static STUBS: &[(&str, &str)] = &[
 ];
 
 /// A resolver for dart:ui, for fl-dart-vm's `IsolateConfig::natives`.
+/// Each native it finds is recorded for [`resolved`].
 pub fn resolve(name: &str, args: usize) -> Option<*mut c_void> {
-    lookup(NATIVES, name, args)
+    let found = lookup(NATIVES, name, args)?;
+    if let Some(s) = NATIVES.iter().find(|s| s.name == name) {
+        RESOLVED
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(s.name);
+    }
+    Some(found)
+}
+
+static RESOLVED: Mutex<BTreeSet<&'static str>> = Mutex::new(BTreeSet::new());
+
+/// Every native resolved in this process so far, sorted. The VM resolves an
+/// `@Native` the first time Dart calls it, so this is the set of natives
+/// the programs run have called: what a test of the table's coverage reads.
+pub fn resolved() -> Vec<&'static str> {
+    RESOLVED
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .iter()
+        .copied()
+        .collect()
 }
 
 #[cfg(test)]

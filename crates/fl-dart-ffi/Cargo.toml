@@ -14,5 +14,8 @@ aot = ["fl-dart-vm/aot"]
 [dependencies]
 fl-dart-vm = { workspace = true }
 
+[dev-dependencies]
+trybuild = { workspace = true }
+
 [lints]
 workspace = true

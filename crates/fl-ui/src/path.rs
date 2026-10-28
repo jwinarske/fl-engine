@@ -307,6 +307,50 @@ impl Path {
         }
     }
 
+    /// Whether `p` is inside the area the path fills, by its fill type:
+    /// each contour closed, curves flattened to 16 lines (`FLATTEN_STEPS`),
+    /// then the winding number of the result. What `Path.contains` asks,
+    /// and the framework asks it of every clip-path layer when it looks
+    /// for annotations after a frame.
+    pub fn contains(&self, p: Point) -> bool {
+        let mut w = Winding { p, n: 0 };
+        let (mut start, mut cur): (Option<Point>, Option<Point>) = (None, None);
+        for s in &self.segs {
+            match *s {
+                Seg::Move(q) => {
+                    if let (Some(a), Some(b)) = (cur, start) {
+                        w.edge(a, b);
+                    }
+                    start = Some(q);
+                    cur = Some(q);
+                }
+                Seg::Close => {
+                    if let (Some(a), Some(b)) = (cur, start) {
+                        w.edge(a, b);
+                    }
+                    cur = start;
+                }
+                seg => {
+                    let Some(a) = cur else { continue };
+                    let mut prev = a;
+                    for i in 1..=FLATTEN_STEPS {
+                        let q = point_on(a, &seg, i as f32 / FLATTEN_STEPS as f32);
+                        w.edge(prev, q);
+                        prev = q;
+                    }
+                    cur = Some(prev);
+                }
+            }
+        }
+        if let (Some(a), Some(b)) = (cur, start) {
+            w.edge(a, b);
+        }
+        match self.fill {
+            FillType::NonZero => w.n != 0,
+            FillType::EvenOdd => w.n % 2 != 0,
+        }
+    }
+
     /// The bounds of every point, control points included, as Skia's
     /// `getBounds` reports them. All zero for an empty path.
     pub fn bounds(&self) -> [f32; 4] {
@@ -322,6 +366,55 @@ impl Path {
                 b[3].max(p[1]),
             ]
         })
+    }
+}
+
+/// Lines each curve is flattened to for [`Path::contains`]. A quarter
+/// circle of radius 100 in 16 chords is off by under 0.25 units.
+const FLATTEN_STEPS: usize = 16;
+
+/// The point at `t` along `seg`, a curve starting at `a`.
+fn point_on(a: Point, seg: &Seg, t: f32) -> Point {
+    let lerp = |p: Point, q: Point, t: f32| [p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t];
+    match *seg {
+        Seg::Line(q) => lerp(a, q, t),
+        Seg::Quad(c, q) => lerp(lerp(a, c, t), lerp(c, q, t), t),
+        Seg::Cubic(c0, c1, q) => {
+            let (ab, bc, cd) = (lerp(a, c0, t), lerp(c0, c1, t), lerp(c1, q, t));
+            lerp(lerp(ab, bc, t), lerp(bc, cd, t), t)
+        }
+        Seg::Conic(c, q, w) => {
+            // A rational quadratic: weights 1, w, 1.
+            let (u, wt) = (1.0 - t, w * 2.0 * t * (1.0 - t));
+            let d = u * u + wt + t * t;
+            [
+                (u * u * a[0] + wt * c[0] + t * t * q[0]) / d,
+                (u * u * a[1] + wt * c[1] + t * t * q[1]) / d,
+            ]
+        }
+        Seg::Move(q) => q,
+        Seg::Close => a,
+    }
+}
+
+/// A winding number about `p`, accumulated edge by edge.
+struct Winding {
+    p: Point,
+    n: i32,
+}
+
+impl Winding {
+    fn edge(&mut self, a: Point, b: Point) {
+        let p = self.p;
+        // Which side of a->b the point is on: positive is left.
+        let side = (b[0] - a[0]) * (p[1] - a[1]) - (p[0] - a[0]) * (b[1] - a[1]);
+        if a[1] <= p[1] {
+            if b[1] > p[1] && side > 0.0 {
+                self.n += 1;
+            }
+        } else if b[1] <= p[1] && side < 0.0 {
+            self.n -= 1;
+        }
     }
 }
 
@@ -683,6 +776,14 @@ pub(crate) extern "C" fn add_path_with_matrix(
     });
 }
 
+/// `Bool Function(Pointer<Void>, Double x, Double y)`, a leaf call.
+pub(crate) extern "C" fn contains(raw: *mut c_void, x: f64, y: f64) -> bool {
+    guard(false, || {
+        // SAFETY: raw is the receiver's native field.
+        unsafe { peer::with::<NativePath, _>(raw, |p| p.0.contains(pt(x, y))) }.unwrap_or(false)
+    })
+}
+
 /// `Handle Function(Pointer<Void>)`: a new `Float32List` of l, t, r, b.
 pub(crate) extern "C" fn get_bounds(raw: *mut c_void) -> sys::Dart_Handle {
     // SAFETY: a Handle-result native: isolate current, scope open. Made
@@ -795,6 +896,35 @@ mod tests {
         let ends: Vec<Point> = p.segs.iter().filter_map(end_of).collect();
         // Counter-clockwise: under the bottom, the radius scaled up to 10.
         assert!(close_to(ends[1], [10.0, 10.0]), "{:?}", ends[1]);
+    }
+
+    #[test]
+    fn contains_follows_the_fill_type() {
+        // A square with a square hole, both wound the same way.
+        let mut p = Path::default();
+        p.add_rect([0.0, 0.0, 10.0, 10.0]);
+        p.add_rect([3.0, 3.0, 7.0, 7.0]);
+        assert!(p.contains([1.0, 1.0]));
+        assert!(p.contains([5.0, 5.0]), "nonzero: the hole winds twice");
+        p.fill = FillType::EvenOdd;
+        assert!(!p.contains([5.0, 5.0]), "even-odd: the hole is out");
+        assert!(!p.contains([11.0, 5.0]));
+    }
+
+    #[test]
+    fn contains_closes_open_contours_and_follows_curves() {
+        let mut p = Path::default();
+        p.add_oval([0.0, 0.0, 20.0, 20.0]);
+        assert!(p.contains([10.0, 10.0]));
+        // Inside the bounding box, outside the circle.
+        assert!(!p.contains([1.0, 1.0]));
+        // An open triangle still fills.
+        let mut t = Path::default();
+        t.move_to([0.0, 0.0]);
+        t.line_to([10.0, 0.0]);
+        t.line_to([0.0, 10.0]);
+        assert!(t.contains([2.0, 2.0]));
+        assert!(!Path::default().contains([0.0, 0.0]));
     }
 
     #[test]
