@@ -3,7 +3,7 @@
 //! ```text
 //! fl-dart run hello.dill [args...]       # JIT, dev hosts (--features jit)
 //! fl-dart run-aot hello.aot [args...]    # precompiled runtime, every target
-//! fl-dart run-app libapp.so [WxH[@dpr]] [--png out.png] [--ops]
+//! fl-dart run-app libapp.so [WxH[@dpr]] [--png out.png] [--ops] [--frames N]
 //!                                       # a Flutter app, through dart:ui (M2)
 //! fl-dart cycle <program> <n>            # leak harness: n isolate lifecycles
 //! ```
@@ -37,7 +37,7 @@ fn main() -> ExitCode {
         "run-aot" => run_aot(path, &rest),
         #[cfg(feature = "aot")]
         "run-app" => match app_args(&rest) {
-            Some((view, png, ops)) => run_app(path, view, png, ops),
+            Some(app) => run_app(path, app),
             None => return usage(),
         },
         "cycle" => match rest.first().and_then(|n| n.parse().ok()) {
@@ -73,7 +73,9 @@ fn usage() -> ExitCode {
     };
     eprintln!("usage: fl-dart {modes} [args...]\n       fl-dart cycle <{prog}> <n>");
     if cfg!(feature = "aot") {
-        eprintln!("       fl-dart run-app <libapp.so> [WxH[@dpr]] [--png out.png] [--ops]");
+        eprintln!(
+            "       fl-dart run-app <libapp.so> [WxH[@dpr]] [--png out.png] [--ops] [--frames N]"
+        );
     }
     ExitCode::from(64)
 }
@@ -135,49 +137,35 @@ fn run_aot(path: &str, args: &[&str]) -> Result<(), Failure> {
     Ok(())
 }
 
-/// A Flutter app's `libapp.so`, with dart:ui's natives, run until it has
-/// nothing left to do. Each frame it renders is reported on stdout; an app
-/// that renders none is an error. With `png`, every frame is drawn by
-/// emblema offscreen and the last one written there.
+/// A Flutter app's `libapp.so`, with dart:ui's natives, run on fl-shell's
+/// frame loop until it has nothing left to do, or until it has rendered
+/// `--frames`. Each frame is reported on stdout; an app that renders none
+/// is an error. With `--png`, every frame is drawn by emblema offscreen on
+/// the raster thread and the last one written there. With frames begun at
+/// vsync, a `vsync:` line reports their spacing.
 #[cfg(feature = "aot")]
-fn run_app(
-    path: &str,
-    view: fl_shell::ViewConfig,
-    png: Option<std::path::PathBuf>,
-    ops: bool,
-) -> Result<(), Failure> {
+fn run_app(path: &str, app: AppArgs) -> Result<(), Failure> {
     use std::sync::{Arc, Mutex};
 
     let snapshot = Arc::new(fl_dart_vm::AotSnapshot::open(path.as_ref())?);
     let vm = start_vm()?;
-    // Drawing happens in the frame sink, on the UI thread: the raster
-    // thread arrives with the frame loop (docs/m2-dart-ui.md §12, stage 4).
-    let raster = match png {
+    let view = app.view;
+    let raster = match app.png {
         Some(_) => Some(
-            fl_raster::Offscreen::new(view.width.round() as u32, view.height.round() as u32)
+            fl_raster::RasterThread::spawn(view.width.round() as u32, view.height.round() as u32)
                 .map_err(|e| Failure::Other(format!("offscreen target: {e}")))?,
         ),
         None => None,
     };
-    struct Frames {
-        count: usize,
-        raster: Option<fl_raster::Offscreen>,
-        last: Option<Vec<u8>>,
-        error: Option<String>,
-    }
-    let frames = Arc::new(Mutex::new(Frames {
-        count: 0,
-        raster,
-        last: None,
-        error: None,
-    }));
-    let sink = Arc::clone(&frames);
+    let raster = Arc::new(raster);
+    let rendered = Arc::new(Mutex::new(0u64));
+    let (sink_raster, sink_count, ops) = (Arc::clone(&raster), Arc::clone(&rendered), app.ops);
     fl_ui::set_frame_sink(move |f| {
-        let mut fr = sink.lock().unwrap_or_else(|e| e.into_inner());
-        fr.count += 1;
+        let mut n = sink_count.lock().unwrap_or_else(|e| e.into_inner());
+        *n += 1;
         println!(
             "frame {}: view {} {}x{} {}",
-            fr.count,
+            *n,
             f.view_id,
             f.width,
             f.height,
@@ -186,34 +174,71 @@ fn run_app(
         if ops {
             print!("{}", outline(&f.scene));
         }
-        if let Some(raster) = fr.raster.as_mut() {
-            match raster.render(&f.scene) {
-                Ok(pixels) => fr.last = Some(pixels),
-                Err(e) => fr.error = Some(format!("frame {}: {e}", fr.count)),
-            }
+        if let Some(raster) = sink_raster.as_ref() {
+            // A thread that is gone has its reason in `finish`.
+            let _ = raster.submit(Arc::clone(&f.scene));
         }
     });
-    let mut isolate = vm.isolate_from_aot(&snapshot, fl_shell::isolate_config(path))?;
-    isolate.enter()?.with(|s| {
-        fl_shell::prepare(s, &view)?;
-        s.invoke_main(&[])?;
-        s.run_loop()
-    })?;
+    let wake = fl_shell::Wake::default();
+    let mut isolate = vm.isolate_from_aot(&snapshot, fl_shell::isolate_config(path, &wake))?;
+    let period = std::time::Duration::from_secs_f64(1.0 / view.refresh_rate);
+    let limit = app.frames;
+    let report = {
+        let mut scope = isolate.enter()?;
+        scope.with(|s| {
+            fl_shell::prepare(s, &view)?;
+            s.invoke_main(&[])
+        })?;
+        fl_shell::run(&mut scope, &wake, period, || {
+            limit.is_some_and(|l| *rendered.lock().unwrap_or_else(|e| e.into_inner()) >= l)
+        })?
+    };
     isolate.shutdown();
-    let mut fr = frames.lock().unwrap_or_else(|e| e.into_inner());
-    if fr.count == 0 {
+    // The sink is the process's, and holds the raster thread: replacing it
+    // is what lets `finish` below have the thread to itself.
+    fl_ui::set_frame_sink(|_| {});
+    let count = *rendered.lock().unwrap_or_else(|e| e.into_inner());
+    if count == 0 {
         return Err(Failure::Other(format!(
             "{path}: ran to completion without rendering a frame"
         )));
     }
-    if let Some(e) = fr.error.take() {
-        return Err(Failure::Other(e));
+    if let Some(line) = vsync_line(&report.frame_times_us) {
+        println!("{line}");
     }
-    if let (Some(png), Some(raster), Some(pixels)) = (png, fr.raster.as_ref(), fr.last.as_ref()) {
-        let (w, h) = raster.size();
-        fl_raster::write_png(&png, w, h, pixels).map_err(|e| Failure::Other(e.to_string()))?;
+    let raster = Arc::try_unwrap(raster)
+        .ok()
+        .flatten()
+        .map(fl_raster::RasterThread::finish);
+    if let Some(r) = raster {
+        if let Some(e) = r.error {
+            return Err(Failure::Other(e));
+        }
+        if let (Some(png), Some(pixels)) = (app.png, r.last.as_ref()) {
+            fl_raster::write_png(&png, r.width, r.height, pixels)
+                .map_err(|e| Failure::Other(e.to_string()))?;
+        }
     }
     Ok(())
+}
+
+/// `vsync: frames=… interval_us=…`: how many frames were begun at vsync, and
+/// the spacing of their times, each interval in microseconds. `None` with
+/// fewer than two.
+#[cfg(feature = "aot")]
+fn vsync_line(times: &[i64]) -> Option<String> {
+    if times.len() < 2 {
+        return None;
+    }
+    let gaps: Vec<String> = times
+        .windows(2)
+        .map(|w| (w[1] - w[0]).to_string())
+        .collect();
+    Some(format!(
+        "vsync: frames={} interval_us={}",
+        times.len(),
+        gaps.join(",")
+    ))
 }
 
 /// `layers=… pictures=… draws=…` for a frame line.
@@ -273,36 +298,43 @@ fn outline(scene: &fl_ui::Scene) -> String {
     out
 }
 
-/// `[WxH[@dpr]] [--png out.png] [--ops]`, in any order; no size is the
-/// default view. Sizes are physical pixels. `--ops` prints each frame's
-/// [`outline`].
+/// `run-app`'s options.
 #[cfg(feature = "aot")]
-fn app_args(args: &[&str]) -> Option<(fl_shell::ViewConfig, Option<std::path::PathBuf>, bool)> {
-    let mut view = fl_shell::ViewConfig::default();
-    let mut png = None;
-    let mut ops = false;
+#[derive(Debug, Default)]
+struct AppArgs {
+    view: fl_shell::ViewConfig,
+    png: Option<std::path::PathBuf>,
+    ops: bool,
+    frames: Option<u64>,
+}
+
+/// `[WxH[@dpr]] [--png out.png] [--ops] [--frames N]`, in any order; no
+/// size is the default view. Sizes are physical pixels. `--ops` prints each
+/// frame's [`outline`]; `--frames` stops after N frames rendered.
+#[cfg(feature = "aot")]
+fn app_args(args: &[&str]) -> Option<AppArgs> {
+    let mut app = AppArgs::default();
     let mut it = args.iter();
     while let Some(a) = it.next() {
-        if *a == "--png" {
-            png = Some(std::path::PathBuf::from(it.next()?));
-            continue;
-        }
-        if *a == "--ops" {
-            ops = true;
-            continue;
-        }
-        let (size, dpr) = match a.split_once('@') {
-            Some((size, dpr)) => (size, Some(dpr)),
-            None => (*a, None),
-        };
-        let (w, h) = size.split_once('x')?;
-        view.width = w.parse().ok().filter(|v: &f64| *v >= 1.0)?;
-        view.height = h.parse().ok().filter(|v: &f64| *v >= 1.0)?;
-        if let Some(dpr) = dpr {
-            view.device_pixel_ratio = dpr.parse().ok().filter(|v: &f64| *v > 0.0)?;
+        match *a {
+            "--png" => app.png = Some(std::path::PathBuf::from(it.next()?)),
+            "--ops" => app.ops = true,
+            "--frames" => app.frames = Some(it.next()?.parse().ok().filter(|n| *n > 0)?),
+            _ => {
+                let (size, dpr) = match a.split_once('@') {
+                    Some((size, dpr)) => (size, Some(dpr)),
+                    None => (*a, None),
+                };
+                let (w, h) = size.split_once('x')?;
+                app.view.width = w.parse().ok().filter(|v: &f64| *v >= 1.0)?;
+                app.view.height = h.parse().ok().filter(|v: &f64| *v >= 1.0)?;
+                if let Some(dpr) = dpr {
+                    app.view.device_pixel_ratio = dpr.parse().ok().filter(|v: &f64| *v > 0.0)?;
+                }
+            }
         }
     }
-    Some((view, png, ops))
+    Some(app)
 }
 
 fn config(path: &str) -> IsolateConfig {

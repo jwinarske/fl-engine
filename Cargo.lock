@@ -260,6 +260,7 @@ dependencies = [
  "emblema",
  "fl-ui",
  "png",
+ "trybuild",
 ]
 
 [[package]]

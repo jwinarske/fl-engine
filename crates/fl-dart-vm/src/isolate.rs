@@ -28,6 +28,11 @@ use crate::vm::Vm;
 /// Where `print()` goes.
 pub type PrintSink = Arc<dyn Fn(&str) + Send + Sync>;
 
+/// Called once for each message posted to the isolate, on whatever thread
+/// posted it. An embedder running its own loop counts these and calls
+/// [`HandleScope::handle_message`] once for each.
+pub type MessageNotify = Arc<dyn Fn() + Send + Sync>;
+
 /// How to create an isolate.
 #[derive(Clone)]
 pub struct IsolateConfig {
@@ -41,6 +46,9 @@ pub struct IsolateConfig {
     /// provides itself: the embedder's dart:ui (fl-ui). `None` leaves them
     /// unresolved, which the VM reports by name when Dart first calls one.
     pub natives: Option<NativeResolver>,
+    /// Told of each message for the isolate, for an embedder's own loop.
+    /// `None` leaves message delivery to [`HandleScope::run_loop`].
+    pub notify: Option<MessageNotify>,
 }
 
 /// Maps an `@Native` symbol name and its argument count to the function that
@@ -56,6 +64,7 @@ impl Default for IsolateConfig {
             name: "main".to_owned(),
             print: Arc::new(|line| println!("{line}")),
             natives: None,
+            notify: None,
         }
     }
 }
@@ -66,6 +75,7 @@ impl std::fmt::Debug for IsolateConfig {
             .field("script_uri", &self.script_uri)
             .field("name", &self.name)
             .field("natives", &self.natives.is_some())
+            .field("notify", &self.notify.is_some())
             .finish_non_exhaustive()
     }
 }
@@ -85,6 +95,7 @@ struct GroupData {
 struct IsolateData {
     print: PrintSink,
     natives: Option<NativeResolver>,
+    notify: Option<MessageNotify>,
 }
 
 /// An isolate created by this process. Not `Send`, not `Sync`: entering binds
@@ -196,6 +207,7 @@ impl Vm {
         let data = Arc::new(IsolateData {
             print: Arc::clone(&cfg.print),
             natives: cfg.natives,
+            notify: cfg.notify.clone(),
         });
         let gd = Arc::into_raw(Arc::clone(&group)) as *mut c_void;
         let id = Arc::into_raw(Arc::clone(&data)) as *mut c_void;
@@ -230,6 +242,11 @@ impl Vm {
             sys::Dart_EnterScope();
             let r = load(()).and_then(|()| install_hooks(&uri));
             sys::Dart_ExitScope();
+            // Before the isolate is runnable, so no message can arrive
+            // unannounced. Per isolate: it applies to the current one.
+            if cfg.notify.is_some() {
+                sys::Dart_SetMessageNotifyCallback(Some(on_message));
+            }
             r
         };
         if let Err(e) = setup {
@@ -459,6 +476,31 @@ impl<'s> HandleScope<'s> {
     pub fn run_loop(&mut self) -> Result<(), DartError> {
         // SAFETY: the current isolate is this scope's.
         self.wrap(unsafe { sys::Dart_RunLoop() }).map(drop)
+    }
+
+    /// Handles the next pending message, if there is one: for an embedder's
+    /// own loop, once per [`IsolateConfig::notify`] call. An exception the
+    /// handler leaves uncaught is the error.
+    pub fn handle_message(&mut self) -> Result<(), DartError> {
+        // SAFETY: the current isolate is this scope's, with a scope open.
+        self.wrap(unsafe { sys::Dart_HandleMessage() }).map(drop)
+    }
+
+    /// Whether the isolate still has an open receive port: a pending timer,
+    /// a listening `ReceivePort`. With none, no message can arrive, and a
+    /// loop waiting for one would wait forever.
+    pub fn has_live_ports(&mut self) -> bool {
+        // SAFETY: the current isolate is this scope's.
+        unsafe { sys::Dart_HasLivePorts() }
+    }
+
+    /// Runs the pending microtasks. A message handler drains them itself
+    /// (`_RawReceivePort._handleMessage`); a call into Dart made directly,
+    /// as the engine makes `_beginFrame`, leaves them queued until this.
+    pub fn run_microtasks(&mut self) -> Result<(), DartError> {
+        let isolate = self.lookup_library("dart:isolate")?;
+        self.invoke(isolate, "_runPendingImmediateCallback", &[])
+            .map(drop)
     }
 
     pub fn null(&mut self) -> Handle<'s> {
@@ -920,6 +962,21 @@ unsafe extern "C" fn ui_logger_print_string(s: sys::Dart_Handle) {
 // handed to the VM at creation, and none may unwind into VM frames.
 
 pub(crate) extern "C" fn on_shutdown(_group: *mut c_void, _isolate: *mut c_void) {}
+
+/// `Dart_MessageNotifyCallback`, on the posting thread. The data outlives
+/// every call: it is released at cleanup, after the isolate's message
+/// handler, which makes these calls, is gone.
+unsafe extern "C" fn on_message(isolate: sys::Dart_Isolate) {
+    let _ = std::panic::catch_unwind(|| {
+        // SAFETY: isolate is live (a message is being posted to it), and its
+        // data is the IsolateData `create` gave it, released only at cleanup.
+        let data = unsafe { sys::Dart_IsolateData(isolate) } as *const IsolateData;
+        // SAFETY: as above; only read.
+        if let Some(notify) = unsafe { data.as_ref() }.and_then(|d| d.notify.as_ref()) {
+            notify();
+        }
+    });
+}
 
 pub(crate) extern "C" fn on_cleanup(_group: *mut c_void, isolate: *mut c_void) {
     let _ = std::panic::catch_unwind(|| {

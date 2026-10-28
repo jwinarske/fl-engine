@@ -5,7 +5,12 @@
 //! the calls the engine makes between creating the root isolate and running
 //! `main` (`RuntimeController`, runtime_controller.cc:594-600, and its
 //! `FlushRuntimeStateToIsolate`). Without them `runApp` has no view to draw
-//! into.
+//! into. [`run`] is the UI thread's loop: the isolate's messages, and a
+//! frame at each vsync the framework asks for.
+
+mod frame_loop;
+
+pub use frame_loop::{run, Report, Wake};
 
 use fl_dart_vm::{DartError, HandleScope, IsolateConfig};
 
@@ -37,11 +42,13 @@ pub const IMPLICIT_VIEW_ID: i64 = 0;
 /// The display the view is on.
 pub const DISPLAY_ID: i64 = 0;
 
-/// An isolate configuration with dart:ui's natives.
-pub fn isolate_config(script_uri: &str) -> IsolateConfig {
+/// An isolate configuration with dart:ui's natives, its messages announced
+/// to `wake` for [`run`].
+pub fn isolate_config(script_uri: &str, wake: &Wake) -> IsolateConfig {
     IsolateConfig {
         script_uri: script_uri.to_owned(),
         natives: Some(fl_ui::resolve),
+        notify: Some(wake.notify()),
         ..IsolateConfig::default()
     }
 }

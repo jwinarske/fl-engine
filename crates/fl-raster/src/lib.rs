@@ -11,7 +11,11 @@
 //! here fails the frame and names what it was. Pixels that are quietly wrong
 //! are the failure goldens exist to catch, and they would catch it late.
 
+use std::marker::PhantomData;
 use std::path::Path;
+use std::sync::mpsc::{self, Receiver, SyncSender};
+use std::sync::Arc;
+use std::thread::JoinHandle;
 
 use emblema::{
     Affine2, BackendPreference, BlendMode, Canvas, Color, Context, Extent2D, FillRule, Layer,
@@ -50,11 +54,17 @@ impl From<emblema::Error> for RasterError {
 }
 
 /// An offscreen target of one size, on Vulkan (decision D4).
+///
+/// Not `Send`: it holds the device, and the device belongs to the raster
+/// thread (brief M2 §5). [`RasterThread`] makes one there; only scenes
+/// cross. emblema's own types would allow the move, so this is where the
+/// placement is decided.
 pub struct Offscreen {
     ctx: Context,
     surface: Option<Surface>,
     width: u32,
     height: u32,
+    _raster_thread: PhantomData<*const ()>,
 }
 
 impl Offscreen {
@@ -67,6 +77,7 @@ impl Offscreen {
             surface: Some(surface),
             width,
             height,
+            _raster_thread: PhantomData,
         })
     }
 
@@ -97,6 +108,126 @@ impl Drop for Offscreen {
             self.ctx.destroy_surface(surface);
         }
     }
+}
+
+/// The raster thread: an [`Offscreen`] made and used on a thread of its
+/// own, drawing the scenes the UI thread submits, in order.
+///
+/// The queue holds one scene beyond the one being drawn, Flutter's pipeline
+/// depth of two: a UI thread that gets further ahead waits in
+/// [`RasterThread::submit`] rather than piling up frames.
+pub struct RasterThread {
+    tx: Option<SyncSender<Arc<Scene>>>,
+    thread: Option<JoinHandle<Rastered>>,
+}
+
+/// What a raster thread did, from [`RasterThread::finish`].
+#[derive(Debug, Default)]
+pub struct Rastered {
+    /// Frames drawn.
+    pub frames: u64,
+    /// The last frame's pixels, as [`Offscreen::render`] returns them.
+    pub last: Option<Vec<u8>>,
+    pub width: u32,
+    pub height: u32,
+    /// The first failure, naming the frame. Frames after it are not drawn.
+    pub error: Option<String>,
+}
+
+impl RasterThread {
+    /// Starts the thread and makes its target there. A target that cannot be
+    /// made is this call's error.
+    pub fn spawn(width: u32, height: u32) -> Result<RasterThread, RasterError> {
+        let (tx, rx) = mpsc::sync_channel::<Arc<Scene>>(1);
+        let (ready_tx, ready_rx) = mpsc::channel::<Result<(), RasterError>>();
+        let thread = std::thread::Builder::new()
+            .name("fl-raster".into())
+            .spawn(move || raster_main(width, height, &rx, &ready_tx))
+            .map_err(|e| RasterError::Unsupported(format!("raster thread: {e}")))?;
+        match ready_rx.recv() {
+            Ok(Ok(())) => Ok(RasterThread {
+                tx: Some(tx),
+                thread: Some(thread),
+            }),
+            Ok(Err(e)) => {
+                let _ = thread.join();
+                Err(e)
+            }
+            Err(_) => {
+                let _ = thread.join();
+                Err(RasterError::Unsupported(
+                    "raster thread ended before its target was made".into(),
+                ))
+            }
+        }
+    }
+
+    /// Queues `scene` to be drawn; waits while one is already queued. False
+    /// if the thread has gone, which only a panic in it does.
+    pub fn submit(&self, scene: Arc<Scene>) -> bool {
+        self.tx.as_ref().is_some_and(|tx| tx.send(scene).is_ok())
+    }
+
+    /// Draws what is queued, stops the thread and says what it did.
+    pub fn finish(mut self) -> Rastered {
+        self.stop()
+    }
+
+    fn stop(&mut self) -> Rastered {
+        drop(self.tx.take());
+        match self.thread.take().map(JoinHandle::join) {
+            Some(Ok(r)) => r,
+            Some(Err(_)) => Rastered {
+                error: Some("the raster thread panicked".into()),
+                ..Rastered::default()
+            },
+            None => Rastered::default(),
+        }
+    }
+}
+
+impl Drop for RasterThread {
+    fn drop(&mut self) {
+        let _ = self.stop();
+    }
+}
+
+fn raster_main(
+    width: u32,
+    height: u32,
+    rx: &Receiver<Arc<Scene>>,
+    ready: &mpsc::Sender<Result<(), RasterError>>,
+) -> Rastered {
+    let mut target = match Offscreen::new(width, height) {
+        Ok(t) => {
+            let _ = ready.send(Ok(()));
+            t
+        }
+        Err(e) => {
+            let _ = ready.send(Err(e));
+            return Rastered::default();
+        }
+    };
+    let mut r = Rastered {
+        width,
+        height,
+        ..Rastered::default()
+    };
+    // Until the UI side hangs up. After a failure the rest are taken and
+    // dropped, so the UI thread is never left waiting on a full queue.
+    for scene in rx {
+        if r.error.is_some() {
+            continue;
+        }
+        match target.render(&scene) {
+            Ok(pixels) => {
+                r.frames += 1;
+                r.last = Some(pixels);
+            }
+            Err(e) => r.error = Some(format!("frame {}: {e}", r.frames + 1)),
+        }
+    }
+    r
 }
 
 /// Walks the layer operations into `canvas`. A `pop` with nothing pushed is
@@ -557,5 +688,16 @@ mod tests {
         };
         assert!(replay(&mut canvas, &scene).is_ok());
         assert_eq!(canvas.finish().draw_count(), 0);
+    }
+
+    /// What crosses from the UI thread to the raster thread is only scenes
+    /// and frames; they must be able to (brief M2 §5).
+    #[test]
+    fn scenes_and_frames_cross_threads() {
+        fn crosses<T: Send + Sync>() {}
+        crosses::<Scene>();
+        crosses::<Picture>();
+        crosses::<fl_ui::Frame>();
+        crosses::<RasterThread>();
     }
 }

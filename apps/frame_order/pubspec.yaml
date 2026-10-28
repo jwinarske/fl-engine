@@ -1,0 +1,8 @@
+name: frame_order
+description: fl-engine test program. The engine's frame sequence, without the framework.
+publish_to: none
+environment:
+  sdk: ^3.13.0
+dependencies:
+  flutter:
+    sdk: flutter

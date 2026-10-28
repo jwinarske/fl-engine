@@ -18,5 +18,8 @@ fl-ui = { workspace = true }
 emblema = { version = "0.2.0", default-features = false, features = ["vulkan"] }
 png = "0.18"
 
+[dev-dependencies]
+trybuild = { workspace = true }
+
 [lints]
 workspace = true

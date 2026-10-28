@@ -22,7 +22,7 @@ mod semantics;
 pub use compositing::{Clip, LayerOp, Scene};
 pub use painting::{Cap, ClipOp, Draw, Join, Paint, Picture, Style};
 pub use path::{Affine, FillType, Path, Point, RRect, Seg};
-pub use platform::{set_frame_sink, Frame};
+pub use platform::{set_frame_scheduler, set_frame_sink, Frame};
 
 /// Every dart:ui native this crate implements.
 pub static NATIVES: &[Symbol] = &[
@@ -177,10 +177,6 @@ pub static STUBS: &[(&str, &str)] = &[
     (
         "PlatformConfigurationNativeApi::SetSemanticsTreeEnabled",
         "nothing",
-    ),
-    (
-        "PlatformConfigurationNativeApi::ScheduleFrame",
-        "nothing: no frame after the warm-up frame yet (stage 4)",
     ),
     (
         "PlatformConfigurationNativeApi::SetNeedsReportTimings",

@@ -72,7 +72,33 @@ Found on the way:
 * Clipping is hard-edged in emblema; the clipped cell differs from the golden only along its edge
 * Two app tests building one app ran build.sh at once into the same file; builds are now once per test process
 
-Next: stage 4, the frame loop (`ticker`), then `material`.
+## Stage 4: the frame loop (2026-10-28)
+
+Done: `ticker` runs frames after the first, each asked for, begun at vsync, and animated on the vsync's time. Exit criterion 3.
+
+    fl-dart run-app out/ticker.so 200x100 --frames 30 --png ticker.png
+    frame 30: view 0 200x100 layers=1 pictures=1 draws=1
+    vsync: frames=29 interval_us=16667,16667,66666,16667,…
+
+* `fl-shell::run`: the UI thread's loop in place of `Dart_RunLoop`. Messages as the isolate's notify callback announces them, one `Dart_HandleMessage` each; a frame when one is asked for; done when the isolate has no live port and no frame pending, or when the caller's stop says so
+* A frame: `_beginFrame(time, n)`, microtasks, `_drawFrame()`, microtasks, as `Animator::BeginFrame` and `Window::BeginFrame`. Microtasks through dart:isolate's `_runPendingImmediateCallback`, which a message handler runs itself and a direct call does not
+* Vsync: a fixed clock, ticks one period apart (60 Hz from `ViewConfig::refresh_rate`). A request is served at the first tick at or after it, never twice on one tick; a late frame skips the ticks it missed. `_beginFrame` gets the tick's time, not the time it ran, so an animation is a function of ticks
+* `ScheduleFrame` is no longer a stub: it asks the scheduler `fl_ui::set_frame_scheduler` installs. 7 stubs remain
+* `fl-dart-vm`: `IsolateConfig::notify` (`Dart_SetMessageNotifyCallback`, set before the isolate is runnable), `HandleScope::handle_message`, `has_live_ports`, `run_microtasks`
+* `fl-raster::RasterThread`: the `Offscreen` is made on the raster thread and stays there; scenes cross as `Arc<Scene>`. A queue of one beyond the frame being drawn, Flutter's pipeline depth of two. `Offscreen` is `!Send` (emblema's `Context` is `Send`, so the placement is decided here); compile-fail case `offscreen_crosses_threads`. `Scene`, `Picture`, `Frame` are `Send + Sync`, checked
+* `run-app --frames N` stops after N frames rendered; a `vsync:` line gives the frame-time intervals
+* `apps/frame_order`: dart:ui with no framework, printing its own sequence. Three frames, each `begin`, its microtask, `draw`, the render, the draw's microtask, then the next tick
+* `apps/ticker`: an `AnimationController` over one second lerping red to blue. 30 frames, 29 at vsync; the last frame's color is the lerp at the vsync time since the ticker started, within 2 of 255
+* L2-app checks: every interval a whole number of periods, on average no more than one tick missed per frame, the color from the reported times
+
+Found on the way:
+
+* `colored_box` now renders two frames: the warm-up frame, then the one the framework schedules while attaching the root widget. Stage 1 ended after the first because `ScheduleFrame` did nothing
+* A frame's tick was first computed from the time the loop woke, not the time it was asked for. Woken just after the tick, it chose the next one, every time: the first build hung. Fixed by keeping the request time
+* The `shapes` tests take `--frames 1`: they check the first frame
+* The first frames on lavapipe can miss ticks while the raster thread warms up: one 4-period gap in 29 locally, the UI thread waiting on the full queue. Reported, not hidden
+
+Next: `material` (`flutter/restoration`), then stage 6, KMS on the boards.
 
 ## Fixed: JIT isolate-cycle growth (2026-10-28)
 

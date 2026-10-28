@@ -58,10 +58,14 @@ fn colored_box_renders_its_first_frame() {
     let o = common::fl_dart(&["run-app".as_ref(), app.as_os_str(), "800x600@2".as_ref()]);
     assert!(o.status.success(), "{o:?}");
     // The warm-up frame: the root transform layer (the DPR scale), one
-    // picture, one drawRect (docs/m2-dart-ui.md §3).
+    // picture, one drawRect (docs/m2-dart-ui.md §3). Then the one frame the
+    // framework schedules while attaching the root widget, at the first
+    // vsync, the same; then nothing is asked for and the run ends. One
+    // vsync frame, so no `vsync:` line.
     assert_eq!(
         String::from_utf8_lossy(&o.stdout),
-        "frame 1: view 0 800x600 layers=1 pictures=1 draws=1\n"
+        "frame 1: view 0 800x600 layers=1 pictures=1 draws=1\n\
+         frame 2: view 0 800x600 layers=1 pictures=1 draws=1\n"
     );
 }
 
@@ -153,6 +157,8 @@ fn shapes_records_the_expected_scene() {
         app.as_os_str(),
         "800x600@2".as_ref(),
         "--ops".as_ref(),
+        "--frames".as_ref(),
+        "1".as_ref(),
     ]);
     assert!(o.status.success(), "{o:?}");
     assert_eq!(String::from_utf8_lossy(&o.stdout), SHAPES_OPS);
@@ -172,6 +178,8 @@ fn shapes_matches_its_golden() {
         "800x600@2".as_ref(),
         "--png".as_ref(),
         png.as_os_str(),
+        "--frames".as_ref(),
+        "1".as_ref(),
     ]);
     assert!(o.status.success(), "{o:?}");
     let goldens = repo().join("apps/shapes/test/goldens");
@@ -208,6 +216,114 @@ fn shapes_matches_its_golden() {
     assert!(pct(differ) <= limit("differ"), "{report}");
     assert!(pct(over_32) <= limit("differ_over_32"), "{report}");
     println!("shapes: {report}");
+}
+
+/// The engine's frame sequence, from dart:ui with no framework: each frame
+/// asked for by `scheduleFrame`, begun at vsync, its begin microtasks run
+/// before `onDrawFrame`, its draw microtasks before the next vsync
+/// (`Animator::BeginFrame`, `Window::BeginFrame`).
+#[test]
+#[ignore = "app lane: needs FLUTTER_ROOT"]
+fn frame_order_follows_the_engines_sequence() {
+    let app = build_app("frame_order");
+    let o = common::fl_dart(&["run-app".as_ref(), app.as_os_str(), "200x100".as_ref()]);
+    assert!(o.status.success(), "{o:?}");
+    let out = String::from_utf8_lossy(&o.stdout);
+    let mut want = String::new();
+    for n in 1..=3 {
+        want += &format!(
+            "begin {n}\nmicrotask after begin {n}\ndraw {n}\n\
+             frame {n}: view 0 200x100 layers=0 pictures=0 draws=0\n\
+             microtask after draw {n}\n"
+        );
+    }
+    let (frames, vsync) = out.rsplit_once("vsync: ").unwrap_or((&out, ""));
+    assert_eq!(frames, want);
+    let gaps = intervals(vsync, 3);
+    // Each frame asked for during the one before: the very next tick.
+    for g in gaps {
+        assert!(periods(g) == 1, "{vsync}");
+    }
+}
+
+/// Frames after the first (exit criterion 3): the ticker asks for each,
+/// each is begun at a vsync tick, and the animation runs on those ticks'
+/// times. 30 frames: the warm-up frame, then 29 at vsync.
+#[test]
+#[ignore = "app lane: needs FLUTTER_ROOT and a Vulkan driver"]
+fn ticker_animates_at_vsync() {
+    let app = build_app("ticker");
+    let png = common::out_dir().join("apps/ticker.png");
+    let _ = std::fs::remove_file(&png);
+    let o = common::fl_dart(&[
+        "run-app".as_ref(),
+        app.as_os_str(),
+        "200x100".as_ref(),
+        "--frames".as_ref(),
+        "30".as_ref(),
+        "--png".as_ref(),
+        png.as_os_str(),
+    ]);
+    assert!(o.status.success(), "{o:?}");
+    let out = String::from_utf8_lossy(&o.stdout);
+    let (frames, vsync) = out.rsplit_once("vsync: ").unwrap_or((&out, ""));
+    let lines: Vec<&str> = frames.lines().collect();
+    assert_eq!(lines.len(), 30, "{out}");
+    for (i, l) in lines.iter().enumerate() {
+        assert_eq!(
+            *l,
+            format!(
+                "frame {}: view 0 200x100 layers=1 pictures=1 draws=1",
+                i + 1
+            )
+        );
+    }
+    let gaps = intervals(vsync, 29);
+    // Never faster than vsync. A frame late enough to miss a tick waits for
+    // the next one, so the ticks it missed are gaps, not extra frames.
+    let ticks: u64 = gaps.iter().map(|g| periods(*g)).sum();
+    assert!(
+        ticks <= 2 * gaps.len() as u64,
+        "more than one tick missed per frame on average: {vsync}"
+    );
+    // The ticker starts on the first vsync frame, so the last frame's value
+    // is the time from it, over the one-second duration.
+    let elapsed_us: i64 = gaps.iter().sum();
+    let t = (elapsed_us as f64 / 1e6).fract();
+    let px = read_png(&png, (200, 100));
+    let center = &px[(50 * 200 + 100) * 4..][..4];
+    let want = [255.0 * (1.0 - t), 0.0, 255.0 * t, 255.0];
+    for (got, want) in center.iter().zip(want) {
+        assert!(
+            (f64::from(*got) - want).abs() <= 2.0,
+            "center {center:?}, want {want:?} at t={t:.4} ({vsync})"
+        );
+    }
+}
+
+/// One period of the default view's 60 Hz, in microseconds.
+const PERIOD_US: f64 = 1e6 / 60.0;
+
+/// The intervals of a `vsync: frames=N interval_us=a,b,…` line, checking N.
+fn intervals(vsync: &str, frames: usize) -> Vec<i64> {
+    let vsync = vsync.trim();
+    let (n, gaps) = vsync
+        .strip_prefix("frames=")
+        .and_then(|r| r.split_once(" interval_us="))
+        .unwrap_or_else(|| panic!("not a vsync line: {vsync:?}"));
+    assert_eq!(n.parse::<usize>().unwrap(), frames, "{vsync}");
+    gaps.split(',').map(|g| g.parse().unwrap()).collect()
+}
+
+/// How many vsync periods `gap_us` is. Frame times are ticks, so a gap is
+/// a whole number of periods to within the clock's microsecond rounding.
+fn periods(gap_us: i64) -> u64 {
+    let n = (gap_us as f64 / PERIOD_US).round();
+    assert!(
+        n >= 1.0 && (gap_us as f64 - n * PERIOD_US).abs() <= 2.0,
+        "{gap_us} us is not a whole number of vsync periods"
+    );
+    n as u64
 }
 
 /// Every native fl-ui implements is declared by the pinned release's

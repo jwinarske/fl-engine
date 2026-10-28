@@ -29,6 +29,18 @@ pub fn set_frame_sink(sink: impl FnMut(Frame) + Send + 'static) {
     *FRAME_SINK.lock().unwrap_or_else(|e| e.into_inner()) = Some(Box::new(sink));
 }
 
+type FrameScheduler = Box<dyn Fn() + Send>;
+
+/// What [`schedule_frame`] calls: the shell's vsync request.
+static FRAME_SCHEDULER: Mutex<Option<FrameScheduler>> = Mutex::new(None);
+
+/// Sets what `PlatformDispatcher.scheduleFrame` asks for a frame through.
+/// It runs on the UI thread, inside the `ScheduleFrame` native, and must not
+/// call this again (the slot is locked).
+pub fn set_frame_scheduler(schedule: impl Fn() + Send + 'static) {
+    *FRAME_SCHEDULER.lock().unwrap_or_else(|e| e.into_inner()) = Some(Box::new(schedule));
+}
+
 /// `Int64 Function()`. The framework caches it (`RootIsolateToken.instance`)
 /// and takes 0 to mean a background isolate, whose messenger then throws.
 pub(crate) extern "C" fn get_root_isolate_token() -> i64 {
@@ -55,14 +67,26 @@ pub(crate) extern "C" fn send_platform_message(
 /// `Void Function(Bool)`.
 pub(crate) extern "C" fn set_semantics_tree_enabled(_enabled: bool) {}
 
-/// `Void Function()`. Frames after the warm-up frame need a vsync source
-/// behind this (stage 4).
-pub(crate) extern "C" fn schedule_frame() {}
+/// `Void Function()`, a leaf call: asks for `_beginFrame` and `_drawFrame`
+/// at the next vsync. Without a scheduler set, nothing.
+pub(crate) extern "C" fn schedule_frame() {
+    guard((), || {
+        if let Some(schedule) = FRAME_SCHEDULER
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .as_ref()
+        {
+            schedule();
+        }
+    });
+}
 
 /// `Void Function(Bool)`.
 pub(crate) extern "C" fn set_needs_report_timings(_needed: bool) {}
 
-/// `Void Function()`.
+/// `Void Function()`. A frame scheduled during the warm-up frame stays
+/// pending with the scheduler and is begun at the next vsync, so nothing is
+/// left to do here.
 pub(crate) extern "C" fn end_warm_up_frame() {}
 
 /// `Void Function(Int64 viewId, Pointer<Void> scene, Double width, Double height)`.
