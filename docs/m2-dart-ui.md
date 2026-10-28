@@ -71,7 +71,7 @@ emblema's `docs/parity.md` is written against dart:ui's Canvas and Paint: 42 row
 * **Picture.** A Rust display list, recorded on the UI thread and replayed into the frame's `Canvas` on the raster thread. Not an emblema `Recording`: a Recording is tessellated for one target size and one flattening tolerance, so it cannot stand in for a Picture that is drawn again under another transform
 * **Composable gaps.** `clipRRect` via `to_rounded_path_with_radii`, `drawArc` via `PathBuilder::arc`, `skew` via `concat`, `restoreToCount` via `save_depth`
 * **Missing in emblema.** `Path.combine`, `computeMetrics`, `contains`, `Path.transform`, the raster cache, wide gamut. None of these is on the M2 path
-* **Expected differences.** emblema blends in linear light and triangulates its fills (non-parity.md), so its pixels will not match Impeller's exactly. Goldens compare with a tolerance and record it
+* **Expected differences.** emblema triangulates its fills and covers edges its own way (non-parity.md), so edge pixels will not match Impeller's exactly. Blending is in the target's encoding, as Skia's: shapes' opacity cell matches exactly (docs/m2-status.md). Goldens compare with a tolerance and record it
 
 ## 5. Presentation and the Frame Loop
 
@@ -115,7 +115,7 @@ Built with `flutter build linux --release`, using the Flutter release that pins 
 ## 9. Goldens
 
 * References come from the real engine: `flutter test` with `matchesGoldenFile` renders each program with the stock engine at the same size and DPR
-* fl-engine's offscreen frame is compared with a per-program tolerance, recorded beside the golden with the reason (linear-light blending, AA differences)
+* fl-engine's offscreen frame is compared with a per-program tolerance, recorded beside the golden with the reason (edge coverage, AA differences)
 * A golden that needs a wider tolerance than recorded fails. No silent skips, as in M1
 
 ## 10. Test Plan
@@ -157,7 +157,7 @@ Built with `flutter build linux --release`, using the Flutter release that pins 
 ## 14. Risks
 
 * **Peer lifetime.** Two ways to free one peer (finalizer, dispose). Mitigation: §7 and its tests
-* **Pixel parity.** Linear-light blending differs from Impeller by design. Mitigation: per-program tolerances with recorded reasons
+* **Pixel parity.** Edge coverage differs from Impeller by design. Mitigation: per-program tolerances with recorded reasons
 * **Microtask ordering.** A bare `Dart_Invoke` of `_beginFrame` does not drain microtasks before `_drawFrame`. Mitigation: flush explicitly between the two, as the engine does
 * **Framework drift.** The native set is read at one Flutter release. Mitigation: pin it beside the Dart pin; a pin bump re-runs the §3 survey
 * **Frame budget on boards.** First numbers come at stage 6. emblema measures a UI-like frame at 5.19 ms on Pi 5 V3D
