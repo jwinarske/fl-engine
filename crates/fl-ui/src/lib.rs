@@ -20,7 +20,7 @@ mod platform;
 mod semantics;
 
 pub use compositing::{LayerOp, Scene};
-pub use painting::{Draw, Picture};
+pub use painting::{Draw, Paint, Picture, Style};
 pub use platform::{set_frame_sink, Frame};
 
 /// Every dart:ui native this crate implements.

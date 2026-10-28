@@ -17,13 +17,17 @@ path = "src/main.rs"
 # AOT is the primary mode (brief §3); `jit` replaces it on a dev host with
 # `--no-default-features --features jit`.
 default = ["aot"]
-jit = ["fl-dart-vm/jit", "fl-shell/jit"]
-aot = ["fl-dart-vm/aot", "fl-shell/aot"]
+jit = ["fl-dart-vm/jit", "fl-shell/jit", "fl-raster/jit"]
+aot = ["fl-dart-vm/aot", "fl-shell/aot", "fl-raster/aot"]
 
 [dependencies]
 fl-dart-vm = { workspace = true }
 fl-shell = { workspace = true }
 fl-ui = { workspace = true }
+fl-raster = { workspace = true }
+
+[dev-dependencies]
+png = "0.18"
 
 [lints]
 workspace = true

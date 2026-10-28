@@ -7,7 +7,9 @@ Not published, no versions yet.
 ### Milestone 2: dart:ui (in progress)
 
 * `fl-dart-ffi`, `fl-ui`, `fl-shell`: dart:ui natives FFI-first, peers on native-field wrappers, the embedder's runtime hooks
-* `fl-dart run-app`: a Flutter app's libapp.so to its first frame (scene recorded, not yet drawn)
+* `fl-dart run-app`: a Flutter app's libapp.so to its first frame
+* `fl-raster` and `run-app --png`: the frame drawn by emblema offscreen. colored_box exact in every pixel
+* Paint decoded from dart:ui's ByteData
 * `tools/flutter-app/build.sh`: libapp.so from the pinned Flutter release, no desktop shell
 * Flutter app lane in CI
 

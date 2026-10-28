@@ -1,0 +1,22 @@
+[package]
+name = "fl-raster"
+description = "fl-engine's raster side: dart:ui scenes drawn by emblema"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+
+[features]
+jit = ["fl-ui/jit"]
+aot = ["fl-ui/aot"]
+
+[dependencies]
+fl-ui = { workspace = true }
+# Vulkan first (docs/m2-dart-ui.md D4). No window-system feature: offscreen
+# now, KMS at stage 6.
+emblema = { version = "0.2.0", default-features = false, features = ["vulkan"] }
+png = "0.18"
+
+[lints]
+workspace = true

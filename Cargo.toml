@@ -36,3 +36,4 @@ fl-dart-vm = { path = "crates/fl-dart-vm", version = "0.1.0", default-features =
 fl-dart-ffi = { path = "crates/fl-dart-ffi", version = "0.1.0", default-features = false }
 fl-ui = { path = "crates/fl-ui", version = "0.1.0", default-features = false }
 fl-shell = { path = "crates/fl-shell", version = "0.1.0", default-features = false }
+fl-raster = { path = "crates/fl-raster", version = "0.1.0", default-features = false }

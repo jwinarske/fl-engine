@@ -127,6 +127,12 @@ jobs:
           "$FLUTTER_ROOT/bin/flutter" precache --linux --no-android --no-ios --no-web --no-macos --no-windows --no-fuchsia
           "$FLUTTER_ROOT/bin/cache/dart-sdk/bin/dart" --version 2>&1 | grep -F "3.13.7" \
             || { echo "Flutter's Dart is not the pinned 3.13.7"; exit 1; }
+      # emblema draws the frames offscreen on Vulkan; lavapipe is Mesa's
+      # software Vulkan, as emblema's own CI uses.
+      - name: lavapipe
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq mesa-vulkan-drivers
       - name: Fetch the prebuilt VM
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -136,4 +142,4 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: ci/annotate-on-fail.sh cargo test -p fl-dart-cli --test app -- --ignored
       - name: dart:ui unit tests
-        run: ci/annotate-on-fail.sh cargo test -p fl-dart-ffi -p fl-ui --features aot --lib
+        run: ci/annotate-on-fail.sh cargo test -p fl-dart-ffi -p fl-ui -p fl-raster --features aot --lib

@@ -17,6 +17,7 @@ Status: milestone 1 (Dart VM hosted from Rust).
 * fl-dart-ffi - native binding layer: symbol tables, peers on native-field wrappers
 * fl-ui - dart:ui natives
 * fl-shell - embedder: views and the runtime hooks a framework isolate needs
+* fl-raster - dart:ui scenes drawn by emblema
 * fl-dart-cli - `fl-dart` binary
 * xtask - `cargo xtask bindgen`, `cargo xtask fetch-prebuilt`
 
@@ -71,6 +72,10 @@ Flutter app, through dart:ui (milestone 2, in progress). Built with the pinned F
 
     tools/flutter-app/build.sh /path/to/flutter apps/colored_box out
     fl-dart run-app out/colored_box.so 800x600@2
+
+Drawn by emblema offscreen (Vulkan; Mesa's lavapipe works) and written as a PNG:
+
+    fl-dart run-app out/colored_box.so 800x600@2 --png frame.png
 
 Notes:
 

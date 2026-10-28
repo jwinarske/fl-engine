@@ -46,3 +46,33 @@ fn colored_box_renders_its_first_frame() {
         "frame 1: view 0 800x600 layers=1 pictures=1 draws=1\n"
     );
 }
+
+/// The same frame drawn by emblema offscreen (Vulkan; lavapipe in CI). A
+/// flat fill has no edge to anti-alias, so every pixel is exactly the color.
+#[test]
+#[ignore = "app lane: needs FLUTTER_ROOT and a Vulkan driver"]
+fn colored_box_draws_its_color_in_every_pixel() {
+    let app = build_app("colored_box");
+    let png = common::out_dir().join("apps/colored_box.png");
+    let _ = std::fs::remove_file(&png);
+    let o = common::fl_dart(&[
+        "run-app".as_ref(),
+        app.as_os_str(),
+        "800x600@2".as_ref(),
+        "--png".as_ref(),
+        png.as_os_str(),
+    ]);
+    assert!(o.status.success(), "{o:?}");
+    let decoder = png::Decoder::new(std::io::BufReader::new(std::fs::File::open(&png).unwrap()));
+    let mut reader = decoder.read_info().unwrap();
+    let mut buf = vec![0; reader.output_buffer_size().unwrap()];
+    let info = reader.next_frame(&mut buf).unwrap();
+    assert_eq!((info.width, info.height), (800, 600));
+    assert_eq!(info.color_type, png::ColorType::Rgba);
+    let pixels = &buf[..info.buffer_size()];
+    let wrong = pixels
+        .chunks_exact(4)
+        .filter(|p| *p != [0x21, 0x96, 0xF3, 0xFF])
+        .count();
+    assert_eq!(wrong, 0, "pixels other than Color(0xFF2196F3)");
+}

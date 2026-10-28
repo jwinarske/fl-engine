@@ -3,7 +3,8 @@
 //! ```text
 //! fl-dart run hello.dill [args...]       # JIT, dev hosts (--features jit)
 //! fl-dart run-aot hello.aot [args...]    # precompiled runtime, every target
-//! fl-dart run-app libapp.so [WxH[@dpr]]   # a Flutter app, through dart:ui (M2)
+//! fl-dart run-app libapp.so [WxH[@dpr]] [--png out.png]
+//!                                       # a Flutter app, through dart:ui (M2)
 //! fl-dart cycle <program> <n>            # leak harness: n isolate lifecycles
 //! ```
 //!
@@ -35,8 +36,8 @@ fn main() -> ExitCode {
         #[cfg(feature = "aot")]
         "run-aot" => run_aot(path, &rest),
         #[cfg(feature = "aot")]
-        "run-app" => match view_arg(rest.first().copied()) {
-            Some(view) => run_app(path, view),
+        "run-app" => match app_args(&rest) {
+            Some((view, png)) => run_app(path, view, png),
             None => return usage(),
         },
         "cycle" => match rest.first().and_then(|n| n.parse().ok()) {
@@ -72,7 +73,7 @@ fn usage() -> ExitCode {
     };
     eprintln!("usage: fl-dart {modes} [args...]\n       fl-dart cycle <{prog}> <n>");
     if cfg!(feature = "aot") {
-        eprintln!("       fl-dart run-app <libapp.so> [WxH[@dpr]]");
+        eprintln!("       fl-dart run-app <libapp.so> [WxH[@dpr]] [--png out.png]");
     }
     ExitCode::from(64)
 }
@@ -136,25 +137,57 @@ fn run_aot(path: &str, args: &[&str]) -> Result<(), Failure> {
 
 /// A Flutter app's `libapp.so`, with dart:ui's natives, run until it has
 /// nothing left to do. Each frame it renders is reported on stdout; an app
-/// that renders none is an error.
+/// that renders none is an error. With `png`, every frame is drawn by
+/// emblema offscreen and the last one written there.
 #[cfg(feature = "aot")]
-fn run_app(path: &str, view: fl_shell::ViewConfig) -> Result<(), Failure> {
-    use std::sync::atomic::{AtomicUsize, Ordering};
-    use std::sync::Arc;
+fn run_app(
+    path: &str,
+    view: fl_shell::ViewConfig,
+    png: Option<std::path::PathBuf>,
+) -> Result<(), Failure> {
+    use std::sync::{Arc, Mutex};
 
     let snapshot = Arc::new(fl_dart_vm::AotSnapshot::open(path.as_ref())?);
     let vm = start_vm()?;
-    let frames = Arc::new(AtomicUsize::new(0));
-    let counted = Arc::clone(&frames);
+    // Drawing happens in the frame sink, on the UI thread: the raster
+    // thread arrives with the frame loop (docs/m2-dart-ui.md §12, stage 4).
+    let raster = match png {
+        Some(_) => Some(
+            fl_raster::Offscreen::new(view.width.round() as u32, view.height.round() as u32)
+                .map_err(|e| Failure::Other(format!("offscreen target: {e}")))?,
+        ),
+        None => None,
+    };
+    struct Frames {
+        count: usize,
+        raster: Option<fl_raster::Offscreen>,
+        last: Option<Vec<u8>>,
+        error: Option<String>,
+    }
+    let frames = Arc::new(Mutex::new(Frames {
+        count: 0,
+        raster,
+        last: None,
+        error: None,
+    }));
+    let sink = Arc::clone(&frames);
     fl_ui::set_frame_sink(move |f| {
-        let n = counted.fetch_add(1, Ordering::SeqCst) + 1;
+        let mut fr = sink.lock().unwrap_or_else(|e| e.into_inner());
+        fr.count += 1;
         println!(
-            "frame {n}: view {} {}x{} {}",
+            "frame {}: view {} {}x{} {}",
+            fr.count,
             f.view_id,
             f.width,
             f.height,
             summary(&f.scene)
         );
+        if let Some(raster) = fr.raster.as_mut() {
+            match raster.render(&f.scene) {
+                Ok(pixels) => fr.last = Some(pixels),
+                Err(e) => fr.error = Some(format!("frame {}: {e}", fr.count)),
+            }
+        }
     });
     let mut isolate = vm.isolate_from_aot(&snapshot, fl_shell::isolate_config(path))?;
     isolate.enter()?.with(|s| {
@@ -163,10 +196,18 @@ fn run_app(path: &str, view: fl_shell::ViewConfig) -> Result<(), Failure> {
         s.run_loop()
     })?;
     isolate.shutdown();
-    if frames.load(Ordering::SeqCst) == 0 {
+    let mut fr = frames.lock().unwrap_or_else(|e| e.into_inner());
+    if fr.count == 0 {
         return Err(Failure::Other(format!(
             "{path}: ran to completion without rendering a frame"
         )));
+    }
+    if let Some(e) = fr.error.take() {
+        return Err(Failure::Other(e));
+    }
+    if let (Some(png), Some(raster), Some(pixels)) = (png, fr.raster.as_ref(), fr.last.as_ref()) {
+        let (w, h) = raster.size();
+        fl_raster::write_png(&png, w, h, pixels).map_err(|e| Failure::Other(e.to_string()))?;
     }
     Ok(())
 }
@@ -189,22 +230,30 @@ fn summary(scene: &fl_ui::Scene) -> String {
     format!("layers={layers} pictures={pictures} draws={draws}")
 }
 
-/// `WxH` or `WxH@dpr`, physical pixels; none is the default view.
+/// `[WxH[@dpr]] [--png out.png]`, in either order; no size is the default
+/// view. Sizes are physical pixels.
 #[cfg(feature = "aot")]
-fn view_arg(arg: Option<&str>) -> Option<fl_shell::ViewConfig> {
+fn app_args(args: &[&str]) -> Option<(fl_shell::ViewConfig, Option<std::path::PathBuf>)> {
     let mut view = fl_shell::ViewConfig::default();
-    let Some(arg) = arg else { return Some(view) };
-    let (size, dpr) = match arg.split_once('@') {
-        Some((size, dpr)) => (size, Some(dpr)),
-        None => (arg, None),
-    };
-    let (w, h) = size.split_once('x')?;
-    view.width = w.parse().ok().filter(|v: &f64| *v > 0.0)?;
-    view.height = h.parse().ok().filter(|v: &f64| *v > 0.0)?;
-    if let Some(dpr) = dpr {
-        view.device_pixel_ratio = dpr.parse().ok().filter(|v: &f64| *v > 0.0)?;
+    let mut png = None;
+    let mut it = args.iter();
+    while let Some(a) = it.next() {
+        if *a == "--png" {
+            png = Some(std::path::PathBuf::from(it.next()?));
+            continue;
+        }
+        let (size, dpr) = match a.split_once('@') {
+            Some((size, dpr)) => (size, Some(dpr)),
+            None => (*a, None),
+        };
+        let (w, h) = size.split_once('x')?;
+        view.width = w.parse().ok().filter(|v: &f64| *v >= 1.0)?;
+        view.height = h.parse().ok().filter(|v: &f64| *v >= 1.0)?;
+        if let Some(dpr) = dpr {
+            view.device_pixel_ratio = dpr.parse().ok().filter(|v: &f64| *v > 0.0)?;
+        }
     }
-    Some(view)
+    Some((view, png))
 }
 
 fn config(path: &str) -> IsolateConfig {
