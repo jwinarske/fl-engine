@@ -42,3 +42,11 @@ Pulled forward from stages 2 and 3 for one app: its first frame as pixels.
 
 Next, stage 2 proper: the rest of the drawing set, and the scene checked op by op.
 
+## Open: JIT isolate-cycle growth (2026-10-28)
+
+* Soak JIT failed once: burst grew 664 kB over 900 cycles, limit 512. The commit touched only ci.yml; the JIT soak had passed on every earlier commit
+* Measured locally, `MALLOC_ARENA_MAX=1`: hello 2,700 cycles +312 kB, burst 5,400 cycles +724 kB. Linear, about 0.12-0.2 kB per cycle, any program. AOT flat (8-20 kB over 900)
+* Not the kernel copy in `GroupData` (megabytes per cycle if lost). Likely VM-side per isolate group, JIT only. LeakSanitizer finds no unreachable leak in the JIT sanitizer lanes; this is reachable or allocator growth
+* Valgrind cannot run the JIT VM, so the next tool is the ASan VM with `ASAN_OPTIONS=detect_leaks=1:report_objects=1` at exit after many cycles, or heap profiling of the JIT build
+* Soak's JIT limit is 1 MB over 900 cycles (catches more than ~1.1 kB per cycle), AOT stays 512 kB. Recorded in tests/soak.rs
+
