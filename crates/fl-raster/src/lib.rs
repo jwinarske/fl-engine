@@ -2,21 +2,25 @@
 //! emblema `Canvas` and drawn.
 //!
 //! The layer tree is flattened as it is walked: a transform or offset layer
-//! is `save` plus `concat`/`translate`, a picture is replayed in place under
-//! its offset, and `pop` is `restore`.
+//! is `save` plus `concat`/`translate`, a clip layer `save` plus a clip, an
+//! opacity layer a `save_layer`, a picture is replayed in place under its
+//! offset, and `pop` is `restore`.
 //!
 //! What emblema cannot yet be asked to draw faithfully is an error, not an
-//! approximation: a draw in a blend mode or color space not mapped here
-//! fails the frame and names what it was. Pixels that are quietly wrong
+//! approximation: a paint with a color space, shader or filter not mapped
+//! here fails the frame and names what it was. Pixels that are quietly wrong
 //! are the failure goldens exist to catch, and they would catch it late.
 
 use std::path::Path;
 
 use emblema::{
-    BackendPreference, Canvas, Color, Context, Extent2D, Paint as EPaint, PixelFormat, Rect,
-    Surface,
+    Affine2, BackendPreference, BlendMode, Canvas, Color, Context, Extent2D, FillRule, Layer,
+    LineCap, LineJoin, MaskBlurStyle, Paint as EPaint, PathBuilder, PixelFormat, Rect,
+    RoundingRadii, StrokeStyle, Style as EStyle, Surface, Vec2,
 };
-use fl_ui::{Draw, LayerOp, Paint, Scene, Style};
+use fl_ui::{
+    Cap, Clip, ClipOp, Draw, FillType, Join, LayerOp, Paint, Picture, RRect, Scene, Seg, Style,
+};
 
 /// Why a frame was not drawn.
 #[derive(Debug)]
@@ -96,75 +100,303 @@ impl Drop for Offscreen {
 }
 
 /// Walks the layer operations into `canvas`. A `pop` with nothing pushed is
-/// ignored, as the engine's builder ignores it.
+/// ignored, as the engine's builder ignores it; layers left open are closed.
 fn replay(canvas: &mut Canvas, scene: &Scene) -> Result<(), RasterError> {
-    let mut depth = 0usize;
+    let base = canvas.save_depth();
+    // The canvas depth before each open layer, so a pop restores exactly
+    // what its push saved, a clip's save layer included.
+    let mut open: Vec<usize> = Vec::new();
     for op in &scene.ops {
+        if !matches!(op, LayerOp::Pop | LayerOp::AddPicture { .. }) {
+            open.push(canvas.save_depth());
+            canvas.save();
+        }
         match op {
             LayerOp::PushTransform(m) => {
-                let m: [f32; 16] = m.map(|v| v as f32);
-                canvas.save();
-                canvas.concat_4x4(&m);
-                depth += 1;
+                canvas.concat_4x4(&m.map(|v| v as f32));
             }
             LayerOp::PushOffset { dx, dy } => {
-                canvas.save();
                 canvas.translate(*dx as f32, *dy as f32);
-                depth += 1;
+            }
+            LayerOp::PushClipRect { ltrb, clip } => {
+                canvas.clip_rect(rect(*ltrb))?;
+                clip_layer(canvas, *clip);
+            }
+            LayerOp::PushClipRRect { rrect, clip } => {
+                canvas.clip_path(&rrect_path(rrect))?;
+                clip_layer(canvas, *clip);
+            }
+            LayerOp::PushClipPath { path, clip } => {
+                clip_to(canvas, path)?;
+                clip_layer(canvas, *clip);
+            }
+            LayerOp::PushOpacity { alpha, dx, dy } => {
+                canvas.translate(*dx as f32, *dy as f32);
+                canvas.save_layer(Layer::opacity(f32::from(*alpha) / 255.0));
             }
             LayerOp::AddPicture { dx, dy, picture } => {
+                let depth = canvas.save_depth();
                 canvas.save();
                 canvas.translate(*dx as f32, *dy as f32);
-                for draw in &picture.draws {
-                    draw_one(canvas, draw)?;
-                }
-                canvas.restore();
+                let drawn = draw_picture(canvas, picture);
+                restore_to(canvas, depth);
+                drawn?;
             }
             LayerOp::Pop => {
-                if depth > 0 {
-                    canvas.restore();
-                    depth -= 1;
+                if let Some(depth) = open.pop() {
+                    restore_to(canvas, depth);
                 }
             }
         }
     }
+    restore_to(canvas, base);
     Ok(())
+}
+
+/// A clip layer's own save layer, for `Clip.antiAliasWithSaveLayer`.
+fn clip_layer(canvas: &mut Canvas, clip: Clip) {
+    if clip == Clip::AntiAliasWithSaveLayer {
+        canvas.save_layer(Layer::default());
+    }
+}
+
+fn restore_to(canvas: &mut Canvas, depth: usize) {
+    while canvas.save_depth() > depth {
+        canvas.restore();
+    }
+}
+
+/// A picture's draws, balanced: saves it leaves open are restored.
+fn draw_picture(canvas: &mut Canvas, picture: &Picture) -> Result<(), RasterError> {
+    let depth = canvas.save_depth();
+    let drawn = picture.draws.iter().try_for_each(|d| draw_one(canvas, d));
+    restore_to(canvas, depth);
+    drawn
 }
 
 fn draw_one(canvas: &mut Canvas, draw: &Draw) -> Result<(), RasterError> {
     match draw {
-        Draw::Rect { ltrb, paint } => {
-            let [l, t, r, b] = ltrb.map(|v| v as f32);
-            canvas.draw_rect(Rect::new(l, t, r, b), &paint_of(paint)?)?;
+        Draw::Save => {
+            canvas.save();
         }
+        Draw::SaveLayer { bounds, paint } => {
+            let layer = layer_of(paint)?;
+            match bounds {
+                Some(b) => canvas.save_layer_bounds(layer, rect(*b)),
+                None => canvas.save_layer(layer),
+            };
+        }
+        Draw::Restore => {
+            canvas.restore();
+        }
+        Draw::Translate(x, y) => {
+            canvas.translate(*x, *y);
+        }
+        Draw::Scale(x, y) => {
+            canvas.scale(*x, *y);
+        }
+        Draw::Rotate(r) => {
+            canvas.rotate(*r);
+        }
+        Draw::Skew(sx, sy) => {
+            // x' = x + sx y, y' = sy x + y, as SkMatrix::setSkew.
+            canvas.concat(Affine2::from_cols_array(&[1.0, *sy, *sx, 1.0, 0.0, 0.0]));
+        }
+        Draw::Transform(m) => {
+            canvas.concat_4x4(&m.map(|v| v as f32));
+        }
+        Draw::ClipRect { ltrb, op, .. } => {
+            match op {
+                ClipOp::Intersect => canvas.clip_rect(rect(*ltrb))?,
+                ClipOp::Difference => canvas.clip_out_rect(rect(*ltrb))?,
+            };
+        }
+        Draw::ClipRRect { rrect, .. } => {
+            canvas.clip_path(&rrect_path(rrect))?;
+        }
+        Draw::ClipPath { path, .. } => clip_to(canvas, path)?,
+        Draw::Paint(p) => {
+            canvas.draw_paint(&paint_of(p)?)?;
+        }
+        Draw::Color { color, blend_mode } => {
+            let [r, g, b, a] = *color;
+            canvas.draw_color(Color::srgb(r, g, b, a), blend_of(*blend_mode)?)?;
+        }
+        Draw::Line { from, to, paint } => {
+            // A line is always stroked, whatever the paint's style, as Skia
+            // and Impeller draw it.
+            let paint = Paint {
+                style: Style::Stroke,
+                ..*paint
+            };
+            canvas.draw_line(vec2(*from), vec2(*to), &paint_of(&paint)?)?;
+        }
+        Draw::Rect { ltrb, paint } => {
+            canvas.draw_rect(rect(*ltrb), &paint_of(paint)?)?;
+        }
+        Draw::RRect { rrect, paint } => {
+            canvas.draw_rrect_with_radii(rect(rrect.ltrb), radii(rrect), &paint_of(paint)?)?;
+        }
+        Draw::DRRect {
+            outer,
+            inner,
+            paint,
+        } => {
+            canvas.draw_drrect_with_radii(
+                rect(outer.ltrb),
+                radii(outer),
+                rect(inner.ltrb),
+                radii(inner),
+                &paint_of(paint)?,
+            )?;
+        }
+        Draw::Oval { ltrb, paint } => {
+            canvas.draw_oval(rect(*ltrb), &paint_of(paint)?)?;
+        }
+        Draw::Circle {
+            center,
+            radius,
+            paint,
+        } => {
+            canvas.draw_circle(vec2(*center), *radius, &paint_of(paint)?)?;
+        }
+        Draw::Path { path, paint } => {
+            // A path with a non-finite point draws nothing, as in Skia.
+            let path = path_of(path);
+            if path.is_finite() {
+                canvas.draw_path(&path, &paint_of(paint)?)?;
+            }
+        }
+        Draw::Picture(p) => draw_picture(canvas, p)?,
     }
     Ok(())
 }
 
-/// srcOver, the default; others are not mapped yet.
-const BLEND_SRC_OVER: i32 = 3;
+fn rect([l, t, r, b]: [f32; 4]) -> Rect {
+    Rect::new(l, t, r, b)
+}
 
-fn paint_of(p: &Paint) -> Result<EPaint, RasterError> {
+fn vec2([x, y]: fl_ui::Point) -> Vec2 {
+    Vec2::new(x, y)
+}
+
+/// dart:ui's corners are top-left, top-right, bottom-right, bottom-left;
+/// emblema's are top-left, top-right, bottom-left, bottom-right.
+fn radii(rr: &RRect) -> RoundingRadii {
+    let [tl, tr, br, bl] = rr.radii;
+    [tl, tr, bl, br]
+}
+
+fn rrect_path(rr: &RRect) -> emblema::Path {
+    rect(rr.ltrb).to_rounded_path_with_radii(radii(rr))
+}
+
+/// Clips to `path`; to nothing if it has a non-finite point, as in Skia.
+fn clip_to(canvas: &mut Canvas, path: &fl_ui::Path) -> Result<(), RasterError> {
+    let path = path_of(path);
+    if path.is_finite() {
+        canvas.clip_path(&path)?;
+    } else {
+        canvas.clip_rect(Rect::new(0.0, 0.0, 0.0, 0.0))?;
+    }
+    Ok(())
+}
+
+fn path_of(p: &fl_ui::Path) -> emblema::Path {
+    let mut b = PathBuilder::new().with_fill_rule(match p.fill {
+        FillType::NonZero => FillRule::NonZero,
+        FillType::EvenOdd => FillRule::EvenOdd,
+    });
+    for s in &p.segs {
+        match *s {
+            Seg::Move(p) => b.move_to(vec2(p)),
+            Seg::Line(p) => b.line_to(vec2(p)),
+            Seg::Quad(c, p) => b.quad_to(vec2(c), vec2(p)),
+            Seg::Conic(c, p, w) => b.conic_to(vec2(c), vec2(p), w),
+            Seg::Cubic(c0, c1, p) => b.cubic_to(vec2(c0), vec2(c1), vec2(p)),
+            Seg::Close => b.close(),
+        };
+    }
+    b.build()
+}
+
+/// dart:ui's `BlendMode`, by index, as emblema names it. The two enums
+/// hold the same modes in different orders.
+fn blend_of(i: i32) -> Result<BlendMode, RasterError> {
+    use BlendMode::*;
+    const MODES: [BlendMode; 29] = [
+        Clear, Src, Dst, SrcOver, DstOver, SrcIn, DstIn, SrcOut, DstOut, SrcATop, DstATop, Xor,
+        Plus, Modulate, Screen, Overlay, Darken, Lighten, ColorDodge, ColorBurn, HardLight,
+        SoftLight, Difference, Exclusion, Multiply, Hue, Saturation, Color, Luminosity,
+    ];
+    usize::try_from(i)
+        .ok()
+        .and_then(|i| MODES.get(i).copied())
+        .ok_or_else(|| RasterError::Unsupported(format!("blend mode {i}")))
+}
+
+/// What of a Paint emblema is not given yet, named.
+fn unmapped(p: &Paint) -> Option<String> {
     if p.color_space != 0 {
-        return Err(RasterError::Unsupported(format!(
+        return Some(format!(
             "color space {} (only sRGB, 0, is mapped)",
             p.color_space
-        )));
+        ));
     }
-    if p.blend_mode != BLEND_SRC_OVER {
-        return Err(RasterError::Unsupported(format!(
-            "blend mode {} (only srcOver, 3, is mapped)",
-            p.blend_mode
-        )));
+    if p.objects {
+        return Some("a shader, color filter or image filter".into());
+    }
+    if p.invert_colors {
+        return Some("invertColors".into());
+    }
+    None
+}
+
+/// A `saveLayer` paint: its alpha and blend mode composite the layer.
+fn layer_of(p: &Paint) -> Result<Layer, RasterError> {
+    if let Some(what) = unmapped(p).or_else(|| p.mask_blur.map(|_| "a layer mask filter".into())) {
+        return Err(RasterError::Unsupported(what));
+    }
+    Ok(Layer::opacity(p.color[3]).with_blend(blend_of(p.blend_mode)?))
+}
+
+fn paint_of(p: &Paint) -> Result<EPaint, RasterError> {
+    if let Some(what) = unmapped(p) {
+        return Err(RasterError::Unsupported(what));
     }
     // dart:ui colors are sRGB-encoded components, as emblema's `srgb` takes.
     let [r, g, b, a] = p.color;
     let color = Color::srgb(r, g, b, a);
-    let paint = match p.style {
+    let mut paint = match p.style {
         Style::Fill => EPaint::fill(color),
-        Style::Stroke => EPaint::stroke(color, p.stroke_width),
+        Style::Stroke => EPaint::fill(color).with_style(EStyle::Stroke(StrokeStyle {
+            width: p.stroke_width,
+            cap: match p.stroke_cap {
+                Cap::Butt => LineCap::Butt,
+                Cap::Round => LineCap::Round,
+                Cap::Square => LineCap::Square,
+            },
+            join: match p.stroke_join {
+                Join::Miter => LineJoin::Miter,
+                Join::Round => LineJoin::Round,
+                Join::Bevel => LineJoin::Bevel,
+            },
+            miter_limit: p.stroke_miter_limit,
+        })),
     };
-    Ok(paint.with_anti_alias(p.anti_alias))
+    if let Some((style, sigma)) = p.mask_blur {
+        paint = paint
+            .with_mask_blur(sigma)
+            .with_mask_blur_style(match style {
+                1 => MaskBlurStyle::Solid,
+                2 => MaskBlurStyle::Outer,
+                3 => MaskBlurStyle::Inner,
+                _ => MaskBlurStyle::Normal,
+            });
+    }
+    Ok(paint
+        .with_blend(blend_of(p.blend_mode)?)
+        .with_anti_alias(p.anti_alias))
 }
 
 /// Writes `rgba` (`width * height` RGBA8 pixels, top row first) as a PNG.
@@ -182,35 +414,21 @@ pub fn write_png(path: &Path, width: u32, height: u32, rgba: &[u8]) -> Result<()
 #[cfg(test)]
 mod tests {
     use super::*;
-    use fl_ui::Picture;
+    use fl_ui::Clip;
     use std::sync::Arc;
 
-    fn rect_scene(ltrb: [f64; 4], paint: Paint) -> Scene {
-        Scene {
-            ops: vec![
-                LayerOp::PushTransform([
-                    1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
-                ]),
-                LayerOp::AddPicture {
-                    dx: 0.0,
-                    dy: 0.0,
-                    picture: Arc::new(Picture {
-                        draws: vec![Draw::Rect { ltrb, paint }],
-                    }),
-                },
-                LayerOp::Pop,
-            ],
-        }
+    fn picture(draws: Vec<Draw>) -> Arc<Picture> {
+        Arc::new(Picture { draws })
     }
 
     #[test]
-    fn unmapped_blend_and_color_space_are_errors() {
-        let multiply = Paint {
-            blend_mode: 24,
+    fn unmapped_paints_are_errors() {
+        let out_of_range = Paint {
+            blend_mode: 40,
             ..Paint::default()
         };
         assert!(matches!(
-            paint_of(&multiply),
+            paint_of(&out_of_range),
             Err(RasterError::Unsupported(_))
         ));
         let p3 = Paint {
@@ -218,7 +436,34 @@ mod tests {
             ..Paint::default()
         };
         assert!(matches!(paint_of(&p3), Err(RasterError::Unsupported(_))));
+        let shader = Paint {
+            objects: true,
+            ..Paint::default()
+        };
+        assert!(matches!(
+            paint_of(&shader),
+            Err(RasterError::Unsupported(_))
+        ));
         assert!(paint_of(&Paint::default()).is_ok());
+    }
+
+    #[test]
+    fn blend_modes_map_by_name() {
+        // dart:ui's multiply is index 24; emblema's enum has it elsewhere.
+        assert_eq!(blend_of(24).unwrap(), BlendMode::Multiply);
+        assert_eq!(blend_of(3).unwrap(), BlendMode::SrcOver);
+        assert_eq!(blend_of(28).unwrap(), BlendMode::Luminosity);
+        assert!(blend_of(-1).is_err());
+    }
+
+    #[test]
+    fn rrect_corners_are_reordered() {
+        let rr = RRect {
+            ltrb: [0.0, 0.0, 10.0, 10.0],
+            radii: [[1.0; 2], [2.0; 2], [3.0; 2], [4.0; 2]],
+        };
+        // dart:ui TL TR BR BL to emblema TL TR BL BR.
+        assert_eq!(radii(&rr), [[1.0; 2], [2.0; 2], [4.0; 2], [3.0; 2]]);
     }
 
     #[test]
@@ -229,6 +474,88 @@ mod tests {
         };
         assert!(replay(&mut canvas, &scene).is_ok());
         assert_eq!(canvas.save_depth(), 0);
-        let _ = rect_scene([0.0; 4], Paint::default());
+    }
+
+    #[test]
+    fn each_pop_undoes_its_push_and_open_layers_close() {
+        let mut canvas = Canvas::new(Extent2D::new(8, 8));
+        let scene = Scene {
+            ops: vec![
+                LayerOp::PushClipRect {
+                    ltrb: [0.0, 0.0, 4.0, 4.0],
+                    clip: Clip::AntiAliasWithSaveLayer,
+                },
+                LayerOp::PushOpacity {
+                    alpha: 128,
+                    dx: 1.0,
+                    dy: 1.0,
+                },
+                // A picture that leaves a save open.
+                LayerOp::AddPicture {
+                    dx: 0.0,
+                    dy: 0.0,
+                    picture: picture(vec![Draw::Save, Draw::Save, Draw::Restore]),
+                },
+                LayerOp::Pop,
+                // The clip layer left open.
+            ],
+        };
+        assert!(replay(&mut canvas, &scene).is_ok());
+        assert_eq!(canvas.save_depth(), 0);
+    }
+
+    #[test]
+    fn a_failed_draw_leaves_the_canvas_balanced() {
+        let mut canvas = Canvas::new(Extent2D::new(8, 8));
+        let bad = Paint {
+            objects: true,
+            ..Paint::default()
+        };
+        let scene = Scene {
+            ops: vec![LayerOp::AddPicture {
+                dx: 0.0,
+                dy: 0.0,
+                picture: picture(vec![
+                    Draw::Save,
+                    Draw::Rect {
+                        ltrb: [0.0, 0.0, 1.0, 1.0],
+                        paint: bad,
+                    },
+                ]),
+            }],
+        };
+        assert!(matches!(
+            replay(&mut canvas, &scene),
+            Err(RasterError::Unsupported(_))
+        ));
+        assert_eq!(canvas.save_depth(), 0);
+    }
+
+    #[test]
+    fn non_finite_paths_draw_nothing_and_clip_to_nothing() {
+        let mut path = fl_ui::Path::default();
+        path.move_to([0.0, 0.0]);
+        path.line_to([f32::NAN, 1.0]);
+        path.line_to([1.0, 1.0]);
+        let path = Arc::new(path);
+        let mut canvas = Canvas::new(Extent2D::new(8, 8));
+        let scene = Scene {
+            ops: vec![LayerOp::AddPicture {
+                dx: 0.0,
+                dy: 0.0,
+                picture: picture(vec![
+                    Draw::Path {
+                        path: Arc::clone(&path),
+                        paint: Paint::default(),
+                    },
+                    Draw::ClipPath {
+                        path,
+                        anti_alias: true,
+                    },
+                ]),
+            }],
+        };
+        assert!(replay(&mut canvas, &scene).is_ok());
+        assert_eq!(canvas.finish().draw_count(), 0);
     }
 }

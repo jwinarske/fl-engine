@@ -13,6 +13,8 @@ Not published, no versions yet.
 * `tools/flutter-app/build.sh`: libapp.so from the pinned Flutter release, no desktop shell
 * Flutter app lane in CI
 * JIT timeline recorder off: isolate cycles no longer grow about 130 bytes each
+* The drawing set: Canvas, Path, clip and opacity layers; 79 natives in all. `shapes` matches the stock engine's golden within its recorded tolerance
+* `fl-dart run-app --ops`: a frame's layers and draws
 
 ### Milestone 1: Dart VM hosted from Rust
 

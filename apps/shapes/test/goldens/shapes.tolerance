@@ -1,0 +1,9 @@
+# shapes.png, rendered by the stock engine's flutter_tester, against
+# fl-engine's frame through emblema (docs/m2-dart-ui.md §9). Percent of
+# pixels allowed to differ in any channel, and by more than 32.
+#
+# Edges only: emblema covers anti-aliased edges its own way. Every
+# interior pixel matches, the opacity cell included. Measured 2026-10-28,
+# lavapipe: 0.628% differ, 0.121% by more than 32.
+differ 1.0
+differ_over_32 0.25

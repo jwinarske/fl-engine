@@ -3,7 +3,7 @@
 //! ```text
 //! fl-dart run hello.dill [args...]       # JIT, dev hosts (--features jit)
 //! fl-dart run-aot hello.aot [args...]    # precompiled runtime, every target
-//! fl-dart run-app libapp.so [WxH[@dpr]] [--png out.png]
+//! fl-dart run-app libapp.so [WxH[@dpr]] [--png out.png] [--ops]
 //!                                       # a Flutter app, through dart:ui (M2)
 //! fl-dart cycle <program> <n>            # leak harness: n isolate lifecycles
 //! ```
@@ -37,7 +37,7 @@ fn main() -> ExitCode {
         "run-aot" => run_aot(path, &rest),
         #[cfg(feature = "aot")]
         "run-app" => match app_args(&rest) {
-            Some((view, png)) => run_app(path, view, png),
+            Some((view, png, ops)) => run_app(path, view, png, ops),
             None => return usage(),
         },
         "cycle" => match rest.first().and_then(|n| n.parse().ok()) {
@@ -73,7 +73,7 @@ fn usage() -> ExitCode {
     };
     eprintln!("usage: fl-dart {modes} [args...]\n       fl-dart cycle <{prog}> <n>");
     if cfg!(feature = "aot") {
-        eprintln!("       fl-dart run-app <libapp.so> [WxH[@dpr]] [--png out.png]");
+        eprintln!("       fl-dart run-app <libapp.so> [WxH[@dpr]] [--png out.png] [--ops]");
     }
     ExitCode::from(64)
 }
@@ -144,6 +144,7 @@ fn run_app(
     path: &str,
     view: fl_shell::ViewConfig,
     png: Option<std::path::PathBuf>,
+    ops: bool,
 ) -> Result<(), Failure> {
     use std::sync::{Arc, Mutex};
 
@@ -182,6 +183,9 @@ fn run_app(
             f.height,
             summary(&f.scene)
         );
+        if ops {
+            print!("{}", outline(&f.scene));
+        }
         if let Some(raster) = fr.raster.as_mut() {
             match raster.render(&f.scene) {
                 Ok(pixels) => fr.last = Some(pixels),
@@ -219,27 +223,72 @@ fn summary(scene: &fl_ui::Scene) -> String {
     let (mut layers, mut pictures, mut draws) = (0, 0, 0);
     for op in &scene.ops {
         match op {
-            LayerOp::PushTransform(_) | LayerOp::PushOffset { .. } => layers += 1,
             LayerOp::AddPicture { picture, .. } => {
                 pictures += 1;
                 draws += picture.draws.len();
             }
             LayerOp::Pop => {}
+            _ => layers += 1,
         }
     }
     format!("layers={layers} pictures={pictures} draws={draws}")
 }
 
-/// `[WxH[@dpr]] [--png out.png]`, in either order; no size is the default
-/// view. Sizes are physical pixels.
+/// A scene's operations, one per line, each picture's draws indented under
+/// it: the kinds only, no geometry, so a test can check the structure the
+/// framework built while the golden checks the pixels.
 #[cfg(feature = "aot")]
-fn app_args(args: &[&str]) -> Option<(fl_shell::ViewConfig, Option<std::path::PathBuf>)> {
+fn outline(scene: &fl_ui::Scene) -> String {
+    use fl_ui::{Draw, LayerOp};
+    use std::fmt::Write;
+    // The variant name of a Debug rendering: `Rect { .. }` is `Rect`.
+    fn kind(d: &impl std::fmt::Debug) -> String {
+        let s = format!("{d:?}");
+        s.split(|c: char| !c.is_alphanumeric())
+            .next()
+            .unwrap_or_default()
+            .to_owned()
+    }
+    fn draws(out: &mut String, depth: usize, list: &[Draw]) {
+        for d in list {
+            let _ = writeln!(out, "{:w$}{}", "", kind(d), w = depth * 2);
+            if let Draw::Picture(p) = d {
+                draws(out, depth + 1, &p.draws);
+            }
+        }
+    }
+    let mut out = String::new();
+    let mut depth = 1usize;
+    for op in &scene.ops {
+        if matches!(op, LayerOp::Pop) {
+            depth = depth.saturating_sub(1).max(1);
+        }
+        let _ = writeln!(out, "{:w$}{}", "", kind(op), w = depth * 2);
+        match op {
+            LayerOp::Pop => {}
+            LayerOp::AddPicture { picture, .. } => draws(&mut out, depth + 1, &picture.draws),
+            _ => depth += 1,
+        }
+    }
+    out
+}
+
+/// `[WxH[@dpr]] [--png out.png] [--ops]`, in any order; no size is the
+/// default view. Sizes are physical pixels. `--ops` prints each frame's
+/// [`outline`].
+#[cfg(feature = "aot")]
+fn app_args(args: &[&str]) -> Option<(fl_shell::ViewConfig, Option<std::path::PathBuf>, bool)> {
     let mut view = fl_shell::ViewConfig::default();
     let mut png = None;
+    let mut ops = false;
     let mut it = args.iter();
     while let Some(a) = it.next() {
         if *a == "--png" {
             png = Some(std::path::PathBuf::from(it.next()?));
+            continue;
+        }
+        if *a == "--ops" {
+            ops = true;
             continue;
         }
         let (size, dpr) = match a.split_once('@') {
@@ -253,7 +302,7 @@ fn app_args(args: &[&str]) -> Option<(fl_shell::ViewConfig, Option<std::path::Pa
             view.device_pixel_ratio = dpr.parse().ok().filter(|v: &f64| *v > 0.0)?;
         }
     }
-    Some((view, png))
+    Some((view, png, ops))
 }
 
 fn config(path: &str) -> IsolateConfig {

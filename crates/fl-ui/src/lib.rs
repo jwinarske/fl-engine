@@ -1,11 +1,10 @@
 //! dart:ui's natives (brief M2 §3): the `@Native` functions the Flutter
 //! framework calls, resolved through [`resolve`].
 //!
-//! Stage 1 of the brief's §12: every native on a framework app's path to its
-//! first frame is present. The platform ones that need nothing are stubs,
-//! listed in [`STUBS`] with what each returns. The drawing ones keep the
-//! structure of what they are given (a picture's draws, a scene's layers) so
-//! the path can be checked end to end; turning that into pixels is stage 3.
+//! The platform natives that need nothing are stubs, listed in [`STUBS`]
+//! with what each returns. The drawing ones keep what they are given, a
+//! picture's draws and a scene's layers, as plain data; fl-raster turns
+//! that into pixels.
 //!
 //! `PlatformConfigurationNativeApi::Render` hands each frame to the sink set
 //! with [`set_frame_sink`], on the UI thread.
@@ -16,11 +15,13 @@ use fl_dart_ffi::{lookup, Symbol};
 
 mod compositing;
 mod painting;
+mod path;
 mod platform;
 mod semantics;
 
-pub use compositing::{LayerOp, Scene};
-pub use painting::{Draw, Paint, Picture, Style};
+pub use compositing::{Clip, LayerOp, Scene};
+pub use painting::{Cap, ClipOp, Draw, Join, Paint, Picture, Style};
+pub use path::{Affine, FillType, Path, Point, RRect, Seg};
 pub use platform::{set_frame_sink, Frame};
 
 /// Every dart:ui native this crate implements.
@@ -69,9 +70,66 @@ pub static NATIVES: &[Symbol] = &[
     // painting.dart
     fl_dart_ffi::symbol!("PictureRecorder::Create", 1, painting::recorder_create),
     fl_dart_ffi::symbol!("PictureRecorder::endRecording", 2, painting::recorder_end),
-    fl_dart_ffi::symbol!("Canvas::Create", 6, painting::canvas_create),
-    fl_dart_ffi::symbol!("Canvas::drawRect", 7, painting::canvas_draw_rect),
     fl_dart_ffi::symbol!("Picture::dispose", 1, painting::picture_dispose),
+    fl_dart_ffi::symbol!("Canvas::Create", 6, painting::canvas_create),
+    fl_dart_ffi::symbol!("Canvas::save", 1, painting::save),
+    fl_dart_ffi::symbol!(
+        "Canvas::saveLayerWithoutBounds",
+        3,
+        painting::save_layer_without_bounds
+    ),
+    fl_dart_ffi::symbol!("Canvas::saveLayer", 7, painting::save_layer),
+    fl_dart_ffi::symbol!("Canvas::restore", 1, painting::restore),
+    fl_dart_ffi::symbol!("Canvas::restoreToCount", 2, painting::restore_to_count),
+    fl_dart_ffi::symbol!("Canvas::getSaveCount", 1, painting::get_save_count),
+    fl_dart_ffi::symbol!("Canvas::translate", 3, painting::translate),
+    fl_dart_ffi::symbol!("Canvas::scale", 3, painting::scale),
+    fl_dart_ffi::symbol!("Canvas::rotate", 2, painting::rotate),
+    fl_dart_ffi::symbol!("Canvas::skew", 3, painting::skew),
+    fl_dart_ffi::symbol!("Canvas::transform", 2, painting::transform),
+    fl_dart_ffi::symbol!("Canvas::clipRect", 7, painting::clip_rect),
+    fl_dart_ffi::symbol!("Canvas::clipRRect", 3, painting::clip_rrect),
+    fl_dart_ffi::symbol!("Canvas::clipPath", 3, painting::clip_path),
+    fl_dart_ffi::symbol!("Canvas::drawColor", 3, painting::draw_color),
+    fl_dart_ffi::symbol!("Canvas::drawLine", 7, painting::draw_line),
+    fl_dart_ffi::symbol!("Canvas::drawPaint", 3, painting::draw_paint),
+    fl_dart_ffi::symbol!("Canvas::drawRect", 7, painting::draw_rect),
+    fl_dart_ffi::symbol!("Canvas::drawRRect", 4, painting::draw_rrect),
+    fl_dart_ffi::symbol!("Canvas::drawDRRect", 5, painting::draw_drrect),
+    fl_dart_ffi::symbol!("Canvas::drawOval", 7, painting::draw_oval),
+    fl_dart_ffi::symbol!("Canvas::drawCircle", 6, painting::draw_circle),
+    fl_dart_ffi::symbol!("Canvas::drawArc", 10, painting::draw_arc),
+    fl_dart_ffi::symbol!("Canvas::drawPath", 4, painting::draw_path),
+    fl_dart_ffi::symbol!("Canvas::drawPicture", 2, painting::draw_picture),
+    fl_dart_ffi::symbol!("Path::Create", 1, path::create),
+    fl_dart_ffi::symbol!("Path::clone", 2, path::clone),
+    fl_dart_ffi::symbol!("Path::getFillType", 1, path::get_fill_type),
+    fl_dart_ffi::symbol!("Path::setFillType", 2, path::set_fill_type),
+    fl_dart_ffi::symbol!("Path::moveTo", 3, path::move_to),
+    fl_dart_ffi::symbol!("Path::relativeMoveTo", 3, path::relative_move_to),
+    fl_dart_ffi::symbol!("Path::lineTo", 3, path::line_to),
+    fl_dart_ffi::symbol!("Path::relativeLineTo", 3, path::relative_line_to),
+    fl_dart_ffi::symbol!("Path::quadraticBezierTo", 5, path::quad_to),
+    fl_dart_ffi::symbol!("Path::relativeQuadraticBezierTo", 5, path::relative_quad_to),
+    fl_dart_ffi::symbol!("Path::cubicTo", 7, path::cubic_to),
+    fl_dart_ffi::symbol!("Path::relativeCubicTo", 7, path::relative_cubic_to),
+    fl_dart_ffi::symbol!("Path::conicTo", 6, path::conic_to),
+    fl_dart_ffi::symbol!("Path::relativeConicTo", 6, path::relative_conic_to),
+    fl_dart_ffi::symbol!("Path::arcTo", 8, path::arc_to),
+    fl_dart_ffi::symbol!("Path::arcToPoint", 8, path::arc_to_point),
+    fl_dart_ffi::symbol!("Path::relativeArcToPoint", 8, path::relative_arc_to_point),
+    fl_dart_ffi::symbol!("Path::addRect", 5, path::add_rect),
+    fl_dart_ffi::symbol!("Path::addOval", 5, path::add_oval),
+    fl_dart_ffi::symbol!("Path::addArc", 7, path::add_arc),
+    fl_dart_ffi::symbol!("Path::addPolygon", 3, path::add_polygon),
+    fl_dart_ffi::symbol!("Path::addRRect", 2, path::add_rrect),
+    fl_dart_ffi::symbol!("Path::addPath", 4, path::add_path),
+    fl_dart_ffi::symbol!("Path::addPathWithMatrix", 5, path::add_path_with_matrix),
+    fl_dart_ffi::symbol!("Path::close", 1, path::close),
+    fl_dart_ffi::symbol!("Path::reset", 1, path::reset),
+    fl_dart_ffi::symbol!("Path::shift", 4, path::shift),
+    fl_dart_ffi::symbol!("Path::transform", 3, path::transform),
+    fl_dart_ffi::symbol!("Path::getBounds", 1, path::get_bounds),
     // compositing.dart
     fl_dart_ffi::symbol!("SceneBuilder::Create", 1, compositing::builder_create),
     fl_dart_ffi::symbol!(
@@ -80,6 +138,14 @@ pub static NATIVES: &[Symbol] = &[
         compositing::push_transform
     ),
     fl_dart_ffi::symbol!("SceneBuilder::pushOffset", 5, compositing::push_offset),
+    fl_dart_ffi::symbol!("SceneBuilder::pushClipRect", 8, compositing::push_clip_rect),
+    fl_dart_ffi::symbol!(
+        "SceneBuilder::pushClipRRect",
+        5,
+        compositing::push_clip_rrect
+    ),
+    fl_dart_ffi::symbol!("SceneBuilder::pushClipPath", 5, compositing::push_clip_path),
+    fl_dart_ffi::symbol!("SceneBuilder::pushOpacity", 6, compositing::push_opacity),
     fl_dart_ffi::symbol!("SceneBuilder::addPicture", 5, compositing::add_picture),
     fl_dart_ffi::symbol!("SceneBuilder::pop", 1, compositing::pop),
     fl_dart_ffi::symbol!("SceneBuilder::build", 2, compositing::build),

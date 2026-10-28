@@ -137,6 +137,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: ci/annotate-on-fail.sh cargo xtask fetch-prebuilt --target x86_64-unknown-linux-gnu --mode aot
+      # The committed goldens are what the pinned stock engine renders now:
+      # flutter test compares exactly, so a pin bump that changes them fails
+      # here, not as drift in fl-engine's tolerance.
+      - name: Goldens
+        run: cd apps/shapes && "$FLUTTER_ROOT/bin/flutter" test
       - name: Apps
         env:
           GITHUB_TOKEN: ${{ github.token }}

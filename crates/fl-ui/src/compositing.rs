@@ -1,16 +1,16 @@
 //! `SceneBuilder`, `EngineLayer` and `Scene`.
 //!
 //! The builder records the framework's layer operations in order; `build`
-//! freezes them into an immutable [`Scene`], which `render` hands on. Stage 1
-//! keeps the operations as given; flattening them into an emblema canvas is
-//! stage 3.
+//! freezes them into an immutable [`Scene`], which `render` hands on.
+//! Flattening them into one canvas is the raster side's business.
 
 use std::ffi::c_void;
 use std::sync::Arc;
 
-use fl_dart_ffi::{guard, peer, sys};
+use fl_dart_ffi::{args, guard, peer, sys};
 
 use crate::painting::Picture;
+use crate::path::{self, Path, RRect};
 
 /// One SceneBuilder call.
 #[derive(Debug, Clone)]
@@ -21,12 +21,50 @@ pub enum LayerOp {
         dx: f64,
         dy: f64,
     },
+    PushClipRect {
+        ltrb: [f32; 4],
+        clip: Clip,
+    },
+    PushClipRRect {
+        rrect: RRect,
+        clip: Clip,
+    },
+    PushClipPath {
+        path: Arc<Path>,
+        clip: Clip,
+    },
+    /// Children composited at `alpha` (0-255), offset by `dx`, `dy`.
+    PushOpacity {
+        alpha: u8,
+        dx: f64,
+        dy: f64,
+    },
     AddPicture {
         dx: f64,
         dy: f64,
         picture: Arc<Picture>,
     },
     Pop,
+}
+
+/// `Clip`, the behavior of a clip layer. `none` never reaches a layer: the
+/// framework pushes no clip for it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Clip {
+    HardEdge,
+    AntiAlias,
+    /// Anti-aliased, and the children drawn into a layer of their own.
+    AntiAliasWithSaveLayer,
+}
+
+impl Clip {
+    fn from_index(i: i32) -> Clip {
+        match i {
+            2 => Clip::AntiAlias,
+            3 => Clip::AntiAliasWithSaveLayer,
+            _ => Clip::HardEdge,
+        }
+    }
 }
 
 /// A built scene: the layer operations, balanced.
@@ -98,6 +136,111 @@ pub(crate) extern "C" fn push_offset(
         };
         // SAFETY: a Handle-parameter native.
         unsafe { new_layer(out_layer, "SceneBuilder::pushOffset") };
+    });
+}
+
+/// Records `op` and attaches a layer to `out_layer`.
+///
+/// # Safety
+/// `builder` is the receiver's native field; a Handle-parameter native.
+unsafe fn push_layer(builder: *mut c_void, out_layer: sys::Dart_Handle, op: LayerOp, what: &str) {
+    // SAFETY: per this function's contract.
+    unsafe {
+        peer::with::<Builder, _>(builder, |b| b.ops.push(op));
+        new_layer(out_layer, what);
+    }
+}
+
+/// `Void Function(Pointer<Void>, Handle outLayer, Double left, Double right,
+/// Double top, Double bottom, Int32 clipBehavior, Handle oldLayer)`: note
+/// the order, left and right first.
+#[allow(clippy::too_many_arguments)]
+pub(crate) extern "C" fn push_clip_rect(
+    builder: *mut c_void,
+    out_layer: sys::Dart_Handle,
+    left: f64,
+    right: f64,
+    top: f64,
+    bottom: f64,
+    clip: i32,
+    _old_layer: sys::Dart_Handle,
+) {
+    guard((), || {
+        let op = LayerOp::PushClipRect {
+            ltrb: [left as f32, top as f32, right as f32, bottom as f32],
+            clip: Clip::from_index(clip),
+        };
+        // SAFETY: builder is the receiver's native field; Handle parameters.
+        unsafe { push_layer(builder, out_layer, op, "SceneBuilder::pushClipRect") };
+    });
+}
+
+/// `Void Function(Pointer<Void>, Handle outLayer, Handle Float32List rrect, Int32 clipBehavior, Handle oldLayer)`.
+pub(crate) extern "C" fn push_clip_rrect(
+    builder: *mut c_void,
+    out_layer: sys::Dart_Handle,
+    rrect: sys::Dart_Handle,
+    clip: i32,
+    _old_layer: sys::Dart_Handle,
+) {
+    guard((), || {
+        // SAFETY: a Handle-parameter native; rrect is a live handle.
+        let Some(rrect) = unsafe { args::f32s(rrect) }
+            .as_deref()
+            .and_then(RRect::from_f32s)
+        else {
+            eprintln!("fl-ui: SceneBuilder::pushClipRRect: not an RRect");
+            return;
+        };
+        let op = LayerOp::PushClipRRect {
+            rrect,
+            clip: Clip::from_index(clip),
+        };
+        // SAFETY: as push_clip_rect.
+        unsafe { push_layer(builder, out_layer, op, "SceneBuilder::pushClipRRect") };
+    });
+}
+
+/// `Void Function(Pointer<Void>, Handle outLayer, Pointer<Void> path, Int32 clipBehavior, Handle oldLayer)`.
+pub(crate) extern "C" fn push_clip_path(
+    builder: *mut c_void,
+    out_layer: sys::Dart_Handle,
+    p: *mut c_void,
+    clip: i32,
+    _old_layer: sys::Dart_Handle,
+) {
+    guard((), || {
+        // SAFETY: p is the path argument's native field.
+        let Some(path) = (unsafe { path::snapshot(p) }) else {
+            eprintln!("fl-ui: SceneBuilder::pushClipPath: not a live Path");
+            return;
+        };
+        let op = LayerOp::PushClipPath {
+            path,
+            clip: Clip::from_index(clip),
+        };
+        // SAFETY: as push_clip_rect.
+        unsafe { push_layer(builder, out_layer, op, "SceneBuilder::pushClipPath") };
+    });
+}
+
+/// `Void Function(Pointer<Void>, Handle outLayer, Int32 alpha, Double dx, Double dy, Handle oldLayer)`.
+pub(crate) extern "C" fn push_opacity(
+    builder: *mut c_void,
+    out_layer: sys::Dart_Handle,
+    alpha: i32,
+    dx: f64,
+    dy: f64,
+    _old_layer: sys::Dart_Handle,
+) {
+    guard((), || {
+        let op = LayerOp::PushOpacity {
+            alpha: alpha.clamp(0, 255) as u8,
+            dx,
+            dy,
+        };
+        // SAFETY: as push_clip_rect.
+        unsafe { push_layer(builder, out_layer, op, "SceneBuilder::pushOpacity") };
     });
 }
 

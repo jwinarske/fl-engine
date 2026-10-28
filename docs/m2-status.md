@@ -40,7 +40,39 @@ Pulled forward from stages 2 and 3 for one app: its first frame as pixels.
 * Rastering runs in the frame sink on the UI thread. The raster thread comes with the frame loop (stage 4)
 * App lane installs lavapipe (`mesa-vulkan-drivers`), as emblema's CI does
 
-Next, stage 2 proper: the rest of the drawing set, and the scene checked op by op.
+## Stage 2: the drawing set, shapes to its golden (2026-10-28)
+
+Done: `shapes` records the expected scene, and its frame matches the stock engine's within the recorded tolerance.
+
+    tools/flutter-app/build.sh $FLUTTER_ROOT apps/shapes out
+    fl-dart run-app out/shapes.so 800x600@2 --ops --png shapes.png
+    frame 1: view 0 800x600 layers=3 pictures=3 draws=22
+
+* `apps/shapes`: one cell each for drawRect, drawRRect, drawPath, drawCircle, canvas clipRRect, stroked rect, canvas transform, pushClipRect over pushOpacity, drawLine with round caps. 400x300 logical at DPR 2
+* Natives: 57 more, 79 in all. Not yet: Canvas images, atlases, vertices, points, shadows, superellipses, `getTransform`, clip bounds; Path `op`, `contains`, `extendWithPath*`, superellipses; SceneBuilder filters, shader masks, backdrops, textures, platform views, `addRetained`
+* `drawArc` is recorded as the path it draws
+* Paint: stroke cap, join, miter limit, mask blur, invertColors, and whether a shader or filter is set
+* `fl-ui` Path: move, line, quad, conic, cubic, close. Rects, ovals, arcs and rounded rects become those as they are added; arcs and ovals as conics, exact. `arcToPoint` per SVG 1.1 F.6.5; Skia's implicit moveTo before a first segment and after a close
+* `fl-ui` has no emblema dependency; `fl-raster` maps Path to `PathBuilder`, RRect to emblema's radii, all 29 blend modes by name
+* Clip layers are `save` plus a clip; `antiAliasWithSaveLayer` adds a layer. Opacity layers are `save_layer`. Each pop restores to the depth its push started at
+* Still a named error, not approximated: shaders, color and image filters, invertColors, color spaces other than sRGB, mask filters on a saveLayer
+* `run-app --ops`: each frame's layers and draws by kind, no geometry. The app test checks it line for line
+* Golden: `flutter test --update-goldens` in apps/shapes, the stock engine's flutter_tester at the same size and DPR. Committed with `shapes.tolerance` beside it: 1.0% of pixels may differ, 0.25% by more than 32
+* Measured: 0.628% differ, 0.121% by more than 32. Edges only: every interior pixel matches, the opacity cell included (emblema blends in the target's encoding here, as Skia does)
+* App lane runs `flutter test` on apps/shapes first: an exact compare, so a pin bump that changes the golden fails there
+* L2-app: every native's argument count checked against the pinned dart:ui's `@Native` declarations
+
+Found on the way:
+
+* `pushClipRect` takes left, right, top, bottom, not l, t, r, b
+* dart:ui's RRect corners are TL, TR, BR, BL; emblema's are TL, TR, BL, BR. Swapped in `fl-raster`
+* dart:ui and emblema list blend modes in different orders: multiply is 24 in one and 14 in the other. Mapped by name
+* `drawLine` strokes whatever the paint's style; with the fill default emblema drew nothing. Forced to stroke
+* A non-finite path draws nothing and clips to nothing, as in Skia, rather than failing the frame
+* Clipping is hard-edged in emblema; the clipped cell differs from the golden only along its edge
+* Two app tests building one app ran build.sh at once into the same file; builds are now once per test process
+
+Next: stage 4, the frame loop (`ticker`), then `material`.
 
 ## Fixed: JIT isolate-cycle growth (2026-10-28)
 
