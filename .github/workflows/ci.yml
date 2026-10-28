@@ -105,7 +105,8 @@ jobs:
     env:
       FLUTTER_VERSION: 3.47.8
       FLUTTER_COMMIT: 737ba8f885dc774b53b442759999a312c9461e4e
-      FLUTTER_ROOT: ${{ github.workspace }}/../flutter
+      # Inside the workspace: actions/cache refuses paths with "..".
+      FLUTTER_ROOT: ${{ github.workspace }}/.flutter
     steps:
       - uses: actions/checkout@v4
       - run: rustup show

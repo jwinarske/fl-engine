@@ -7,3 +7,5 @@
 
 # Flutter apps: pub's working state. pubspec.lock is kept.
 /apps/*/.dart_tool/
+# The app lane's Flutter checkout (ci.yml).
+/.flutter/
