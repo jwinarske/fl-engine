@@ -125,6 +125,22 @@ Found on the way:
 * `blend_of` is now a lookup in `BlendMode::ALL`, which is in dart:ui's index order; the by-name table is gone. A test holds every index to its discriminant
 * Pixels against 0.2.0: `colored_box`, `shapes` and `material` are byte-identical PNGs. `ticker` differs only because the two runs missed different ticks while warming up (100 ms against 83 ms in one interval); each run's last frame is exactly the color its own vsync times give. Against the goldens: unchanged, 0.628% and 0.067%
 
+## Apps in the leak lanes (2026-10-28)
+
+Exit criterion 7, the soak half.
+
+    fl-dart app-cycle out/colored_box.so 1000
+    cycles=1000 frames=2000 rss_warm_kb=9700 rss_tenth_kb=10612 rss_end_kb=10688 fds_warm=8 fds_end=8 persistent_handles=0
+
+* `fl-dart app-cycle <libapp.so> <n> [run-app options]`: n app lifecycles in one VM, each as `run-app` runs it, quietly; `cycle`'s report plus the frames rendered. With `--png`, one raster thread serves every cycle
+* `run-app --hz H`: the vsync rate, so 10,000 frames take ten seconds, not three minutes
+* soak.rs `app_cycles_stay_flat`: colored_box and material 1,000 cycles, shapes 300, ticker 100 of 100 frames at 1 kHz through the raster thread. Same bound as isolate cycles, 512 kB from a tenth to the end; frames, descriptors and handles exact. Measured +76, +8, +92 and 0 kB
+* soak.rs `valgrind_finds_no_errors_or_leaks_in_app_cycles`: colored_box, shapes, material, 10 cycles each under memcheck. 0 errors, nothing definitely or indirectly lost
+* The soak AOT leg takes the pinned Flutter release and lavapipe, as the app lane does
+* A first look at 1,000 colored_box cycles grew 88 kB; 3,000 grew none past the tenth. Warm-up, not a leak
+
+Next: the sanitizer half, apps under the ASan and TSan VMs. Those are JIT builds, so `run-app` needs a JIT path: the app's kernel against Flutter's non-product platform.
+
 Next: stage 6, KMS on the boards (needs the hardware). Before it: images and text (M3), or more of the drawing set.
 
 ## Fixed: JIT isolate-cycle growth (2026-10-28)

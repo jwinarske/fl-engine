@@ -12,44 +12,8 @@
 mod common;
 
 use std::path::{Path, PathBuf};
-use std::process::Command;
-use std::sync::Mutex;
 
-fn repo() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
-}
-
-/// Builds `apps/<name>` once per test process: tests run in parallel, and
-/// two builds of one app would write the same file at once.
-fn build_app(name: &str) -> PathBuf {
-    static BUILT: Mutex<Vec<(String, PathBuf)>> = Mutex::new(Vec::new());
-    let mut built = BUILT.lock().unwrap_or_else(|e| e.into_inner());
-    if let Some((_, so)) = built.iter().find(|(n, _)| n == name) {
-        return so.clone();
-    }
-    let so = build_app_now(name);
-    built.push((name.to_owned(), so.clone()));
-    so
-}
-
-fn build_app_now(name: &str) -> PathBuf {
-    let flutter = std::env::var_os("FLUTTER_ROOT")
-        .expect("FLUTTER_ROOT must name the pinned Flutter release");
-    let repo = repo();
-    let out = common::out_dir().join("apps");
-    let st = Command::new(repo.join("tools/flutter-app/build.sh"))
-        .arg(&flutter)
-        .arg(repo.join("apps").join(name))
-        .arg(&out)
-        .output()
-        .unwrap();
-    assert!(
-        st.status.success(),
-        "building {name}: {}",
-        String::from_utf8_lossy(&st.stderr)
-    );
-    out.join(format!("{name}.so"))
-}
+use common::{build_app, repo};
 
 #[test]
 #[ignore = "app lane: needs FLUTTER_ROOT"]

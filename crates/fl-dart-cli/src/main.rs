@@ -3,8 +3,10 @@
 //! ```text
 //! fl-dart run hello.dill [args...]       # JIT, dev hosts (--features jit)
 //! fl-dart run-aot hello.aot [args...]    # precompiled runtime, every target
-//! fl-dart run-app libapp.so [WxH[@dpr]] [--png out.png] [--ops] [--frames N]
+//! fl-dart run-app libapp.so [WxH[@dpr]] [--png out.png] [--ops] [--frames N] [--hz H]
 //!                                       # a Flutter app, through dart:ui (M2)
+//! fl-dart app-cycle libapp.so <n> [run-app options]
+//!                                       # leak harness: n app lifecycles
 //! fl-dart cycle <program> <n>            # leak harness: n isolate lifecycles
 //! ```
 //!
@@ -40,6 +42,14 @@ fn main() -> ExitCode {
             Some(app) => run_app(path, app),
             None => return usage(),
         },
+        #[cfg(feature = "aot")]
+        "app-cycle" => match (
+            rest.first().and_then(|n| n.parse().ok()),
+            app_args(rest.get(1..).unwrap_or_default()),
+        ) {
+            (Some(n), Some(app)) => app_cycle(path, n, app),
+            _ => return usage(),
+        },
         "cycle" => match rest.first().and_then(|n| n.parse().ok()) {
             Some(n) => cycle(path, n),
             None => return usage(),
@@ -74,7 +84,7 @@ fn usage() -> ExitCode {
     eprintln!("usage: fl-dart {modes} [args...]\n       fl-dart cycle <{prog}> <n>");
     if cfg!(feature = "aot") {
         eprintln!(
-            "       fl-dart run-app <libapp.so> [WxH[@dpr]] [--png out.png] [--ops] [--frames N]"
+            "       fl-dart run-app <libapp.so> [WxH[@dpr]] [--png out.png] [--ops] [--frames N] [--hz H]\n       fl-dart app-cycle <libapp.so> <n> [run-app options]"
         );
     }
     ExitCode::from(64)
@@ -145,34 +155,94 @@ fn run_aot(path: &str, args: &[&str]) -> Result<(), Failure> {
 /// vsync, a `vsync:` line reports their spacing.
 #[cfg(feature = "aot")]
 fn run_app(path: &str, app: AppArgs) -> Result<(), Failure> {
+    let snapshot = std::sync::Arc::new(fl_dart_vm::AotSnapshot::open(path.as_ref())?);
+    let vm = start_vm()?;
+    let raster = raster_for(&app)?;
+    let run = app_once(&vm, &snapshot, path, &app, raster.as_ref(), true)?;
+    if let Some(line) = vsync_line(&run.report.frame_times_us) {
+        println!("{line}");
+    }
+    finish_raster(raster, &app)
+}
+
+/// The L5 harness for apps: `n` start-and-stop cycles of one app in one VM,
+/// each run as `run-app` runs it (to its end, or to `--frames`), quietly.
+/// Reports what `cycle` reports, and the frames rendered in all. With
+/// `--png` one raster thread draws every cycle's frames, so the raster side
+/// churns too; it is made once, as a device is.
+#[cfg(feature = "aot")]
+fn app_cycle(path: &str, n: u32, app: AppArgs) -> Result<(), Failure> {
+    let snapshot = std::sync::Arc::new(fl_dart_vm::AotSnapshot::open(path.as_ref())?);
+    let vm = start_vm()?;
+    let raster = raster_for(&app)?;
+    // Sampled as `cycle` samples: after the first cycle, after a tenth,
+    // and at the end.
+    let tenth = (n / 10).max(1);
+    let (mut warm, mut mid, mut frames) = (None, None, 0u64);
+    for i in 0..n {
+        frames += app_once(&vm, &snapshot, path, &app, raster.as_ref(), false)?.rendered;
+        if i == 0 {
+            warm = Some(usage_now());
+        }
+        if i + 1 == tenth {
+            mid = Some(usage_now());
+        }
+    }
+    let end = usage_now();
+    let warm = warm.unwrap_or(end);
+    let mid = mid.unwrap_or(end);
+    finish_raster(raster, &app)?;
+    println!(
+        "cycles={n} frames={frames} rss_warm_kb={} rss_tenth_kb={} rss_end_kb={} fds_warm={} fds_end={} persistent_handles={}",
+        warm.0,
+        mid.0,
+        end.0,
+        warm.1,
+        end.1,
+        fl_dart_vm::live_persistent_handles()
+    );
+    Ok(())
+}
+
+/// What one run of an app did.
+#[cfg(feature = "aot")]
+struct AppRun {
+    rendered: u64,
+    report: fl_shell::Report,
+}
+
+/// One run of an app in `vm`: prepare, `main`, the frame loop, shutdown.
+/// With `echo`, frames (and `--ops`) go to stdout and `print` to stdout;
+/// without, both are dropped. An app that renders nothing is an error.
+#[cfg(feature = "aot")]
+fn app_once(
+    vm: &Vm,
+    snapshot: &std::sync::Arc<fl_dart_vm::AotSnapshot>,
+    path: &str,
+    app: &AppArgs,
+    raster: Option<&std::sync::Arc<fl_raster::RasterThread>>,
+    echo: bool,
+) -> Result<AppRun, Failure> {
     use std::sync::{Arc, Mutex};
 
-    let snapshot = Arc::new(fl_dart_vm::AotSnapshot::open(path.as_ref())?);
-    let vm = start_vm()?;
-    let view = app.view;
-    let raster = match app.png {
-        Some(_) => Some(
-            fl_raster::RasterThread::spawn(view.width.round() as u32, view.height.round() as u32)
-                .map_err(|e| Failure::Other(format!("offscreen target: {e}")))?,
-        ),
-        None => None,
-    };
-    let raster = Arc::new(raster);
     let rendered = Arc::new(Mutex::new(0u64));
-    let (sink_raster, sink_count, ops) = (Arc::clone(&raster), Arc::clone(&rendered), app.ops);
+    let sink_raster = raster.map(Arc::clone);
+    let (sink_count, ops) = (Arc::clone(&rendered), app.ops);
     fl_ui::set_frame_sink(move |f| {
         let mut n = sink_count.lock().unwrap_or_else(|e| e.into_inner());
         *n += 1;
-        println!(
-            "frame {}: view {} {}x{} {}",
-            *n,
-            f.view_id,
-            f.width,
-            f.height,
-            summary(&f.scene)
-        );
-        if ops {
-            print!("{}", outline(&f.scene));
+        if echo {
+            println!(
+                "frame {}: view {} {}x{} {}",
+                *n,
+                f.view_id,
+                f.width,
+                f.height,
+                summary(&f.scene)
+            );
+            if ops {
+                print!("{}", outline(&f.scene));
+            }
         }
         if let Some(raster) = sink_raster.as_ref() {
             // A thread that is gone has its reason in `finish`.
@@ -180,7 +250,12 @@ fn run_app(path: &str, app: AppArgs) -> Result<(), Failure> {
         }
     });
     let wake = fl_shell::Wake::default();
-    let mut isolate = vm.isolate_from_aot(&snapshot, fl_shell::isolate_config(path, &wake))?;
+    let mut cfg = fl_shell::isolate_config(path, &wake);
+    if !echo {
+        cfg.print = Arc::new(|_| {});
+    }
+    let mut isolate = vm.isolate_from_aot(snapshot, cfg)?;
+    let view = app.view;
     let period = std::time::Duration::from_secs_f64(1.0 / view.refresh_rate);
     let limit = app.frames;
     let report = {
@@ -191,33 +266,59 @@ fn run_app(path: &str, app: AppArgs) -> Result<(), Failure> {
         })?;
         fl_shell::run(&mut scope, &wake, period, || {
             limit.is_some_and(|l| *rendered.lock().unwrap_or_else(|e| e.into_inner()) >= l)
-        })?
+        })
     };
     isolate.shutdown();
     // The sink is the process's, and holds the raster thread: replacing it
-    // is what lets `finish` below have the thread to itself.
+    // is what lets `finish` have the thread to itself.
     fl_ui::set_frame_sink(|_| {});
+    let report = report?;
     let count = *rendered.lock().unwrap_or_else(|e| e.into_inner());
     if count == 0 {
         return Err(Failure::Other(format!(
             "{path}: ran to completion without rendering a frame"
         )));
     }
-    if let Some(line) = vsync_line(&report.frame_times_us) {
-        println!("{line}");
+    Ok(AppRun {
+        rendered: count,
+        report,
+    })
+}
+
+/// A raster thread at the view's size if `--png` asks for pixels.
+#[cfg(feature = "aot")]
+fn raster_for(app: &AppArgs) -> Result<Option<std::sync::Arc<fl_raster::RasterThread>>, Failure> {
+    if app.png.is_none() {
+        return Ok(None);
     }
-    let raster = Arc::try_unwrap(raster)
-        .ok()
-        .flatten()
-        .map(fl_raster::RasterThread::finish);
-    if let Some(r) = raster {
-        if let Some(e) = r.error {
-            return Err(Failure::Other(e));
-        }
-        if let (Some(png), Some(pixels)) = (app.png, r.last.as_ref()) {
-            fl_raster::write_png(&png, r.width, r.height, pixels)
-                .map_err(|e| Failure::Other(e.to_string()))?;
-        }
+    let (w, h) = (
+        app.view.width.round() as u32,
+        app.view.height.round() as u32,
+    );
+    fl_raster::RasterThread::spawn(w, h)
+        .map(|r| Some(std::sync::Arc::new(r)))
+        .map_err(|e| Failure::Other(format!("offscreen target: {e}")))
+}
+
+/// Stops the raster thread and writes its last frame to `--png`. Its first
+/// failure is the run's.
+#[cfg(feature = "aot")]
+fn finish_raster(
+    raster: Option<std::sync::Arc<fl_raster::RasterThread>>,
+    app: &AppArgs,
+) -> Result<(), Failure> {
+    let Some(raster) = raster else {
+        return Ok(());
+    };
+    let r = std::sync::Arc::try_unwrap(raster)
+        .map_err(|_| Failure::Other("the raster thread is still shared".into()))?
+        .finish();
+    if let Some(e) = r.error {
+        return Err(Failure::Other(e));
+    }
+    if let (Some(png), Some(pixels)) = (app.png.as_ref(), r.last.as_ref()) {
+        fl_raster::write_png(png, r.width, r.height, pixels)
+            .map_err(|e| Failure::Other(e.to_string()))?;
     }
     Ok(())
 }
@@ -308,9 +409,10 @@ struct AppArgs {
     frames: Option<u64>,
 }
 
-/// `[WxH[@dpr]] [--png out.png] [--ops] [--frames N]`, in any order; no
-/// size is the default view. Sizes are physical pixels. `--ops` prints each
-/// frame's [`outline`]; `--frames` stops after N frames rendered.
+/// `[WxH[@dpr]] [--png out.png] [--ops] [--frames N] [--hz H]`, in any
+/// order; no size is the default view. Sizes are physical pixels. `--ops`
+/// prints each frame's [`outline`]; `--frames` stops after N frames
+/// rendered; `--hz` sets the vsync rate (60 by default).
 #[cfg(feature = "aot")]
 fn app_args(args: &[&str]) -> Option<AppArgs> {
     let mut app = AppArgs::default();
@@ -320,6 +422,7 @@ fn app_args(args: &[&str]) -> Option<AppArgs> {
             "--png" => app.png = Some(std::path::PathBuf::from(it.next()?)),
             "--ops" => app.ops = true,
             "--frames" => app.frames = Some(it.next()?.parse().ok().filter(|n| *n > 0)?),
+            "--hz" => app.view.refresh_rate = it.next()?.parse().ok().filter(|v: &f64| *v > 0.0)?,
             _ => {
                 let (size, dpr) = match a.split_once('@') {
                     Some((size, dpr)) => (size, Some(dpr)),

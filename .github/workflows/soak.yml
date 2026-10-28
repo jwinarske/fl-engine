@@ -3,7 +3,9 @@
 #
 # Both modes run 1,000 isolate cycles of each soak program and 100 full VM
 # lifecycles (one per process). AOT also runs under valgrind memcheck; JIT
-# cannot, its code-memory reservation is an mmap valgrind refuses.
+# cannot, its code-memory reservation is an mmap valgrind refuses. AOT also
+# cycles the M2 Flutter apps (`app-cycle`), and runs three of them under
+# memcheck, so it takes the pinned Flutter release and lavapipe.
 #
 # The soak tests are #[ignore]d, so the L2 lanes list them as ignored. Here
 # they run with --ignored.
@@ -23,6 +25,10 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
+  FLUTTER_VERSION: 3.47.8
+  FLUTTER_COMMIT: 737ba8f885dc774b53b442759999a312c9461e4e
+  # Inside the workspace: actions/cache refuses paths with "..".
+  FLUTTER_ROOT: ${{ github.workspace }}/.flutter
 
 jobs:
   soak:
@@ -43,6 +49,27 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq valgrind
+      # The apps' leg, as ci.yml's app lane sets it up.
+      - uses: actions/cache@v4
+        if: matrix.mode == 'aot'
+        with:
+          path: |
+            ${{ env.FLUTTER_ROOT }}
+            ~/.pub-cache
+          key: flutter-${{ env.FLUTTER_VERSION }}-${{ env.FLUTTER_COMMIT }}
+      - name: Pinned Flutter release
+        if: matrix.mode == 'aot'
+        run: |
+          if [[ ! -x "$FLUTTER_ROOT/bin/flutter" ]]; then
+            git clone -q --depth 1 --branch "$FLUTTER_VERSION" https://github.com/flutter/flutter.git "$FLUTTER_ROOT"
+          fi
+          head="$(git -C "$FLUTTER_ROOT" rev-parse HEAD)"
+          [[ "$head" == "$FLUTTER_COMMIT" ]] || { echo "Flutter is at $head, not $FLUTTER_COMMIT"; exit 1; }
+          "$FLUTTER_ROOT/bin/flutter" --disable-analytics >/dev/null
+          "$FLUTTER_ROOT/bin/flutter" precache --linux --no-android --no-ios --no-web --no-macos --no-windows --no-fuchsia
+      - name: lavapipe
+        if: matrix.mode == 'aot'
+        run: sudo apt-get install -y -qq mesa-vulkan-drivers
       - name: Fetch the prebuilt VM
         env:
           GITHUB_TOKEN: ${{ github.token }}
