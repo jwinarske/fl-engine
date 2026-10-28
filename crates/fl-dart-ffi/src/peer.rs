@@ -68,6 +68,27 @@ pub unsafe fn attach<T: Send + 'static>(
     Ok(())
 }
 
+/// Native field 0 of `wrapper`, for a native given the object as a `Handle`
+/// rather than as a `Pointer<Void>`: what the VM would have passed, to hand
+/// to [`with`] or [`take`]. `None` for null, or for an object with no
+/// native fields.
+///
+/// # Safety
+/// The isolate is current with an API scope open, and `wrapper` is a live
+/// handle in it.
+pub unsafe fn field(wrapper: sys::Dart_Handle) -> Option<*mut c_void> {
+    let mut v: isize = 0;
+    // SAFETY: per this function's contract; v is a valid out-pointer.
+    unsafe {
+        if sys::Dart_IsNull(wrapper)
+            || sys::Dart_IsError(sys::Dart_GetNativeInstanceField(wrapper, 0, &mut v))
+        {
+            return None;
+        }
+    }
+    Some(v as *mut c_void)
+}
+
 /// Runs `f` on the value attached to the object whose field 0 is `raw`.
 /// `None` when `raw` is null, holds a peer of another type, or was taken.
 ///

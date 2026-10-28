@@ -22,7 +22,10 @@ mod semantics;
 pub use compositing::{Clip, LayerOp, Scene};
 pub use painting::{Cap, ClipOp, Draw, Join, Paint, Picture, Style};
 pub use path::{Affine, FillType, Path, Point, RRect, Seg};
-pub use platform::{set_frame_scheduler, set_frame_sink, Frame};
+pub use platform::{
+    deliver_replies, discard_replies, has_pending_replies, set_frame_scheduler, set_frame_sink,
+    Frame,
+};
 
 /// Every dart:ui native this crate implements.
 pub static NATIVES: &[Symbol] = &[
@@ -61,6 +64,21 @@ pub static NATIVES: &[Symbol] = &[
         "PlatformConfigurationNativeApi::EndWarmUpFrame",
         0,
         platform::end_warm_up_frame
+    ),
+    fl_dart_ffi::symbol!(
+        "PlatformConfigurationNativeApi::DefaultRouteName",
+        0,
+        platform::default_route_name
+    ),
+    fl_dart_ffi::symbol!(
+        "PlatformConfigurationNativeApi::SetApplicationLocale",
+        1,
+        platform::set_application_locale
+    ),
+    fl_dart_ffi::symbol!(
+        "PlatformConfigurationNativeApi::RequestViewFocusChange",
+        3,
+        platform::request_view_focus_change
     ),
     fl_dart_ffi::symbol!(
         "PlatformConfigurationNativeApi::Render",
@@ -148,6 +166,7 @@ pub static NATIVES: &[Symbol] = &[
     fl_dart_ffi::symbol!("SceneBuilder::pushOpacity", 6, compositing::push_opacity),
     fl_dart_ffi::symbol!("SceneBuilder::addPicture", 5, compositing::add_picture),
     fl_dart_ffi::symbol!("SceneBuilder::pop", 1, compositing::pop),
+    fl_dart_ffi::symbol!("SceneBuilder::addRetained", 2, compositing::add_retained),
     fl_dart_ffi::symbol!("SceneBuilder::build", 2, compositing::build),
     fl_dart_ffi::symbol!("Scene::dispose", 1, compositing::scene_dispose),
     fl_dart_ffi::symbol!("EngineLayer::dispose", 1, compositing::layer_dispose),
@@ -172,7 +191,7 @@ pub static STUBS: &[(&str, &str)] = &[
     ),
     (
         "PlatformConfigurationNativeApi::SendPlatformMessage",
-        "null (success); the message is dropped and never answered",
+        "null (success); flutter/restoration `get` is answered with a null result, every other message dropped and never answered"
     ),
     (
         "PlatformConfigurationNativeApi::SetSemanticsTreeEnabled",
@@ -186,6 +205,14 @@ pub static STUBS: &[(&str, &str)] = &[
     (
         "NativeSemanticsFlags::initSemanticsFlags",
         "an empty peer; the flags are not kept (semantics are out of M2)",
+    ),
+    (
+        "PlatformConfigurationNativeApi::SetApplicationLocale",
+        "nothing: no platform here wants the resolved locale",
+    ),
+    (
+        "PlatformConfigurationNativeApi::RequestViewFocusChange",
+        "nothing: one view, no platform focus to move",
     ),
 ];
 

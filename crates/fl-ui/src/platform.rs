@@ -52,17 +52,140 @@ pub(crate) extern "C" fn get_root_isolate_token() -> i64 {
 pub(crate) extern "C" fn send_channel_update(_name: sys::Dart_Handle, _listening: bool) {}
 
 /// `Handle Function(Handle name, Handle callback, Handle data)`. Null is
-/// success; a returned String is thrown as an error. The message is
-/// dropped: nothing on the first frame's path awaits a reply, and an
-/// unanswered request never completes rather than failing.
+/// success; a returned String is thrown as an error.
+///
+/// One message is answered: `flutter/restoration` `get`, which `MaterialApp`
+/// awaits before its first frame (`RestorationManager`). The answer is a
+/// successful method result of null, no restoration data; an empty reply
+/// would mean no handler, and the framework would throw. Every other message
+/// is dropped: nothing on the path so far awaits one, and an unanswered
+/// request never completes rather than failing.
+///
+/// Replies are asynchronous, as the engine's are: queued here and delivered
+/// by [`deliver_replies`], which the shell's loop calls between steps.
 pub(crate) extern "C" fn send_platform_message(
-    _name: sys::Dart_Handle,
-    _callback: sys::Dart_Handle,
-    _data: sys::Dart_Handle,
+    name: sys::Dart_Handle,
+    callback: sys::Dart_Handle,
+    data: sys::Dart_Handle,
 ) -> sys::Dart_Handle {
-    // SAFETY: a native with Handle parameters runs with an isolate current.
-    unsafe { args::null() }
+    // SAFETY: a native with Handle parameters runs with an isolate current
+    // and a scope open. Made first so a panic below still returns a handle.
+    let null = unsafe { args::null() };
+    guard(null, || {
+        // SAFETY: as above; the three are live handles.
+        let (name, bytes) = unsafe { (args::string(name), args::bytes(data)) };
+        let reply = match (name.as_deref(), bytes.as_deref().and_then(method_name)) {
+            (Some("flutter/restoration"), Some("get")) => Some(RESULT_NULL.to_vec()),
+            _ => None,
+        };
+        // SAFETY: as above.
+        if let (Some(reply), false) = (reply, unsafe { sys::Dart_IsNull(callback) }) {
+            // SAFETY: as above; deleted by deliver_replies, or at shutdown.
+            let callback = unsafe { sys::Dart_NewPersistentHandle(callback) };
+            REPLIES
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .push(Reply {
+                    callback,
+                    data: Some(reply),
+                });
+        }
+        null
+    })
 }
+
+/// A `StandardMethodCodec` success envelope holding null: the result byte 0,
+/// then `StandardMessageCodec`'s null.
+const RESULT_NULL: [u8; 2] = [0, 0];
+
+/// The method name of a `StandardMethodCodec` method call: its first value,
+/// a string (type 7, a one-byte length below 254, UTF-8). `None` for
+/// anything else.
+fn method_name(call: &[u8]) -> Option<&str> {
+    let (&[7, len], rest) = call.split_first_chunk::<2>()? else {
+        return None;
+    };
+    if len >= 254 {
+        return None;
+    }
+    std::str::from_utf8(rest.get(..usize::from(len))?).ok()
+}
+
+/// A reply waiting to be delivered: the response callback, kept alive, and
+/// what to call it with.
+struct Reply {
+    callback: sys::Dart_PersistentHandle,
+    data: Option<Vec<u8>>,
+}
+
+// SAFETY: a Reply is made on the UI thread with the isolate current, and its
+// handle is only dereferenced by deliver_replies, whose contract is the same
+// thread and isolate. Sending the pointer between is never touching it.
+unsafe impl Send for Reply {}
+
+static REPLIES: Mutex<Vec<Reply>> = Mutex::new(Vec::new());
+
+/// Whether a platform message reply is waiting for [`deliver_replies`].
+pub fn has_pending_replies() -> bool {
+    !REPLIES.lock().unwrap_or_else(|e| e.into_inner()).is_empty()
+}
+
+/// Calls each waiting reply's response callback with its data, in the order
+/// the messages were sent. The microtasks that completes are the caller's
+/// to run. An exception a callback leaves uncaught is the error; the replies
+/// after it are still delivered.
+///
+/// # Safety
+/// The isolate that sent the messages is current on this thread, with an API
+/// scope open.
+pub unsafe fn deliver_replies() -> Result<(), String> {
+    let replies = std::mem::take(&mut *REPLIES.lock().unwrap_or_else(|e| e.into_inner()));
+    let mut first_error = None;
+    for r in replies {
+        // SAFETY: per this function's contract; the handle was made by
+        // send_platform_message in this isolate and is deleted only here.
+        unsafe {
+            let callback = sys::Dart_HandleFromPersistent(r.callback);
+            let mut arg = [match &r.data {
+                Some(d) => args::new_byte_data(d),
+                None => args::null(),
+            }];
+            let result = sys::Dart_InvokeClosure(callback, 1, arg.as_mut_ptr());
+            sys::Dart_DeletePersistentHandle(r.callback);
+            if sys::Dart_IsError(result) && first_error.is_none() {
+                let msg = sys::Dart_GetError(result);
+                first_error = Some(if msg.is_null() {
+                    "a platform message reply callback failed".to_owned()
+                } else {
+                    std::ffi::CStr::from_ptr(msg).to_string_lossy().into_owned()
+                });
+            }
+        }
+    }
+    first_error.map_or(Ok(()), Err)
+}
+
+/// Drops waiting replies without delivering them, for when their isolate is
+/// gone: the VM freed their handles with it.
+pub fn discard_replies() {
+    REPLIES.lock().unwrap_or_else(|e| e.into_inner()).clear();
+}
+
+/// `Handle Function()`: the route the app starts at. `/`, the engine's
+/// default when the embedder names none (`Settings::route`).
+pub(crate) extern "C" fn default_route_name() -> sys::Dart_Handle {
+    // SAFETY: a Handle-result native: isolate current, scope open.
+    unsafe { sys::Dart_NewStringFromCString(c"/".as_ptr()) }
+}
+
+/// `Void Function(Handle locale)`: the locale the app resolved, for the
+/// platform's use. No platform here wants it.
+pub(crate) extern "C" fn set_application_locale(_locale: sys::Dart_Handle) {}
+
+/// `Void Function(Int64 viewId, Int64 state, Int64 direction)`: the
+/// framework telling the platform where focus moved. One view, no platform
+/// focus to move.
+pub(crate) extern "C" fn request_view_focus_change(_view_id: i64, _state: i64, _direction: i64) {}
 
 /// `Void Function(Bool)`.
 pub(crate) extern "C" fn set_semantics_tree_enabled(_enabled: bool) {}
@@ -116,4 +239,19 @@ pub(crate) extern "C" fn render(
             sink(frame);
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn method_names_are_read_from_standard_method_calls() {
+        // MethodCall('get') as StandardMethodCodec writes it: the name, then
+        // null arguments.
+        assert_eq!(method_name(&[7, 3, b'g', b'e', b't', 0]), Some("get"));
+        assert_eq!(method_name(&[7, 3, b'g', b'e']), None);
+        assert_eq!(method_name(&[3, 1, 0, 0, 0]), None);
+        assert_eq!(method_name(&[]), None);
+    }
 }

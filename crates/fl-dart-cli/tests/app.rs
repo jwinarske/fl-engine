@@ -169,8 +169,59 @@ fn shapes_records_the_expected_scene() {
 #[test]
 #[ignore = "app lane: needs FLUTTER_ROOT and a Vulkan driver"]
 fn shapes_matches_its_golden() {
-    let app = build_app("shapes");
-    let png = common::out_dir().join("apps/shapes.png");
+    matches_golden("shapes");
+}
+
+/// MaterialApp's first frame, after flutter/restoration is answered: the
+/// app has a restoration scope, so without the answer it renders nothing.
+#[test]
+#[ignore = "app lane: needs FLUTTER_ROOT and a Vulkan driver"]
+fn material_matches_its_golden() {
+    matches_golden("material");
+}
+
+/// Its scene: the root transform, Scaffold's two offsets, the background
+/// and the card in one picture. Then the frame the framework schedules after
+/// the first, the same layers reused through `addRetained`.
+#[test]
+#[ignore = "app lane: needs FLUTTER_ROOT"]
+fn material_records_the_expected_scene() {
+    let app = build_app("material");
+    let o = common::fl_dart(&[
+        "run-app".as_ref(),
+        app.as_os_str(),
+        "800x600@2".as_ref(),
+        "--ops".as_ref(),
+    ]);
+    assert!(o.status.success(), "{o:?}");
+    // Not a `\` continuation: that would drop the first line's indent.
+    let frame = "  PushTransform
+    PushOffset
+      PushOffset
+        AddPicture
+          RRect
+          Path
+          Save
+          Translate
+          Restore
+      Pop
+    Pop
+  Pop
+";
+    assert_eq!(
+        String::from_utf8_lossy(&o.stdout),
+        format!(
+            "frame 1: view 0 800x600 layers=3 pictures=1 draws=5\n{frame}\
+             frame 2: view 0 800x600 layers=3 pictures=1 draws=5\n{frame}"
+        )
+    );
+}
+
+/// `apps/<name>`'s first frame at 800x600, DPR 2, against
+/// `apps/<name>/test/goldens/<name>.png` and the tolerance beside it.
+fn matches_golden(name: &str) {
+    let app = build_app(name);
+    let png = common::out_dir().join(format!("apps/{name}.png"));
     let _ = std::fs::remove_file(&png);
     let o = common::fl_dart(&[
         "run-app".as_ref(),
@@ -182,16 +233,16 @@ fn shapes_matches_its_golden() {
         "1".as_ref(),
     ]);
     assert!(o.status.success(), "{o:?}");
-    let goldens = repo().join("apps/shapes/test/goldens");
+    let goldens = repo().join(format!("apps/{name}/test/goldens"));
     let ours = read_png(&png, (800, 600));
-    let theirs = read_png(&goldens.join("shapes.png"), (800, 600));
-    let tolerance = std::fs::read_to_string(goldens.join("shapes.tolerance")).unwrap();
+    let theirs = read_png(&goldens.join(format!("{name}.png")), (800, 600));
+    let tolerance = std::fs::read_to_string(goldens.join(format!("{name}.tolerance"))).unwrap();
     let limit = |key: &str| -> f64 {
         tolerance
             .lines()
             .filter(|l| !l.starts_with('#'))
             .find_map(|l| l.strip_prefix(key)?.strip_prefix(' ')?.trim().parse().ok())
-            .unwrap_or_else(|| panic!("shapes.tolerance: no {key}"))
+            .unwrap_or_else(|| panic!("{name}.tolerance: no {key}"))
     };
     let (mut differ, mut over_32) = (0usize, 0usize);
     for (a, b) in ours.chunks_exact(4).zip(theirs.chunks_exact(4)) {
@@ -213,9 +264,9 @@ fn shapes_matches_its_golden() {
         limit("differ_over_32"),
         png.display()
     );
-    assert!(pct(differ) <= limit("differ"), "{report}");
-    assert!(pct(over_32) <= limit("differ_over_32"), "{report}");
-    println!("shapes: {report}");
+    assert!(pct(differ) <= limit("differ"), "{name}: {report}");
+    assert!(pct(over_32) <= limit("differ_over_32"), "{name}: {report}");
+    println!("{name}: {report}");
 }
 
 /// The engine's frame sequence, from dart:ui with no framework: each frame

@@ -181,3 +181,35 @@ pub unsafe fn any_non_null(h: sys::Dart_Handle) -> bool {
         })
     }
 }
+
+/// A new `ByteData` holding `bytes`, to hand to Dart. Dart null if the VM
+/// cannot make it.
+///
+/// # Safety
+/// The isolate is current with an API scope open.
+pub unsafe fn new_byte_data(bytes: &[u8]) -> sys::Dart_Handle {
+    // SAFETY: per this function's contract; the copy is bounded by the
+    // length the data was made with.
+    unsafe {
+        let h = sys::Dart_NewTypedData(
+            sys::Dart_TypedData_Type::Dart_TypedData_kByteData,
+            bytes.len() as isize,
+        );
+        if sys::Dart_IsError(h) {
+            return sys::Dart_Null();
+        }
+        let mut ty = sys::Dart_TypedData_Type::Dart_TypedData_kByteData;
+        let mut data: *mut std::ffi::c_void = std::ptr::null_mut();
+        let mut len: isize = 0;
+        if sys::Dart_IsError(sys::Dart_TypedDataAcquireData(
+            h, &mut ty, &mut data, &mut len,
+        )) || data.is_null()
+        {
+            return sys::Dart_Null();
+        }
+        let n = bytes.len().min(len.max(0) as usize);
+        std::ptr::copy_nonoverlapping(bytes.as_ptr(), data as *mut u8, n);
+        let _ = sys::Dart_TypedDataReleaseData(h);
+        h
+    }
+}

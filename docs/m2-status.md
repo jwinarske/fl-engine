@@ -98,7 +98,28 @@ Found on the way:
 * The `shapes` tests take `--frames 1`: they check the first frame
 * The first frames on lavapipe can miss ticks while the raster thread warms up: one 4-period gap in 29 locally, the UI thread waiting on the full queue. Reported, not hidden
 
-Next: `material` (`flutter/restoration`), then stage 6, KMS on the boards.
+## material (2026-10-28)
+
+Done: `MaterialApp`, with no text, matches its golden. With `shapes`, exit criterion 2.
+
+    fl-dart run-app out/material.so 800x600@2 --png material.png
+    frame 1: view 0 800x600 layers=3 pictures=1 draws=5
+    frame 2: view 0 800x600 layers=3 pictures=1 draws=5
+
+* `apps/material`: a `Scaffold` and a filled, rounded `Material` card, centered; `restorationScopeId` set. 0.067% of pixels differ from the stock engine's golden, 0.008% by more than 32, the card's edges only. Tolerance 0.5% and 0.05%
+* `flutter/restoration` `get` is answered with a successful null result, `00 00`: no restoration data. An empty reply would mean no handler and throw `MissingPluginException`. Every other platform message is still dropped unanswered
+* Replies are asynchronous, as the engine's: `SendPlatformMessage` keeps the response callback as a persistent handle and queues the reply; `fl-shell::run` delivers queued replies between steps, before anything else, and runs the microtasks they complete. Replies left when `run` returns are dropped
+* `SceneBuilder::addRetained`: an `EngineLayer` keeps its operations, push through pop; a layer the framework reuses unchanged is replayed from them. Frame 2 of `material` is built that way
+* 4 more natives, 83 in all: `DefaultRouteName` (`/`), `SetApplicationLocale` and `RequestViewFocusChange` (stubs), `addRetained`. 9 stubs, listed in `fl_ui::STUBS`
+* `fl-dart-ffi`: `peer::field` (native field 0 from a `Handle`), `args::new_byte_data`
+* App lane goldens step runs `flutter test` for `shapes` and `material`
+
+Found on the way:
+
+* The brief said `MaterialApp`'s first frame needs the `flutter/restoration` answer. Only with a restoration scope: `RootRestorationScope` defers the first frame for the bucket when a `restorationScopeId` is set, and without one the app renders unanswered. Checked both ways; the app sets one so the answer is exercised, and without it no frame renders
+* The framework catches errors in build and draws an error widget, so an unresolved native there does not fail the run. The scene listing and the golden are what catch it
+
+Next: stage 6, KMS on the boards (needs the hardware). Before it: images and text (M3), or more of the drawing set.
 
 ## Fixed: JIT isolate-cycle growth (2026-10-28)
 

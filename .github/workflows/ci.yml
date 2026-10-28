@@ -142,7 +142,10 @@ jobs:
       # flutter test compares exactly, so a pin bump that changes them fails
       # here, not as drift in fl-engine's tolerance.
       - name: Goldens
-        run: cd apps/shapes && "$FLUTTER_ROOT/bin/flutter" test
+        run: |
+          for app in shapes material; do
+            (cd "apps/$app" && "$FLUTTER_ROOT/bin/flutter" test)
+          done
       - name: Apps
         env:
           GITHUB_TOKEN: ${{ github.token }}

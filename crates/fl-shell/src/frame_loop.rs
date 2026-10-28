@@ -7,6 +7,10 @@
 //! microtasks that queued. `ScheduleFrame` asks for one; it is served at the
 //! first vsync tick from the request on, and never twice on one tick.
 //!
+//! Platform message replies dart:ui's natives queue are delivered between
+//! steps, before anything else, with the microtasks they complete; any
+//! still waiting when the loop returns are dropped.
+//!
 //! Vsync here is a fixed-interval clock: ticks `period` apart from the loop's
 //! start. On KMS the flip event will take its place (stage 6).
 
@@ -93,7 +97,11 @@ pub fn run(
     let mut last_tick = None;
     let mut report = Report::default();
     while !stop() {
-        let step = {
+        // Replies are queued by natives on this thread, during the step
+        // before, so there is nothing to wait for: they go first.
+        let step = if fl_ui::has_pending_replies() {
+            Step::Replies
+        } else {
             let mut p = inner.lock();
             loop {
                 if p.messages > 0 {
@@ -119,6 +127,12 @@ pub fn run(
         };
         match step {
             Step::Message => isolate.with(|s| s.handle_message())?,
+            Step::Replies => isolate.with(|s| {
+                // SAFETY: inside `with`, this isolate is current with a scope
+                // open, and it is the isolate whose natives queued them.
+                unsafe { fl_ui::deliver_replies() }.map_err(DartError::Api)?;
+                s.run_microtasks()
+            })?,
             Step::Frame(tick) => {
                 last_tick = Some(tick);
                 let us = clock.micros(tick);
@@ -140,11 +154,14 @@ pub fn run(
             }
         }
     }
+    // Their isolate is not to be touched once this returns.
+    fl_ui::discard_replies();
     Ok(report)
 }
 
 enum Step {
     Message,
+    Replies,
     Frame(Instant),
     Idle,
 }

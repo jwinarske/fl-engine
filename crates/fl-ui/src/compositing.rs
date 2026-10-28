@@ -5,7 +5,7 @@
 //! Flattening them into one canvas is the raster side's business.
 
 use std::ffi::c_void;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use fl_dart_ffi::{args, guard, peer, sys};
 
@@ -77,11 +77,18 @@ pub struct Scene {
 #[derive(Default)]
 struct Builder {
     ops: Vec<LayerOp>,
+    /// The layers pushed and not yet popped: where each one's operations
+    /// start, and the layer that keeps them.
+    open: Vec<(usize, Retained)>,
 }
 
-/// The `EngineLayer` peer. The framework keeps layers to pass back as
-/// `oldLayer` for retained rendering; nothing is retained yet.
-struct EngineLayer;
+/// A layer's own operations, its push through its pop, kept for when the
+/// framework reuses the layer unchanged in a later frame (`addRetained`).
+/// Empty until the pop.
+type Retained = Arc<Mutex<Vec<LayerOp>>>;
+
+/// The `EngineLayer` peer.
+struct EngineLayer(Retained);
 
 /// `Void Function(Handle)`.
 pub(crate) extern "C" fn builder_create(wrapper: sys::Dart_Handle) {
@@ -93,14 +100,21 @@ pub(crate) extern "C" fn builder_create(wrapper: sys::Dart_Handle) {
     });
 }
 
-/// Attaches an `EngineLayer` peer to the framework's out-object.
+/// Records `op`, a push, and attaches the layer it opens to `out_layer`.
 ///
 /// # Safety
-/// As [`peer::attach`].
-unsafe fn new_layer(out_layer: sys::Dart_Handle, what: &str) {
+/// `builder` is the receiver's native field; a Handle-parameter native.
+unsafe fn push_layer(builder: *mut c_void, out_layer: sys::Dart_Handle, op: LayerOp, what: &str) {
+    let layer = Retained::default();
     // SAFETY: per this function's contract.
-    if let Err(e) = unsafe { peer::attach(out_layer, EngineLayer, 0) } {
-        eprintln!("fl-ui: {what}: {e}");
+    unsafe {
+        peer::with::<Builder, _>(builder, |b| {
+            b.open.push((b.ops.len(), Arc::clone(&layer)));
+            b.ops.push(op);
+        });
+        if let Err(e) = peer::attach(out_layer, EngineLayer(layer), 0) {
+            eprintln!("fl-ui: {what}: {e}");
+        }
     }
 }
 
@@ -114,10 +128,15 @@ pub(crate) extern "C" fn push_transform(
     guard((), || {
         // SAFETY: a Handle-parameter native, matrix4 a live handle.
         let m = unsafe { float64x16(matrix4) }.unwrap_or(IDENTITY);
-        // SAFETY: builder is the receiver's native field.
-        unsafe { peer::with::<Builder, _>(builder, |b| b.ops.push(LayerOp::PushTransform(m))) };
-        // SAFETY: as above.
-        unsafe { new_layer(out_layer, "SceneBuilder::pushTransform") };
+        // SAFETY: builder is the receiver's native field; Handle parameters.
+        unsafe {
+            push_layer(
+                builder,
+                out_layer,
+                LayerOp::PushTransform(m),
+                "SceneBuilder::pushTransform",
+            )
+        };
     });
 }
 
@@ -130,25 +149,16 @@ pub(crate) extern "C" fn push_offset(
     _old_layer: sys::Dart_Handle,
 ) {
     guard((), || {
-        // SAFETY: builder is the receiver's native field.
+        // SAFETY: builder is the receiver's native field; Handle parameters.
         unsafe {
-            peer::with::<Builder, _>(builder, |b| b.ops.push(LayerOp::PushOffset { dx, dy }))
+            push_layer(
+                builder,
+                out_layer,
+                LayerOp::PushOffset { dx, dy },
+                "SceneBuilder::pushOffset",
+            )
         };
-        // SAFETY: a Handle-parameter native.
-        unsafe { new_layer(out_layer, "SceneBuilder::pushOffset") };
     });
-}
-
-/// Records `op` and attaches a layer to `out_layer`.
-///
-/// # Safety
-/// `builder` is the receiver's native field; a Handle-parameter native.
-unsafe fn push_layer(builder: *mut c_void, out_layer: sys::Dart_Handle, op: LayerOp, what: &str) {
-    // SAFETY: per this function's contract.
-    unsafe {
-        peer::with::<Builder, _>(builder, |b| b.ops.push(op));
-        new_layer(out_layer, what);
-    }
 }
 
 /// `Void Function(Pointer<Void>, Handle outLayer, Double left, Double right,
@@ -269,10 +279,42 @@ pub(crate) extern "C" fn add_picture(
 }
 
 /// `Void Function(Pointer<Void>)`, a leaf call.
+/// The layer it closes keeps its operations from here on.
 pub(crate) extern "C" fn pop(builder: *mut c_void) {
     guard((), || {
         // SAFETY: builder is the receiver's native field.
-        unsafe { peer::with::<Builder, _>(builder, |b| b.ops.push(LayerOp::Pop)) };
+        unsafe {
+            peer::with::<Builder, _>(builder, |b| {
+                b.ops.push(LayerOp::Pop);
+                if let Some((start, layer)) = b.open.pop() {
+                    *layer.lock().unwrap_or_else(|e| e.into_inner()) = b.ops[start..].to_vec();
+                }
+            })
+        };
+    });
+}
+
+/// `Void Function(Pointer<Void>, Handle retainedLayer)`: a layer from an
+/// earlier frame, reused unchanged, its operations replayed here. Pictures
+/// are shared, not copied.
+pub(crate) extern "C" fn add_retained(builder: *mut c_void, layer: sys::Dart_Handle) {
+    guard((), || {
+        // SAFETY: a Handle-parameter native; layer is a live handle.
+        let Some(raw) = (unsafe { peer::field(layer) }) else {
+            eprintln!("fl-ui: SceneBuilder::addRetained: not an EngineLayer");
+            return;
+        };
+        // SAFETY: raw is that object's field 0, zero or set by peer::attach.
+        let Some(ops) = (unsafe {
+            peer::with::<EngineLayer, _>(raw, |l| {
+                l.0.lock().unwrap_or_else(|e| e.into_inner()).clone()
+            })
+        }) else {
+            eprintln!("fl-ui: SceneBuilder::addRetained: not a live EngineLayer");
+            return;
+        };
+        // SAFETY: builder is the receiver's native field.
+        unsafe { peer::with::<Builder, _>(builder, |b| b.ops.extend(ops)) };
     });
 }
 

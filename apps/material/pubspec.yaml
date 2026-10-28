@@ -1,0 +1,11 @@
+name: material
+description: fl-engine test program. MaterialApp with no text (docs/m2-dart-ui.md §8).
+publish_to: none
+environment:
+  sdk: ^3.13.0
+dependencies:
+  flutter:
+    sdk: flutter
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
