@@ -451,18 +451,12 @@ fn path_of(p: &fl_ui::Path) -> emblema::Path {
     b.build()
 }
 
-/// dart:ui's `BlendMode`, by index, as emblema names it. The two enums
-/// hold the same modes in different orders.
+/// dart:ui's `BlendMode`, by index. emblema numbers its modes as upstream
+/// does (jwinarske/emblema#225), and `ALL` is in that order.
 fn blend_of(i: i32) -> Result<BlendMode, RasterError> {
-    use BlendMode::*;
-    const MODES: [BlendMode; 29] = [
-        Clear, Src, Dst, SrcOver, DstOver, SrcIn, DstIn, SrcOut, DstOut, SrcATop, DstATop, Xor,
-        Plus, Modulate, Screen, Overlay, Darken, Lighten, ColorDodge, ColorBurn, HardLight,
-        SoftLight, Difference, Exclusion, Multiply, Hue, Saturation, Color, Luminosity,
-    ];
     usize::try_from(i)
         .ok()
-        .and_then(|i| MODES.get(i).copied())
+        .and_then(|i| BlendMode::ALL.get(i).copied())
         .ok_or_else(|| RasterError::Unsupported(format!("blend mode {i}")))
 }
 
@@ -579,11 +573,15 @@ mod tests {
     }
 
     #[test]
-    fn blend_modes_map_by_name() {
-        // dart:ui's multiply is index 24; emblema's enum has it elsewhere.
+    fn blend_modes_are_dart_ui_indices() {
+        // Every index to the mode with that number, as dart:ui and Impeller
+        // number them; multiply is the one 0.2.0 had elsewhere.
+        for i in 0..29 {
+            assert_eq!(blend_of(i).unwrap() as i32, i);
+        }
         assert_eq!(blend_of(24).unwrap(), BlendMode::Multiply);
         assert_eq!(blend_of(3).unwrap(), BlendMode::SrcOver);
-        assert_eq!(blend_of(28).unwrap(), BlendMode::Luminosity);
+        assert!(blend_of(29).is_err());
         assert!(blend_of(-1).is_err());
     }
 

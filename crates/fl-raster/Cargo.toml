@@ -15,7 +15,10 @@ aot = ["fl-ui/aot"]
 fl-ui = { workspace = true }
 # Vulkan first (docs/m2-dart-ui.md D4). No window-system feature: offscreen
 # now, KMS at stage 6.
-emblema = { version = "0.2.0", default-features = false, features = ["vulkan"] }
+# Pinned to a commit on emblema's main, not 0.2.0 from crates.io: it carries
+# BlendMode and TileMode numbered as upstream (jwinarske/emblema#225). Back to
+# a registry version once one includes it.
+emblema = { git = "https://github.com/jwinarske/emblema", rev = "085d8731adf251b3e08f64a5fb3438cb327e0116", default-features = false, features = ["vulkan"] }
 png = "0.18"
 
 [dev-dependencies]

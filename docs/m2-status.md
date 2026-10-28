@@ -119,6 +119,12 @@ Found on the way:
 * The brief said `MaterialApp`'s first frame needs the `flutter/restoration` answer. Only with a restoration scope: `RootRestorationScope` defers the first frame for the bucket when a `restorationScopeId` is set, and without one the app renders unanswered. Checked both ways; the app sets one so the answer is exercised, and without it no frame renders
 * The framework catches errors in build and draws an error widget, so an unresolved native there does not fail the run. The scene listing and the golden are what catch it
 
+## emblema from its main branch (2026-10-28)
+
+* `fl-raster` takes emblema at `085d873` (git), not 0.2.0 from crates.io: `BlendMode` and `TileMode` numbered as upstream (jwinarske/emblema#225). Back to a registry version once one carries it
+* `blend_of` is now a lookup in `BlendMode::ALL`, which is in dart:ui's index order; the by-name table is gone. A test holds every index to its discriminant
+* Pixels against 0.2.0: `colored_box`, `shapes` and `material` are byte-identical PNGs. `ticker` differs only because the two runs missed different ticks while warming up (100 ms against 83 ms in one interval); each run's last frame is exactly the color its own vsync times give. Against the goldens: unchanged, 0.628% and 0.067%
+
 Next: stage 6, KMS on the boards (needs the hardware). Before it: images and text (M3), or more of the drawing set.
 
 ## Fixed: JIT isolate-cycle growth (2026-10-28)
