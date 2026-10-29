@@ -1,6 +1,6 @@
 # M3: images and text
 
-> Brief, 2026-10-28. The decisions in §12 are open. Findings from bring-up go
+> Brief, 2026-10-28. The five decisions in §13 were taken 2026-10-29. Findings from bring-up go
 > in `docs/m3-status.md`, newer where the two disagree.
 
 **`flutter create`'s counter app, unmodified, renders its first frame on fl-engine and matches the stock engine's golden within a recorded tolerance: app bar title, body text, the count, and the floating action button with its icon and shadow. Images are decoded, text shaped and laid out, and glyphs rasterized in pure Rust; emblema draws both.**
@@ -64,11 +64,11 @@ About 59. The survey is redone against the counter app at stage 1, as M2's was a
 
 ## 5. Text
 
-* **Fonts**: bytes from `FontManifest.json` and `loadFontFromList`, shared as `Arc<[u8]>` across threads; system fonts for fallback (D4)
-* **Shaping and layout** (D1): runs shaped, lines broken by UAX #14, bidi by UAX #9, laid out to SkParagraph's rules: height multipliers, `TextHeightBehavior` and leading distribution, strut, `maxLines` and ellipsis, letter and word spacing, placeholders. These rules are what the framework's `TextPainter` measures against, so they are what parity means here
+* **Fonts**: bytes from `FontManifest.json` and `loadFontFromList`, shared as `Arc<[u8]>` across threads; system fonts through fontdb for fallback (D4)
+* **Shaping and layout** (D1): runs shaped by harfrust, lines broken by UAX #14, bidi by UAX #9, laid out to SkParagraph's rules: height multipliers, `TextHeightBehavior` and leading distribution, strut, `maxLines` and ellipsis, letter and word spacing, placeholders. These rules are what the framework's `TextPainter` measures against, so they are what parity means here
 * **Queries**: line metrics, boxes for a range, position for an offset, word and line boundaries (UAX #29), glyph info; all from the laid-out paragraph, on the UI thread
 * **Paint**: `Paragraph::paint(canvas, x, y)` records the laid-out glyph runs into the picture: font, size, glyph ids, positions, color, decorations as lines. No raster work on the UI thread
-* **Rasterizing** (D2): on the raster thread, each glyph not in the atlas is rasterized at the device scale and inserted; the atlas uploads when dirty; a run is one `draw_glyphs`. emblema has no subpixel positioning, so glyph positions are rounded to the pixel; that is a recorded difference from Skia
+* **Rasterizing** (D2, swash): on the raster thread, each glyph not in the atlas is rasterized at the device scale and inserted; the atlas uploads when dirty; a run is one `draw_glyphs`. emblema has no subpixel positioning, so glyph positions are rounded to the pixel; that is a recorded difference from Skia
 * **Decorations**: underline, overline, strike-through as rects and paths, styles solid, double, dotted, dashed, wavy
 
 ## 6. Threads
@@ -134,20 +134,18 @@ fl-text and fl-image know neither the VM nor emblema, so each is testable alone 
 6. **counter.** Exit criterion 3
 7. **Animation and lanes.** `gif`, churn, sanitizers. Exit criteria 4 to 8
 
-## 13. Decisions (open)
+## 13. Decisions (2026-10-29)
 
-* **D1, shaping and layout.** Two ways that fit the Rust 1.85 floor, and one that does not:
-  * harfrust (shaping, the Rust port of HarfBuzz, 1.85), skrifa (font tables, 1.85), unicode-linebreak, unicode-bidi, unicode-segmentation, and a layout of fl-text's own written to SkParagraph's rules. More code, but the rules are Flutter's, which is what the metrics parity in §9 measures. **Recommended**
-  * parley (Linebender's layout) or cosmic-text: whole paragraph engines with their own models of line height and spacing. Both need Rust 1.88 or later (parley 0.12, cosmic-text 0.19), so either raises fl-engine's floor and parts with emblema's
-* **D2, rasterizer.** swash 0.2 (built on skrifa; scaling, hinting, coverage in one), or skrifa outlines through zeno. emblema's example uses swash. **Recommended: swash**, checked on 1.85 at stage 5, since it declares no `rust-version`
-* **D3, decoders.** One crate per format, all on 1.85 (`png` 1.73, `zune-jpeg` 1.77, `gif` 1.62, `image-webp` 1.80). **Recommended.** The `image` crate would be one dependency, but needs 1.88
-* **D4, fallback fonts.** fontdb (1.71) scanning the system font directories, as fontconfig would find them, after the manifest's and the app's. **Recommended.** Or none: an app that names no bundled family draws nothing, which is honest but unlike Flutter on Linux
-* **D5, decode thread.** One worker, as the engine's IO runner. **Recommended.** Decoding on the UI thread would be simpler and would make large images stall frames
+* **D1, shaping and layout: fl-text's own layout, on harfrust.** harfrust (the Rust port of HarfBuzz), skrifa (font tables), unicode-linebreak, unicode-bidi and unicode-segmentation, with lines laid out to SkParagraph's rules. More code than a paragraph engine, but the rules are Flutter's, which is what the metrics parity in §9 measures. All on Rust 1.85. Not parley or cosmic-text: both have their own models of line height and spacing, and need 1.88 or later (parley 0.12, cosmic-text 0.19), which would raise fl-engine's floor and part it from emblema's
+* **D2, rasterizer: swash 0.2**, built on skrifa: scaling, hinting and coverage in one, as emblema's example uses it. It declares no `rust-version`; checked on 1.85 at stage 5
+* **D3, decoders: one crate per format.** `png` (1.73), `zune-jpeg` (1.77), `gif` (1.62), `image-webp` (1.80). Not the `image` crate, which needs 1.88
+* **D4, fallback fonts: the system's, through fontdb** (1.71), scanning the directories fontconfig would, after the manifest's fonts and the app's. As Flutter on Linux behaves. Goldens still load Roboto by name, so they do not depend on what a runner has installed
+* **D5, decoding: one worker thread**, as the engine's IO runner. Results come back through the reply queue, which then wakes the UI loop from another thread; the TSan lane covers that crossing
 
 ## 14. Risks
 
 * **Text parity.** HarfBuzz, ICU and SkParagraph against a Rust stack: line breaks at the edges of UAX #14, shaping of complex scripts, the rounding of glyph positions. Mitigation: `metrics` holds the layout numerically; goldens hold the pixels with a recorded tolerance; scripts beyond Latin are tested only for not failing
-* **Dependency floor.** The text crates moving to 1.88 is the trend. Mitigation: D1 and D3 as recommended stay on 1.85; raising the floor is a decision taken with emblema, not inside M3
+* **Dependency floor.** The text crates moving to 1.88 is the trend. Mitigation: D1 to D4 as taken stay on 1.85; raising the floor is a decision taken with emblema, not inside M3
 * **Surface.** `Paragraph` is 22 natives with fine semantics. Mitigation: the counter app first, then the rest as the `text` and `metrics` programs reach them; each stubbed native is listed with what it returns
 * **GPU memory on boards.** Decoded images at full size. Mitigation: `targetWidth`/`targetHeight` honored at decode; the cache's size reported in the soak lane
 * **Icon fonts.** Release builds tree-shake MaterialIcons to the glyphs used. Mitigation: build the bundle as `flutter build linux --release` does, so the counter app gets the font it would ship with
