@@ -1,0 +1,11 @@
+name: assets
+description: fl-engine test program. The asset bundle, flutter/assets and ImmutableBuffer (docs/m3-images-text.md stage 1).
+publish_to: none
+environment:
+  sdk: ^3.13.0
+dependencies:
+  flutter:
+    sdk: flutter
+flutter:
+  assets:
+    - assets/hello.txt

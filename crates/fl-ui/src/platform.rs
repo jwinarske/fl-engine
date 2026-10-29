@@ -54,12 +54,18 @@ pub(crate) extern "C" fn send_channel_update(_name: sys::Dart_Handle, _listening
 /// `Handle Function(Handle name, Handle callback, Handle data)`. Null is
 /// success; a returned String is thrown as an error.
 ///
-/// One message is answered: `flutter/restoration` `get`, which `MaterialApp`
-/// awaits before its first frame (`RestorationManager`). The answer is a
-/// successful method result of null, no restoration data; an empty reply
-/// would mean no handler, and the framework would throw. Every other message
-/// is dropped: nothing on the path so far awaits one, and an unanswered
-/// request never completes rather than failing.
+/// Two channels are answered:
+/// * `flutter/assets`: the data is an asset key as UTF-8; the answer is the
+///   asset's bytes from the bundle [`crate::set_asset_bundle`] set, or null,
+///   which the framework reads as not found. Every request is answered,
+///   found or not (brief M3 §15)
+/// * `flutter/restoration` `get`, which `MaterialApp` awaits before its
+///   first frame when it has a restoration scope. The answer is a successful
+///   method result of null, no restoration data; an empty reply would mean
+///   no handler, and the framework would throw
+///
+/// Every other message is dropped: nothing on the path so far awaits one,
+/// and an unanswered request never completes rather than failing.
 ///
 /// Replies are asynchronous, as the engine's are: queued here and delivered
 /// by [`deliver_replies`], which the shell's loop calls between steps.
@@ -74,21 +80,24 @@ pub(crate) extern "C" fn send_platform_message(
     guard(null, || {
         // SAFETY: as above; the three are live handles.
         let (name, bytes) = unsafe { (args::string(name), args::bytes(data)) };
-        let reply = match (name.as_deref(), bytes.as_deref().and_then(method_name)) {
-            (Some("flutter/restoration"), Some("get")) => Some(RESULT_NULL.to_vec()),
+        let reply = match name.as_deref() {
+            Some("flutter/assets") => Some(
+                bytes
+                    .as_deref()
+                    .and_then(|k| std::str::from_utf8(k).ok())
+                    .and_then(crate::buffer::load_asset)
+                    .map_or(ReplyArg::Null, ReplyArg::Bytes),
+            ),
+            Some("flutter/restoration")
+                if bytes.as_deref().and_then(method_name) == Some("get") =>
+            {
+                Some(ReplyArg::Bytes(RESULT_NULL.to_vec()))
+            }
             _ => None,
         };
-        // SAFETY: as above.
-        if let (Some(reply), false) = (reply, unsafe { sys::Dart_IsNull(callback) }) {
-            // SAFETY: as above; deleted by deliver_replies, or at shutdown.
-            let callback = unsafe { sys::Dart_NewPersistentHandle(callback) };
-            REPLIES
-                .lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .push(Reply {
-                    callback,
-                    data: Some(reply),
-                });
+        if let Some(reply) = reply {
+            // SAFETY: as above; callback is a live handle.
+            unsafe { queue_reply(callback, reply) };
         }
         null
     })
@@ -111,11 +120,42 @@ fn method_name(call: &[u8]) -> Option<&str> {
     std::str::from_utf8(rest.get(..usize::from(len))?).ok()
 }
 
+/// What a reply calls its callback with.
+pub(crate) enum ReplyArg {
+    Null,
+    /// The `void` type object: what the engine passes a `_Callback<void>`
+    /// to mean success (`Dart_TypeVoid`), since `_futurize` reads null as
+    /// failure.
+    Void,
+    /// A new `ByteData`.
+    Bytes(Vec<u8>),
+    Int(i64),
+}
+
 /// A reply waiting to be delivered: the response callback, kept alive, and
 /// what to call it with.
 struct Reply {
     callback: sys::Dart_PersistentHandle,
-    data: Option<Vec<u8>>,
+    arg: ReplyArg,
+}
+
+/// Queues `arg` for `callback`, to be delivered between loop steps. A null
+/// callback is nothing to answer.
+///
+/// # Safety
+/// A Handle-parameter native: isolate current, scope open; `callback` is a
+/// live handle.
+pub(crate) unsafe fn queue_reply(callback: sys::Dart_Handle, arg: ReplyArg) {
+    // SAFETY: per this function's contract.
+    if unsafe { sys::Dart_IsNull(callback) } {
+        return;
+    }
+    // SAFETY: as above; deleted by deliver_replies, or with the isolate.
+    let callback = unsafe { sys::Dart_NewPersistentHandle(callback) };
+    REPLIES
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .push(Reply { callback, arg });
 }
 
 // SAFETY: a Reply is made on the UI thread with the isolate current, and its
@@ -143,12 +183,14 @@ pub unsafe fn deliver_replies() -> Result<(), String> {
     let mut first_error = None;
     for r in replies {
         // SAFETY: per this function's contract; the handle was made by
-        // send_platform_message in this isolate and is deleted only here.
+        // queue_reply in this isolate and is deleted only here.
         unsafe {
             let callback = sys::Dart_HandleFromPersistent(r.callback);
-            let mut arg = [match &r.data {
-                Some(d) => args::new_byte_data(d),
-                None => args::null(),
+            let mut arg = [match &r.arg {
+                ReplyArg::Bytes(d) => args::new_byte_data(d),
+                ReplyArg::Int(n) => sys::Dart_NewInteger(*n),
+                ReplyArg::Null => args::null(),
+                ReplyArg::Void => sys::Dart_TypeVoid(),
             }];
             let result = sys::Dart_InvokeClosure(callback, 1, arg.as_mut_ptr());
             sys::Dart_DeletePersistentHandle(r.callback);

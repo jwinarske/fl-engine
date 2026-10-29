@@ -15,12 +15,15 @@ use std::sync::Mutex;
 
 use fl_dart_ffi::{lookup, Symbol};
 
+mod buffer;
 mod compositing;
 mod painting;
 mod path;
 mod platform;
 mod semantics;
+mod text;
 
+pub use buffer::{asset_bundle, set_asset_bundle};
 pub use compositing::{Clip, LayerOp, Scene};
 pub use painting::{Cap, ClipOp, Draw, Join, Paint, Picture, Style};
 pub use path::{Affine, FillType, Path, Point, RRect, Seg};
@@ -88,6 +91,10 @@ pub static NATIVES: &[Symbol] = &[
         platform::render
     ),
     // painting.dart
+    fl_dart_ffi::symbol!("ImmutableBuffer::init", 3, buffer::init),
+    fl_dart_ffi::symbol!("ImmutableBuffer::initFromAsset", 3, buffer::init_from_asset),
+    fl_dart_ffi::symbol!("ImmutableBuffer::initFromFile", 3, buffer::init_from_file),
+    fl_dart_ffi::symbol!("ImmutableBuffer::dispose", 1, buffer::dispose),
     fl_dart_ffi::symbol!("PictureRecorder::Create", 1, painting::recorder_create),
     fl_dart_ffi::symbol!("PictureRecorder::endRecording", 2, painting::recorder_end),
     fl_dart_ffi::symbol!("Picture::dispose", 1, painting::picture_dispose),
@@ -173,6 +180,69 @@ pub static NATIVES: &[Symbol] = &[
     fl_dart_ffi::symbol!("SceneBuilder::build", 2, compositing::build),
     fl_dart_ffi::symbol!("Scene::dispose", 1, compositing::scene_dispose),
     fl_dart_ffi::symbol!("EngineLayer::dispose", 1, compositing::layer_dispose),
+    // text.dart: stubs until M3 stage 4
+    fl_dart_ffi::symbol!("ParagraphBuilder::Create", 9, text::builder_create),
+    fl_dart_ffi::symbol!("ParagraphBuilder::pushStyle", 16, text::push_style),
+    fl_dart_ffi::symbol!("ParagraphBuilder::pop", 1, text::builder_pop),
+    fl_dart_ffi::symbol!("ParagraphBuilder::addText", 2, text::add_text),
+    fl_dart_ffi::symbol!("ParagraphBuilder::addPlaceholder", 6, text::add_placeholder),
+    fl_dart_ffi::symbol!("ParagraphBuilder::build", 2, text::build),
+    fl_dart_ffi::symbol!("Paragraph::width", 1, text::width),
+    fl_dart_ffi::symbol!("Paragraph::height", 1, text::height),
+    fl_dart_ffi::symbol!("Paragraph::longestLine", 1, text::longest_line),
+    fl_dart_ffi::symbol!("Paragraph::minIntrinsicWidth", 1, text::min_intrinsic_width),
+    fl_dart_ffi::symbol!("Paragraph::maxIntrinsicWidth", 1, text::max_intrinsic_width),
+    fl_dart_ffi::symbol!(
+        "Paragraph::alphabeticBaseline",
+        1,
+        text::alphabetic_baseline
+    ),
+    fl_dart_ffi::symbol!(
+        "Paragraph::ideographicBaseline",
+        1,
+        text::ideographic_baseline
+    ),
+    fl_dart_ffi::symbol!(
+        "Paragraph::didExceedMaxLines",
+        1,
+        text::did_exceed_max_lines
+    ),
+    fl_dart_ffi::symbol!("Paragraph::layout", 2, text::layout),
+    fl_dart_ffi::symbol!("Paragraph::getRectsForRange", 5, text::rects_for_range),
+    fl_dart_ffi::symbol!(
+        "Paragraph::getRectsForPlaceholders",
+        1,
+        text::rects_for_placeholders
+    ),
+    fl_dart_ffi::symbol!(
+        "Paragraph::getPositionForOffset",
+        3,
+        text::position_for_offset
+    ),
+    fl_dart_ffi::symbol!("Paragraph::getGlyphInfoAt", 3, text::glyph_info_at),
+    fl_dart_ffi::symbol!(
+        "Paragraph::getClosestGlyphInfo",
+        4,
+        text::closest_glyph_info
+    ),
+    fl_dart_ffi::symbol!("Paragraph::getWordBoundary", 2, text::word_boundary),
+    fl_dart_ffi::symbol!("Paragraph::getLineBoundary", 2, text::line_boundary),
+    fl_dart_ffi::symbol!("Paragraph::paint", 4, text::paint),
+    fl_dart_ffi::symbol!(
+        "Paragraph::computeLineMetrics",
+        1,
+        text::compute_line_metrics
+    ),
+    fl_dart_ffi::symbol!("Paragraph::getLineMetricsAt", 3, text::line_metrics_at),
+    fl_dart_ffi::symbol!("Paragraph::getNumberOfLines", 1, text::number_of_lines),
+    fl_dart_ffi::symbol!("Paragraph::getLineNumberAt", 2, text::line_number_at),
+    fl_dart_ffi::symbol!("Paragraph::dispose", 1, text::paragraph_dispose),
+    fl_dart_ffi::symbol!(
+        "FontCollection::LoadFontFromList",
+        3,
+        text::load_font_from_list
+    ),
+    fl_dart_ffi::symbol!("Canvas::drawShadow", 5, painting::draw_shadow),
     // semantics.dart
     fl_dart_ffi::symbol!(
         "NativeSemanticsFlags::initSemanticsFlags",
@@ -216,6 +286,122 @@ pub static STUBS: &[(&str, &str)] = &[
     (
         "PlatformConfigurationNativeApi::RequestViewFocusChange",
         "nothing: one view, no platform focus to move",
+    ),
+    (
+        "ParagraphBuilder::Create",
+        "an empty builder (M3 stage 4)",
+    ),
+    (
+        "ParagraphBuilder::pushStyle",
+        "nothing (M3 stage 4)",
+    ),
+    (
+        "ParagraphBuilder::pop",
+        "nothing (M3 stage 4)",
+    ),
+    (
+        "ParagraphBuilder::addText",
+        "null (no error); the text is dropped (M3 stage 4)",
+    ),
+    (
+        "ParagraphBuilder::addPlaceholder",
+        "nothing (M3 stage 4)",
+    ),
+    (
+        "ParagraphBuilder::build",
+        "an empty paragraph (M3 stage 4)",
+    ),
+    (
+        "Paragraph::width",
+        "0 (M3 stage 4)",
+    ),
+    (
+        "Paragraph::height",
+        "0 (M3 stage 4)",
+    ),
+    (
+        "Paragraph::longestLine",
+        "0 (M3 stage 4)",
+    ),
+    (
+        "Paragraph::minIntrinsicWidth",
+        "0 (M3 stage 4)",
+    ),
+    (
+        "Paragraph::maxIntrinsicWidth",
+        "0 (M3 stage 4)",
+    ),
+    (
+        "Paragraph::alphabeticBaseline",
+        "0 (M3 stage 4)",
+    ),
+    (
+        "Paragraph::ideographicBaseline",
+        "0 (M3 stage 4)",
+    ),
+    (
+        "Paragraph::didExceedMaxLines",
+        "false (M3 stage 4)",
+    ),
+    (
+        "Paragraph::layout",
+        "nothing (M3 stage 4)",
+    ),
+    (
+        "Paragraph::getRectsForRange",
+        "no boxes (M3 stage 4)",
+    ),
+    (
+        "Paragraph::getRectsForPlaceholders",
+        "no boxes (M3 stage 4)",
+    ),
+    (
+        "Paragraph::getPositionForOffset",
+        "[0, 0]: the start, downstream (M3 stage 4)",
+    ),
+    (
+        "Paragraph::getGlyphInfoAt",
+        "null (M3 stage 4)",
+    ),
+    (
+        "Paragraph::getClosestGlyphInfo",
+        "null (M3 stage 4)",
+    ),
+    (
+        "Paragraph::getWordBoundary",
+        "[0, 0] (M3 stage 4)",
+    ),
+    (
+        "Paragraph::getLineBoundary",
+        "[0, 0] (M3 stage 4)",
+    ),
+    (
+        "Paragraph::paint",
+        "nothing drawn (M3 stage 4)",
+    ),
+    (
+        "Paragraph::computeLineMetrics",
+        "no lines (M3 stage 4)",
+    ),
+    (
+        "Paragraph::getLineMetricsAt",
+        "null (M3 stage 4)",
+    ),
+    (
+        "Paragraph::getNumberOfLines",
+        "0 (M3 stage 4)",
+    ),
+    (
+        "Paragraph::getLineNumberAt",
+        "-1 (M3 stage 4)",
+    ),
+    (
+        "FontCollection::LoadFontFromList",
+        "the callback answered; the font not registered (M3 stage 4)",
+    ),
+    (
+        "Canvas::drawShadow",
+        "nothing: the shadow is not drawn (M3 stage 3)",
     ),
 ];
 

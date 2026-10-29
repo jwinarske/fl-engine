@@ -150,7 +150,7 @@ Each stage carries its items from §15.
 * **Dependency floor.** The text crates moving to 1.88 is the trend. Mitigation: D1 to D4 as taken stay on 1.85; raising the floor is a decision taken with emblema, not inside M3
 * **Surface.** `Paragraph` is 22 natives with fine semantics. Mitigation: the counter app first, then the rest as the `text` and `metrics` programs reach them; each stubbed native is listed with what it returns
 * **GPU memory on boards.** Decoded images at full size. Mitigation: `targetWidth`/`targetHeight` honored at decode; the cache's size reported in the soak lane
-* **Icon fonts.** Release builds tree-shake MaterialIcons to the glyphs used. Mitigation: build the bundle as `flutter build linux --release` does, so the counter app gets the font it would ship with
+* **Icon fonts.** Release builds tree-shake MaterialIcons to the glyphs used; `flutter build bundle` does not (1.6 MB, m3-status). Mitigation: `build.sh` runs const_finder and font-subset as `flutter build linux --release` does, so the counter app gets the font it would ship with
 
 ## 15. Reliability, Security and Performance (review, 2026-10-29)
 

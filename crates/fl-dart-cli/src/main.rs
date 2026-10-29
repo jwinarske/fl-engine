@@ -3,7 +3,7 @@
 //! ```text
 //! fl-dart run hello.dill [args...]       # JIT, dev hosts (--features jit)
 //! fl-dart run-aot hello.aot [args...]    # precompiled runtime, every target
-//! fl-dart run-app libapp.so [WxH[@dpr]] [--png out.png] [--frames-dir DIR] [--ops] [--natives] [--frames N] [--hz H]
+//! fl-dart run-app libapp.so [WxH[@dpr]] [--assets DIR] [--png out.png] [--frames-dir DIR] [--ops] [--natives] [--frames N] [--hz H]
 //!                                       # a Flutter app, through dart:ui (M2);
 //!                                       # JIT takes the app's kernel instead
 //! fl-dart app-cycle libapp.so <n> [run-app options]
@@ -87,7 +87,7 @@ fn usage() -> ExitCode {
         "libapp.so"
     };
     eprintln!(
-        "       fl-dart run-app <{app}> [WxH[@dpr]] [--png out.png] [--frames-dir DIR] [--ops] [--natives] [--frames N] [--hz H]\n       fl-dart app-cycle <{app}> <n> [run-app options]"
+        "       fl-dart run-app <{app}> [WxH[@dpr]] [--assets DIR] [--png out.png] [--frames-dir DIR] [--ops] [--natives] [--frames N] [--hz H]\n       fl-dart app-cycle <{app}> <n> [run-app options]"
     );
     ExitCode::from(64)
 }
@@ -157,6 +157,7 @@ fn run_aot(path: &str, args: &[&str]) -> Result<(), Failure> {
 /// vsync, a `vsync:` line reports their spacing.
 fn run_app(path: &str, app: AppArgs) -> Result<(), Failure> {
     let program = load_app(path)?;
+    set_assets(path, &app)?;
     let vm = start_vm()?;
     let raster = raster_for(&app)?;
     let run = app_once(&vm, &program, path, &app, raster.as_ref(), true)?;
@@ -176,6 +177,7 @@ fn run_app(path: &str, app: AppArgs) -> Result<(), Failure> {
 /// churns too; it is made once, as a device is.
 fn app_cycle(path: &str, n: u32, app: AppArgs) -> Result<(), Failure> {
     let program = load_app(path)?;
+    set_assets(path, &app)?;
     let vm = start_vm()?;
     let raster = raster_for(&app)?;
     // Sampled as `cycle` samples: after the first cycle, after a tenth,
@@ -214,6 +216,23 @@ fn app_cycle(path: &str, n: u32, app: AppArgs) -> Result<(), Failure> {
 type AppProgram = std::sync::Arc<fl_dart_vm::AotSnapshot>;
 #[cfg(feature = "jit")]
 type AppProgram = Vec<u8>;
+
+/// Sets the asset bundle the app reads: `--assets`, else `<app>.assets`
+/// beside the program if it exists, else none (every asset not found).
+fn set_assets(path: &str, app: &AppArgs) -> Result<(), Failure> {
+    let dir = app.assets.clone().or_else(|| {
+        let beside = std::path::Path::new(path).with_extension("assets");
+        beside.is_dir().then_some(beside)
+    });
+    let bundle = match dir {
+        Some(d) => Some(std::sync::Arc::new(
+            fl_assets::Bundle::open(&d).map_err(|e| Failure::Other(format!("assets: {e}")))?,
+        )),
+        None => None,
+    };
+    fl_ui::set_asset_bundle(bundle);
+    Ok(())
+}
 
 fn load_app(path: &str) -> Result<AppProgram, Failure> {
     #[cfg(feature = "aot")]
@@ -424,14 +443,17 @@ struct AppArgs {
     view: fl_shell::ViewConfig,
     png: Option<std::path::PathBuf>,
     frames_dir: Option<std::path::PathBuf>,
+    assets: Option<std::path::PathBuf>,
     ops: bool,
     natives: bool,
     frames: Option<u64>,
 }
 
-/// `[WxH[@dpr]] [--png out.png] [--frames-dir DIR] [--ops] [--natives] [--frames N] [--hz H]`,
+/// `[WxH[@dpr]] [--assets DIR] [--png out.png] [--frames-dir DIR] [--ops] [--natives] [--frames N] [--hz H]`,
 /// in any order; no size is the default view. Sizes are physical pixels.
-/// `--frames-dir` writes every frame there, `frame-NNNN.png`, as `--png`
+/// `--assets` names the app's asset bundle; without it, `<app>.assets` beside
+/// the program is used if it is there, as `tools/flutter-app/build.sh` puts
+/// it. `--frames-dir` writes every frame there, `frame-NNNN.png`, as `--png`
 /// writes the last. `--ops` prints each frame's [`outline`]; `--natives`, at the end, every
 /// dart:ui native the app called; `--frames` stops after N frames rendered;
 /// `--hz` sets the vsync rate (60 by default).
@@ -442,6 +464,7 @@ fn app_args(args: &[&str]) -> Option<AppArgs> {
         match *a {
             "--png" => app.png = Some(std::path::PathBuf::from(it.next()?)),
             "--frames-dir" => app.frames_dir = Some(std::path::PathBuf::from(it.next()?)),
+            "--assets" => app.assets = Some(std::path::PathBuf::from(it.next()?)),
             "--ops" => app.ops = true,
             "--natives" => app.natives = true,
             "--frames" => app.frames = Some(it.next()?.parse().ok().filter(|n| *n > 0)?),

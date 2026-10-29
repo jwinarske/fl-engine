@@ -4,6 +4,10 @@ Not published, no versions yet.
 
 ## Unreleased
 
+### Milestone 3: images and text (in progress)
+
+* `fl-assets` and `build.sh` bundles: `flutter/assets`, `ImmutableBuffer`, asset keys confined to the bundle. `flutter create`'s counter app renders with no Dart error, text drawn as nothing
+
 ### Milestone 2: dart:ui (in progress)
 
 * `fl-dart-ffi`, `fl-ui`, `fl-shell`: dart:ui natives FFI-first, peers on native-field wrappers, the embedder's runtime hooks

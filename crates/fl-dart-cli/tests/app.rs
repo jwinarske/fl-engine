@@ -154,12 +154,116 @@ fn material_matches_its_golden() {
     matches_golden("material");
 }
 
+/// The asset bundle (M3 stage 1): `flutter/assets` and each
+/// `ImmutableBuffer` source reach it, and nothing outside it: a key with
+/// `..` is a miss, a missing file and a device are refused. `FontLoader`
+/// completes.
+#[test]
+#[ignore = "app lane: needs FLUTTER_ROOT"]
+fn assets_reach_the_bundle_and_nothing_else() {
+    let app = build_app("assets");
+    let o = common::fl_dart(&["run-app".as_ref(), app.as_os_str(), "200x100".as_ref()]);
+    assert!(o.status.success(), "{o:?}");
+    assert_eq!(
+        String::from_utf8_lossy(&o.stdout),
+        "\
+load: hello from the bundle
+fromAsset: 22 bytes
+fromUint8List: 3 bytes
+load assets/none.txt: not found
+fromAsset assets/none.txt: not found
+load ../escape.txt: not found
+fromAsset ../escape.txt: not found
+fromFilePath /nonexistent/file: refused
+fromFilePath /dev/zero: refused
+FontLoader: done
+frame 1: view 0 200x100 layers=1 pictures=1 draws=1
+frame 2: view 0 200x100 layers=1 pictures=1 draws=1
+"
+    );
+}
+
+/// M3 stage 1's bar: `flutter create`'s counter app, unmodified, renders
+/// with no Dart error, its text drawn as nothing (the text natives are
+/// stubs) and its button's shadow not drawn. The scene: the background and
+/// the app bar, the body's clip, and the button's shape.
+#[test]
+#[ignore = "app lane: needs FLUTTER_ROOT"]
+fn counter_renders_without_a_dart_error() {
+    let app = build_app("counter");
+    let o = common::fl_dart(&[
+        "run-app".as_ref(),
+        app.as_os_str(),
+        "800x600@2".as_ref(),
+        "--ops".as_ref(),
+        "--frames".as_ref(),
+        "1".as_ref(),
+    ]);
+    assert!(o.status.success(), "{o:?}");
+    let (out, err) = (
+        String::from_utf8_lossy(&o.stdout),
+        String::from_utf8_lossy(&o.stderr),
+    );
+    for bad in ["Exception", "Couldn't resolve", "Error"] {
+        assert!(
+            !out.contains(bad) && !err.contains(bad),
+            "{bad}:\n{out}\n{err}"
+        );
+    }
+    // Not a `\` continuation: that would drop the first line's indent.
+    let want = "frame 1: view 0 800x600 layers=3 pictures=3 draws=12
+  PushTransform
+    PushOffset
+      PushOffset
+        AddPicture
+          RRect
+        AddPicture
+          RRect
+          Save
+          ClipRect
+          Restore
+        AddPicture
+          Save
+          Transform
+          Path
+          Save
+          Translate
+          Restore
+          Restore
+      Pop
+    Pop
+  Pop
+";
+    assert_eq!(out, want);
+}
+
 /// The natives no other app reaches, one cell each, against their golden.
 #[test]
 #[ignore = "app lane: needs FLUTTER_ROOT and a Vulkan driver"]
 fn natives_matches_its_golden() {
     matches_golden("natives");
 }
+
+/// Natives no app reaches yet, and the M3 stage whose programs will.
+const NOT_YET: &[(&str, &str)] = &[
+    ("ParagraphBuilder::addPlaceholder", "M3 stage 4, text"),
+    ("Paragraph::width", "M3 stage 4, metrics"),
+    ("Paragraph::longestLine", "M3 stage 4, metrics"),
+    ("Paragraph::minIntrinsicWidth", "M3 stage 4, metrics"),
+    ("Paragraph::alphabeticBaseline", "M3 stage 4, metrics"),
+    ("Paragraph::ideographicBaseline", "M3 stage 4, metrics"),
+    ("Paragraph::getRectsForRange", "M3 stage 4, metrics"),
+    ("Paragraph::getPositionForOffset", "M3 stage 4, metrics"),
+    ("Paragraph::getGlyphInfoAt", "M3 stage 4, metrics"),
+    ("Paragraph::getClosestGlyphInfo", "M3 stage 4, metrics"),
+    ("Paragraph::getWordBoundary", "M3 stage 4, metrics"),
+    ("Paragraph::getLineBoundary", "M3 stage 4, metrics"),
+    ("Paragraph::computeLineMetrics", "M3 stage 4, metrics"),
+    ("Paragraph::getLineMetricsAt", "M3 stage 4, metrics"),
+    ("Paragraph::getNumberOfLines", "M3 stage 4, metrics"),
+    ("Paragraph::getLineNumberAt", "M3 stage 4, metrics"),
+    ("Paragraph::dispose", "M3 stage 4, text"),
+];
 
 /// Exit criterion 5: every native fl-ui implements is called by one of the
 /// apps here. `--natives` lists what a run resolved, and the VM resolves a
@@ -168,13 +272,15 @@ fn natives_matches_its_golden() {
 #[test]
 #[ignore = "app lane: needs FLUTTER_ROOT"]
 fn every_native_is_called_by_an_app() {
-    let runs: [(&str, &[&str]); 6] = [
+    let runs: [(&str, &[&str]); 8] = [
         ("colored_box", &[]),
         ("shapes", &["--frames", "1"]),
         ("material", &[]),
         ("natives", &["--frames", "1"]),
         ("frame_order", &[]),
         ("ticker", &["--frames", "5"]),
+        ("assets", &[]),
+        ("counter", &["--frames", "1"]),
     ];
     let mut called = std::collections::BTreeSet::new();
     for (name, opts) in runs {
@@ -196,7 +302,10 @@ fn every_native_is_called_by_an_app() {
         .map(|s| s.name)
         .filter(|n| !called.contains(*n))
         .collect();
-    assert!(missing.is_empty(), "no app calls: {missing:?}");
+    // Exactly the stubs no app reaches yet, each with the stage whose apps
+    // will. Both ways: a stage that starts reaching one takes it off.
+    let not_yet: Vec<&str> = NOT_YET.iter().map(|(n, _)| *n).collect();
+    assert_eq!(missing, not_yet, "natives no app calls, against NOT_YET");
 }
 
 /// Its scene: the root transform, Scaffold's two offsets, the background

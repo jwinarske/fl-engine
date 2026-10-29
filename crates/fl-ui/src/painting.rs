@@ -724,6 +724,18 @@ pub(crate) extern "C" fn draw_path(
     });
 }
 
+/// `Void Function(Pointer<Void>, Pointer<Void> path, Uint32 color, Double
+/// elevation, Bool transparentOccluder)`. A stub until M3's stage 3: the
+/// shadow is not drawn.
+pub(crate) extern "C" fn draw_shadow(
+    _canvas: *mut c_void,
+    _path: *mut c_void,
+    _color: u32,
+    _elevation: f64,
+    _transparent: bool,
+) {
+}
+
 /// `Void Function(Pointer<Void>, Pointer<Void> picture)`.
 pub(crate) extern "C" fn draw_picture(canvas: *mut c_void, picture: *mut c_void) {
     guard((), || {

@@ -133,27 +133,52 @@ unsafe fn typed<const N: usize>(
 /// # Safety
 /// The isolate is current with an API scope open.
 pub unsafe fn new_f32s(values: &[f32]) -> sys::Dart_Handle {
+    // SAFETY: per this function's contract.
+    unsafe { new_typed(sys::Dart_TypedData_Type::Dart_TypedData_kFloat32, values) }
+}
+
+/// A new `Float64List` holding `values`; as [`new_f32s`].
+///
+/// # Safety
+/// As [`new_f32s`].
+pub unsafe fn new_f64s(values: &[f64]) -> sys::Dart_Handle {
+    // SAFETY: per this function's contract.
+    unsafe { new_typed(sys::Dart_TypedData_Type::Dart_TypedData_kFloat64, values) }
+}
+
+/// A new `Int64List` holding `values`, which is a Dart `List<int>`; as
+/// [`new_f32s`].
+///
+/// # Safety
+/// As [`new_f32s`].
+pub unsafe fn new_i64s(values: &[i64]) -> sys::Dart_Handle {
+    // SAFETY: per this function's contract.
+    unsafe { new_typed(sys::Dart_TypedData_Type::Dart_TypedData_kInt64, values) }
+}
+
+/// Typed data of `ty` holding `values`, whose element type must be `ty`'s.
+///
+/// # Safety
+/// As [`new_f32s`]; `T` is the element type of `ty`.
+unsafe fn new_typed<T: Copy>(ty: sys::Dart_TypedData_Type, values: &[T]) -> sys::Dart_Handle {
     // SAFETY: per this function's contract; the copy is bounded by the
-    // length the list was made with.
+    // length the list was made with, in elements of T.
     unsafe {
-        let h = sys::Dart_NewTypedData(
-            sys::Dart_TypedData_Type::Dart_TypedData_kFloat32,
-            values.len() as isize,
-        );
+        let h = sys::Dart_NewTypedData(ty, values.len() as isize);
         if sys::Dart_IsError(h) {
             return sys::Dart_Null();
         }
-        let mut ty = sys::Dart_TypedData_Type::Dart_TypedData_kFloat32;
+        let mut got = ty;
         let mut data: *mut std::ffi::c_void = std::ptr::null_mut();
         let mut len: isize = 0;
         if sys::Dart_IsError(sys::Dart_TypedDataAcquireData(
-            h, &mut ty, &mut data, &mut len,
+            h, &mut got, &mut data, &mut len,
         )) || data.is_null()
         {
             return sys::Dart_Null();
         }
         let n = values.len().min(len.max(0) as usize);
-        std::ptr::copy_nonoverlapping(values.as_ptr(), data as *mut f32, n);
+        std::ptr::copy_nonoverlapping(values.as_ptr(), data as *mut T, n);
         let _ = sys::Dart_TypedDataReleaseData(h);
         h
     }

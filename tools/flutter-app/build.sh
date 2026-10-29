@@ -10,6 +10,11 @@
 #           non-product platform, linked in, as `flutter run` compiles in
 #           debug mode but in one file. Architecture-independent.
 #
+# Either way the app's asset bundle goes to <out-dir>/<app>.assets: what a
+# Linux bundle keeps in data/flutter_assets (FontManifest.json, fonts, the
+# app's own assets), from `flutter build bundle`. fl-dart run-app finds it
+# beside the program.
+#
 # The Flutter release must be the one that pins the VM (its DEPS
 # dart_revision equals third_party/dart-prebuilt/*/VERSION's revision);
 # anything else makes a snapshot fl-dart refuses by hash. Writes
@@ -32,12 +37,18 @@ esac
 cache="$flutter_root/bin/cache"
 dart="$cache/dart-sdk/bin/dartaotruntime"
 fes="$cache/dart-sdk/bin/snapshots/frontend_server_aot.dart.snapshot"
+(cd "$app" && "$flutter_root/bin/flutter" pub get >/dev/null)
+
+# The asset bundle, both modes. Release, so no kernel_blob.bin rides along.
+rm -rf "$out/$name.assets"
+(cd "$app" && "$flutter_root/bin/flutter" build bundle --release --no-pub \
+  --target-platform linux-x64 --asset-dir "$out/$name.assets" >/dev/null)
+
 if [[ "$target" == kernel ]]; then
   sdk_root="$cache/artifacts/engine/common/flutter_patched_sdk"
   for f in "$dart" "$fes" "$sdk_root/platform_strong.dill"; do
     [[ -e "$f" ]] || { echo "build.sh: $f missing; run 'flutter precache --linux' at $flutter_root" >&2; exit 1; }
   done
-  (cd "$app" && "$flutter_root/bin/flutter" pub get >/dev/null)
   "$dart" "$fes" \
     --sdk-root "$sdk_root/" --target=flutter --no-print-incremental-dependencies \
     -Ddart.vm.profile=false -Ddart.vm.product=false \
@@ -55,7 +66,6 @@ for f in "$dart" "$fes" "$sdk_root/platform_strong.dill" "$gen_snapshot"; do
   [[ -e "$f" ]] || { echo "build.sh: $f missing; run 'flutter precache --linux' at $flutter_root" >&2; exit 1; }
 done
 
-(cd "$app" && "$flutter_root/bin/flutter" pub get >/dev/null)
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 "$dart" "$fes" \

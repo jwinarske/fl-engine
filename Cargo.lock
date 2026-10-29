@@ -214,9 +214,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "fl-assets"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+]
+
+[[package]]
 name = "fl-dart-cli"
 version = "0.1.0"
 dependencies = [
+ "fl-assets",
  "fl-dart-vm",
  "fl-raster",
  "fl-shell",
@@ -267,6 +275,7 @@ dependencies = [
 name = "fl-ui"
 version = "0.1.0"
 dependencies = [
+ "fl-assets",
  "fl-dart-ffi",
 ]
 
