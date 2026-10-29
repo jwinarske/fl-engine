@@ -40,8 +40,17 @@ fn report(args: &[&std::ffi::OsStr]) -> HashMap<String, u64> {
     // arenas now and then and RSS steps up 0.5-1.5 MB at random: 3,000
     // cycles measured flat, 6,000 grew 1.5 MB. With one arena 6,000 cycles
     // grow 40 kB. A leak still grows linearly here; valgrind checks the rest.
+    //
+    // And a fixed mmap threshold. glibc raises it each time a large mmapped
+    // block is freed, so the images app's textures, allocated and freed by
+    // lavapipe each cycle, move from mmap to the heap and back, and RSS
+    // wanders about 1 MB: 300 cycles measured +876 kB, 2,700 cycles ended
+    // 696 kB below their tenth. Fixed at 128 kB, glibc's starting value,
+    // 300 and 900 cycles grow 0 to 364 kB.
     let o = common::fl_dart_cmd()
         .env("MALLOC_ARENA_MAX", "1")
+        .env("MALLOC_MMAP_THRESHOLD_", "131072")
+        .env("MALLOC_TRIM_THRESHOLD_", "131072")
         .args(args)
         .output()
         .unwrap();
