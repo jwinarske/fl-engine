@@ -121,18 +121,20 @@ fl-text and fl-image know neither the VM nor emblema, so each is testable alone 
 4. `gif` advances through its frames at their durations
 5. Every native in the M3 set is called by an app; every stub is listed
 6. The atlas and the GPU image cache are thread-placed by type, each with a compile-fail case
-7. Leak and sanitizer lanes green with the M3 programs
+7. Leak and sanitizer lanes green with the M3 programs; fuzz targets for the decoders and font loading run there; every limit in §15 has a test that crosses it
 8. Still no C toolchain: every decoder, the shaper and the rasterizer are pure Rust; the no-C++ lane covers them
 
 ## 12. Staged Path
 
-1. **Assets.** `build.sh` produces `flutter_assets` beside the app; `flutter/assets` answered; `ImmutableBuffer`; `FontManifest.json` read. The counter app's native survey. Done when the counter app reaches `Render` with no Dart error, text drawn as nothing
-2. **Images.** Decoders, descriptor, codec, `Image`, the GPU image cache, `drawImage*`, `ImageShader`. Exit criterion 1
+Each stage carries its items from §15.
+
+1. **Assets.** `build.sh` produces `flutter_assets` beside the app; `flutter/assets` answered; `ImmutableBuffer`; `FontManifest.json` registered, parsed lazily. Asset keys confined to the bundle, regular files only, size-limited. The counter app's native survey. Done when the counter app reaches `Render` with no Dart error, text drawn as nothing
+2. **Images.** Decoders behind the pixel limit and `try_reserve`, on the worker under `catch_unwind`; descriptor, codec, `Image`; replies by id, tagged by isolate; the GPU image cache, uploaded ahead of the draw; `drawImage*`, `ImageShader`. Exit criterion 1
 3. **Shadows.** `drawShadow` through emblema's `draw_shadow`
-4. **Layout.** ParagraphBuilder and Paragraph, metrics and queries. `metrics` against the stock engine
-5. **Glyphs.** Rasterizing into the atlas, `draw_glyphs`, decorations. Exit criterion 2
+4. **Layout.** ParagraphBuilder and Paragraph, metrics and queries; shaped-run and fallback caches; harfrust's limits on; system fonts read, not mapped. `metrics` against the stock engine, with every style field round-tripped
+5. **Glyphs.** Rasterizing into the atlas with eviction; large glyphs as paths; one atlas upload a frame; decorations; goldens refusing fallback glyphs. Exit criterion 2
 6. **counter.** Exit criterion 3
-7. **Animation and lanes.** `gif`, churn, sanitizers. Exit criteria 4 to 8
+7. **Animation and lanes.** `gif` frame by frame within the limits; churn, sanitizers, fuzz targets. Exit criteria 4 to 8
 
 ## 13. Decisions (2026-10-29)
 
@@ -149,3 +151,32 @@ fl-text and fl-image know neither the VM nor emblema, so each is testable alone 
 * **Surface.** `Paragraph` is 22 natives with fine semantics. Mitigation: the counter app first, then the rest as the `text` and `metrics` programs reach them; each stubbed native is listed with what it returns
 * **GPU memory on boards.** Decoded images at full size. Mitigation: `targetWidth`/`targetHeight` honored at decode; the cache's size reported in the soak lane
 * **Icon fonts.** Release builds tree-shake MaterialIcons to the glyphs used. Mitigation: build the bundle as `flutter build linux --release` does, so the counter app gets the font it would ship with
+
+## 15. Reliability, Security and Performance (review, 2026-10-29)
+
+M3 is the first milestone that parses input fl-engine does not control: an image from the network, a font a package downloads, an asset key built from a deep link. Everything below is a rule for the stage named, checked by a test there.
+
+**Security: untrusted bytes**
+* **Decompression bombs** (stage 2). A header can claim 65535x65535 pixels from a few hundred bytes. Dimensions are read first (`ImageDescriptor`), checked against a pixel limit (`width * height` with `checked_mul`, 64 Mpx by default, settable), and refused as a Dart error before any pixel buffer exists. Every pixel and frame buffer is allocated with `try_reserve`: an allocation that fails is an error, not the process aborting, which is what Rust does on a failed allocation
+* **Animated images** (stage 7). Frames are decoded one at a time on `getNextFrame`, never all at once; frame count and per-frame size are held to the same limits. A GIF of 100,000 tiny frames costs one frame of memory
+* **Decoder and font-parser panics** (stages 2, 4). Each decode job and each font load runs under `catch_unwind`; a panic is that call's error and the worker carries on. The decoders, skrifa, harfrust and swash are safe Rust, so a malformed file is a panic or an error, not memory corruption; a fuzz target per decoder and for font loading runs in the sanitizer lane
+* **Shaping cost** (stage 4). A crafted font can make shaping expensive. harfrust's operation limits (HarfBuzz's `max_ops`) are checked to be on, and a paragraph's text length is held to a limit, past which it is shaped in pieces
+* **Glyph size** (stage 5). `fontSize: 5000` would ask for a coverage bitmap of tens of megabytes. Above a size threshold a glyph is drawn as its outline, a path through emblema, as Skia does, and never rasterized into the atlas; the atlas's `TooLarge` never reaches the frame
+* **Asset keys** (stage 1). A key is a path inside `flutter_assets` and nothing else: no absolute paths, no `..`, no NUL; resolved, then checked to still be under the bundle after symlinks. Only regular files, read up to a size limit, so `/dev/zero` and a FIFO are refused. `ImmutableBuffer.fromFile` is the app's own choice of path, as `dart:io` already allows, but gets the same regular-file and size checks
+* **System fonts** (stage 4). Read into memory, not memory-mapped: a mapped font file truncated by a package upgrade while fl-engine runs is a SIGBUS
+
+**Reliability**
+* **Replies across threads** (stage 2). The decode worker never touches a Dart handle. A job carries an id; the UI thread keeps the id's callback as a persistent handle and resolves it when the result arrives. Results are tagged with the isolate they belong to; results for an isolate that has shut down are dropped, and shutdown cancels its queued jobs. So a result can never call into a dead isolate
+* **Every request answered** (stages 1, 2). Each `getNextFrame`, `flutter/assets` request and `fromAsset` completes, with data or with an error string, as the engine's do. An unanswered request is a persistent handle held until shutdown and a Future that never completes; the soak lane counts both
+* **Atlas full** (stage 5). On `Full`, the atlas evicts glyphs not used this frame (`begin_frame`, compaction) and retries; a single frame that needs more glyphs than the atlas's limit holds is drawn in more than one pass. Text never silently goes missing
+* **Fallback determinism** (stage 5). System fallback (D4) makes pixels depend on the runner's installed fonts. The golden programs fail if any of their glyphs came from fallback, so a golden only ever compares fonts it names
+* **Format drift** (stage 4). `_encodeTextStyle` and `_encodeParagraphStyle` are bit layouts read at one Flutter release. `metrics` builds styles with every field set and checks fl-text decoded each one, so a pin bump that moves a field fails there, as the native-count check does for natives
+* **harfrust's age** (stage 4). A young port. rustybuzz is the fallback; fl-text keeps shaping behind one function, so changing shapers is one file
+
+**Performance**
+* **UI-thread layout** (stage 4). The framework lays text out every frame it changes. Shaped runs are cached by font, size, features and text; fallback lookups by code point. `metrics` reports layout time per paragraph, and the soak lane holds 10,000 frames of changing text to a time budget
+* **Startup** (stage 1). Manifest fonts are registered by name and parsed on first use, not read in full before `main`. The system-font scan happens on the first fallback miss, not at startup, and only once
+* **Atlas uploads** (stage 5). emblema writes an image whole (`write_image`), so a dirty 2048x2048 atlas, one byte of coverage a texel, is 4 MB a frame. fl-raster batches a frame's new glyphs into one upload; a region write in emblema is asked for upstream if the soak lane shows uploads on steady-state frames
+* **Image uploads** (stage 2). A large image uploaded on the frame that first draws it stalls that frame. The raster thread uploads when a decode completes, ahead of the draw; the CPU copy is released once uploaded, so a decoded image is not held twice. Flutter's own `ImageCache` (100 MB, 1,000 images by default) bounds what the framework keeps alive; the GPU cache reports its size in the soak lane
+* **Decode throughput** (stage 2). One worker (D5), measured with `images`; more workers only if a measured case needs them
+* **Boards** (stage 6 of M2, then here). First numbers for text frames on Pi 5 and VisionFive 2 when the hardware is to hand; emblema's UI-like frame is the budget (5.19 ms on Pi 5)
