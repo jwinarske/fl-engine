@@ -29,3 +29,40 @@ Found on the way:
 * The engine reads `FontManifest.json` itself (font_collection.cc); the framework does not
 * `flutter build bundle` does not tree-shake MaterialIcons: 1.6 MB in the counter bundle. `flutter build linux` does it with const_finder on the kernel; `build.sh` will before stage 5
 * Asset and file reads are synchronous on the UI thread. The decode worker takes them in stage 2
+
+## Stage 2: images (2026-10-29)
+
+Done: `images` matches its golden within the recorded tolerance (exit criterion 1). Decoding is never on the UI thread.
+
+    tools/flutter-app/build.sh $FLUTTER_ROOT apps/images out
+    fl-dart run-app out/images.so 800x600@2 --png images.png
+    frame 1: view 0 800x600 layers=1 pictures=1 draws=16
+
+* `fl-image`: header, first frame, the decode worker. PNG (png), JPEG (zune-jpeg), GIF (gif), WebP (image-webp); pure Rust, no `image` crate
+* Frames are premultiplied RGBA8, as emblema samples textures; rounding as Skia's `SkMulDiv255Round`
+* JPEG EXIF orientation applied, all eight, size reported as shown
+* GIF first frame on its logical screen, transparent outside the frame
+* Resize at decode: area average down, bilinear up. Not Skia's exactly
+* Pixel limit 64 Mpx, `checked_mul`, on the source and the target size; header checked in `ImageDescriptor.encoded`, before anything is decoded. Every buffer `try_reserve`d; png, gif and webp given the same byte limit. PNG header reads limited to 16 MiB
+* One worker thread, `fl-image`. Jobs carry an id and the isolate generation; the decode runs under `catch_unwind`, a panic is that job's error. Results go back to the UI thread through the reply queue, which now wakes the loop from another thread
+* Generation ends with the run: queued jobs dropped unstarted, late results dropped, so nothing calls into a dead isolate. `fl_shell::run` discards on error too
+* `ImageDescriptor` (7), `Codec` (4), `Image` (5), `ImageShader` (3), `Canvas` drawImage, drawImageRect, drawImageNine, drawAtlas. 22 natives
+* `Codec`: single frame, as the engine's `SingleFrameCodec`: decoded on the first `getNextFrame`, kept, every call answered. `frameCount` 1 and `repetitionCount` 0 until stage 7
+* `decodeImageFromPixels`: rgba8888 and bgra8888, premultiplied as given; the float formats refused
+* `Image.toByteData`: an error, thrown. `colorSpace` sRGB
+* `Image` peer `Arc<ImageData>`; a draw records the `Arc`
+* fl-raster `GpuImages`: uploaded when decoded, ahead of the draw (`RasterThread::uploader`, `fl_ui::set_image_sink`), and by the frame if not; CPU copy released once uploaded; kept by `Weak`, destroyed the frame after the last reference goes. `!Send`, compile-fail case
+* Mipmapped, so FilterQuality none, low, medium, high are nearest, linear, mipmap, cubic
+* `ImageShader`: scale and translate only; one tile mode for both axes. Otherwise a named error
+* drawAtlas colors with modulate only; drawImageNine with an opaque paint only. Otherwise named errors
+* Raster queue: scenes still two deep, uploads never wait
+* `app-cycle` reports `gpu_images` and `gpu_kb` after a final sweep; the soak asserts 0
+* `apps/images`: every format, from bytes and from an asset buffer, a resize, raw pixels; drawImage, drawImageRect, nine-slice, atlas with colors, a shader fill, the four qualities, `Image.asset`. Prints the refusals: garbage, a 35-byte GIF claiming 65535x65535, a truncated PNG
+* Golden: 10.411% differ, 0.235% by more than 32, lavapipe. Tolerance 12.0 and 0.4
+* Lanes: golden in ci, images in soak (300 cycles, `--png`), valgrind and the sanitizers
+
+Found on the way:
+
+* `getNextFrame`'s callback takes three arguments; the reply queue carries them now
+* The engine makes `_Image` with `Dart_New` and the private constructor `_`, so its fields are initialized
+* `Image.asset` resolving a frame later made the frame count timing-dependent: 2 or 3. The app resolves it through `AssetImage` before `runApp`; the widget finds it in the cache

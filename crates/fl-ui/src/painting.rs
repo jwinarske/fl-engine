@@ -10,6 +10,7 @@ use std::sync::{Arc, Mutex};
 
 use fl_dart_ffi::{args, guard, peer, sys};
 
+use crate::image::{image_of, image_shader_of, ImageData, ImageShader};
 use crate::path::{self, Path, RRect};
 
 /// One canvas call, as recorded. Geometry is in the canvas's coordinates at
@@ -85,6 +86,36 @@ pub enum Draw {
         paint: Paint,
     },
     Picture(Arc<Picture>),
+    /// `drawImage` and `drawImageRect`: the image's `src` rect, in texels,
+    /// drawn into `dst`.
+    Image {
+        image: Arc<ImageData>,
+        src: [f32; 4],
+        dst: [f32; 4],
+        paint: Paint,
+        /// A `FilterQuality` index.
+        quality: i32,
+    },
+    /// `drawImageNine`: `center`, in texels, stretches; the rest does not.
+    ImageNine {
+        image: Arc<ImageData>,
+        center: [f32; 4],
+        dst: [f32; 4],
+        paint: Paint,
+        quality: i32,
+    },
+    /// `drawAtlas`: a sprite per `RSTransform` (scos, ssin, tx, ty) and
+    /// source rect, each colored if `colors` is given, blended with the
+    /// sprite by `blend_mode`.
+    Atlas {
+        image: Arc<ImageData>,
+        transforms: Vec<[f32; 4]>,
+        rects: Vec<[f32; 4]>,
+        colors: Option<Vec<u32>>,
+        blend_mode: i32,
+        paint: Paint,
+        quality: i32,
+    },
 }
 
 /// `ClipOp`.
@@ -118,10 +149,11 @@ pub enum Join {
 }
 
 /// A dart:ui `Paint`: its `ByteData`, 68 bytes in the layout
-/// painting.dart:1328-1365 declares, and whether its objects list holds
-/// anything. Shaders, color and image filters travel in that list and are
-/// not decoded yet; [`Paint::objects`] says one was set.
-#[derive(Debug, Clone, Copy, PartialEq)]
+/// painting.dart:1328-1365 declares, and its objects list. Of the objects,
+/// an `ImageShader` is decoded ([`Paint::shader`]); any other shader, and
+/// color and image filters, are not yet, and [`Paint::objects`] says one
+/// was set.
+#[derive(Debug, Clone, PartialEq)]
 pub struct Paint {
     /// Straight (not premultiplied) red, green, blue, alpha, 0 to 1, in
     /// [`Paint::color_space`].
@@ -136,11 +168,16 @@ pub struct Paint {
     pub stroke_cap: Cap,
     pub stroke_join: Join,
     pub stroke_miter_limit: f32,
+    /// A `FilterQuality` index: what an image shader with none of its own
+    /// samples at.
+    pub filter_quality: i32,
     /// A blur mask filter: its `BlurStyle` index and sigma.
     pub mask_blur: Option<(i32, f32)>,
     pub invert_colors: bool,
-    /// A shader, color filter or image filter is set.
+    /// A shader other than an image shader, a color filter or an image
+    /// filter is set.
     pub objects: bool,
+    pub shader: Option<Arc<ImageShader>>,
 }
 
 impl Default for Paint {
@@ -157,9 +194,11 @@ impl Default for Paint {
             stroke_cap: Cap::Butt,
             stroke_join: Join::Miter,
             stroke_miter_limit: MITER_LIMIT_DEFAULT,
+            filter_quality: 0,
             mask_blur: None,
             invert_colors: false,
             objects: false,
+            shader: None,
         }
     }
 }
@@ -199,9 +238,11 @@ impl Paint {
                 _ => Join::Miter,
             },
             stroke_miter_limit: f32_at(11)? + MITER_LIMIT_DEFAULT,
+            filter_quality: i32_at(12)?,
             mask_blur: (i32_at(13)? != 0).then_some((i32_at(14)?, f32_at(15)?)),
             invert_colors: i32_at(16)? != 0,
             objects: false,
+            shader: None,
         })
     }
 }
@@ -345,12 +386,50 @@ pub(crate) extern "C" fn picture_dispose(picture: *mut c_void) {
 /// As [`fl_dart_ffi::args::bytes`], for both handles.
 unsafe fn paint(objects: sys::Dart_Handle, data: sys::Dart_Handle) -> Paint {
     // SAFETY: per this function's contract.
-    let (bytes, objects) = unsafe { (args::bytes(data), args::any_non_null(objects)) };
+    let bytes = unsafe { args::bytes(data) };
     let p = bytes.as_deref().and_then(Paint::decode).unwrap_or_else(|| {
         eprintln!("fl-ui: malformed Paint data; drawing with Paint()");
         Paint::default()
     });
-    Paint { objects, ..p }
+    // SAFETY: as above.
+    let (shader, objects) = unsafe { paint_objects(objects) };
+    Paint {
+        objects,
+        shader,
+        ..p
+    }
+}
+
+/// A paint's objects list, `[shader, colorFilter, imageFilter]`
+/// (painting.dart `_kShaderIndex` and on): the image shader, if the shader
+/// is one, and whether anything else is set.
+///
+/// # Safety
+/// As [`fl_dart_ffi::args::bytes`].
+unsafe fn paint_objects(objects: sys::Dart_Handle) -> (Option<Arc<ImageShader>>, bool) {
+    // SAFETY: per this function's contract.
+    unsafe {
+        if !args::any_non_null(objects) {
+            return (None, false);
+        }
+        let mut n: isize = 0;
+        if sys::Dart_IsError(sys::Dart_ListLength(objects, &mut n)) {
+            return (None, true);
+        }
+        let mut shader = None;
+        let mut other = false;
+        for i in 0..n {
+            let o = sys::Dart_ListGetAt(objects, i);
+            if sys::Dart_IsError(o) || sys::Dart_IsNull(o) {
+                continue;
+            }
+            match (i, image_shader_of(o)) {
+                (0, Some(s)) => shader = Some(s),
+                _ => other = true,
+            }
+        }
+        (shader, other)
+    }
 }
 
 /// An `RRect` argument; `None`, said, if it is not one.
@@ -734,6 +813,191 @@ pub(crate) extern "C" fn draw_shadow(
     _elevation: f64,
     _transparent: bool,
 ) {
+}
+
+/// Records an image draw, or says why not: a disposed image draws nothing,
+/// as the engine's draws nothing.
+///
+/// # Safety
+/// `canvas` and `image` are native fields of this call's arguments.
+unsafe fn push_image(
+    canvas: *mut c_void,
+    image: *mut c_void,
+    what: &str,
+    d: impl FnOnce(Arc<ImageData>) -> Draw,
+) -> sys::Dart_Handle {
+    // SAFETY: per this function's contract.
+    unsafe {
+        match image_of(image) {
+            Some(i) => push(canvas, d(i)),
+            None => eprintln!("fl-ui: Canvas::{what}: not a live Image"),
+        }
+        args::null()
+    }
+}
+
+/// `Handle Function(Pointer<Void>, Pointer<Void> image, Double x, Double y,
+/// Handle paintObjects, Handle paintData, Int32 filterQuality)`.
+pub(crate) extern "C" fn draw_image(
+    canvas: *mut c_void,
+    image: *mut c_void,
+    x: f64,
+    y: f64,
+    objects: sys::Dart_Handle,
+    data: sys::Dart_Handle,
+    quality: i32,
+) -> sys::Dart_Handle {
+    // SAFETY: a Handle-result native: isolate current, scope open.
+    let null = unsafe { args::null() };
+    guard(null, || {
+        // SAFETY: as draw_paint; image is the Image argument's native field.
+        unsafe {
+            let paint = paint(objects, data);
+            push_image(canvas, image, "drawImage", |image| {
+                let (w, h) = (image.width as f32, image.height as f32);
+                let (x, y) = (x as f32, y as f32);
+                Draw::Image {
+                    image,
+                    src: [0.0, 0.0, w, h],
+                    dst: [x, y, x + w, y + h],
+                    paint,
+                    quality,
+                }
+            })
+        }
+    })
+}
+
+/// `Handle Function(Pointer<Void>, Pointer<Void> image, Double srcLeft,
+/// srcTop, srcRight, srcBottom, dstLeft, dstTop, dstRight, dstBottom,
+/// Handle paintObjects, Handle paintData, Int32 filterQuality)`.
+#[allow(clippy::too_many_arguments)]
+pub(crate) extern "C" fn draw_image_rect(
+    canvas: *mut c_void,
+    image: *mut c_void,
+    sl: f64,
+    st: f64,
+    sr: f64,
+    sb: f64,
+    dl: f64,
+    dt: f64,
+    dr: f64,
+    db: f64,
+    objects: sys::Dart_Handle,
+    data: sys::Dart_Handle,
+    quality: i32,
+) -> sys::Dart_Handle {
+    // SAFETY: a Handle-result native: isolate current, scope open.
+    let null = unsafe { args::null() };
+    guard(null, || {
+        // SAFETY: as draw_image.
+        unsafe {
+            let paint = paint(objects, data);
+            push_image(canvas, image, "drawImageRect", |image| Draw::Image {
+                image,
+                src: ltrb(sl, st, sr, sb),
+                dst: ltrb(dl, dt, dr, db),
+                paint,
+                quality,
+            })
+        }
+    })
+}
+
+/// `Handle Function(Pointer<Void>, Pointer<Void> image, Double
+/// centerLeft, centerTop, centerRight, centerBottom, dstLeft, dstTop,
+/// dstRight, dstBottom, Handle paintObjects, Handle paintData, Int32
+/// filterQuality)`.
+#[allow(clippy::too_many_arguments)]
+pub(crate) extern "C" fn draw_image_nine(
+    canvas: *mut c_void,
+    image: *mut c_void,
+    cl: f64,
+    ct: f64,
+    cr: f64,
+    cb: f64,
+    dl: f64,
+    dt: f64,
+    dr: f64,
+    db: f64,
+    objects: sys::Dart_Handle,
+    data: sys::Dart_Handle,
+    quality: i32,
+) -> sys::Dart_Handle {
+    // SAFETY: a Handle-result native: isolate current, scope open.
+    let null = unsafe { args::null() };
+    guard(null, || {
+        // SAFETY: as draw_image.
+        unsafe {
+            let paint = paint(objects, data);
+            push_image(canvas, image, "drawImageNine", |image| Draw::ImageNine {
+                image,
+                center: ltrb(cl, ct, cr, cb),
+                dst: ltrb(dl, dt, dr, db),
+                paint,
+                quality,
+            })
+        }
+    })
+}
+
+/// `Handle Function(Pointer<Void>, Handle paintObjects, Handle paintData,
+/// Int32 filterQuality, Pointer<Void> atlas, Handle Float32List
+/// rstTransforms, Handle Float32List rects, Handle Int32List? colors, Int32
+/// blendMode, Handle Float32List? cullRect)`. The cull rect is not kept.
+#[allow(clippy::too_many_arguments)]
+pub(crate) extern "C" fn draw_atlas(
+    canvas: *mut c_void,
+    objects: sys::Dart_Handle,
+    data: sys::Dart_Handle,
+    quality: i32,
+    atlas: *mut c_void,
+    transforms: sys::Dart_Handle,
+    rects: sys::Dart_Handle,
+    colors: sys::Dart_Handle,
+    blend_mode: i32,
+    _cull: sys::Dart_Handle,
+) -> sys::Dart_Handle {
+    // SAFETY: a Handle-result native: isolate current, scope open.
+    let null = unsafe { args::null() };
+    guard(null, || {
+        // SAFETY: as draw_image; the list handles are live.
+        unsafe {
+            let paint = paint(objects, data);
+            let quads = |h| {
+                args::f32s(h).map(|v| {
+                    v.chunks_exact(4)
+                        .map(|c| [c[0], c[1], c[2], c[3]])
+                        .collect::<Vec<_>>()
+                })
+            };
+            let (Some(transforms), Some(rects)) = (quads(transforms), quads(rects)) else {
+                eprintln!("fl-ui: Canvas::drawAtlas: malformed transforms or rects");
+                return null;
+            };
+            if transforms.len() != rects.len() {
+                eprintln!("fl-ui: Canvas::drawAtlas: a transform for each rect is needed");
+                return null;
+            }
+            let colors = (!sys::Dart_IsNull(colors))
+                .then(|| args::bytes(colors))
+                .flatten()
+                .map(|b| {
+                    b.chunks_exact(4)
+                        .map(|c| u32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+                        .collect::<Vec<_>>()
+                });
+            push_image(canvas, atlas, "drawAtlas", |image| Draw::Atlas {
+                image,
+                transforms,
+                rects,
+                colors,
+                blend_mode,
+                paint,
+                quality,
+            })
+        }
+    })
 }
 
 /// `Void Function(Pointer<Void>, Pointer<Void> picture)`.

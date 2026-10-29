@@ -13,6 +13,7 @@ aot = ["fl-dart-ffi/aot"]
 
 [dependencies]
 fl-assets = { workspace = true }
+fl-image = { workspace = true }
 fl-dart-ffi = { workspace = true }
 
 [lints]

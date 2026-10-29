@@ -144,7 +144,7 @@ jobs:
       # here, not as drift in fl-engine's tolerance.
       - name: Goldens
         run: |
-          for app in shapes material natives; do
+          for app in shapes material natives images; do
             (cd "apps/$app" && "$FLUTTER_ROOT/bin/flutter" test)
           done
       - name: Apps
@@ -161,7 +161,7 @@ jobs:
           out=target/tmp/dart/captures
           mkdir -p "$out"
           cp target/tmp/dart/apps/*.png "$out/" || true
-          for app in shapes material natives; do
+          for app in shapes material natives images; do
             cp "apps/$app/test/goldens/$app.png" "$out/$app-golden.png"
           done
           ./target/debug/fl-dart run-app target/tmp/dart/apps/ticker.so 200x100 \

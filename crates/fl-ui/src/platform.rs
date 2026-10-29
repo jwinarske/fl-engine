@@ -6,6 +6,7 @@ use std::sync::{Arc, Mutex};
 use fl_dart_ffi::{args, guard, peer, sys};
 
 use crate::compositing::Scene;
+use crate::image::ImageData;
 
 /// One `FlutterView.render`: a scene for a view, at a size in physical
 /// pixels.
@@ -130,12 +131,35 @@ pub(crate) enum ReplyArg {
     /// A new `ByteData`.
     Bytes(Vec<u8>),
     Int(i64),
+    /// `getNextFrame`'s three: a new `_Image`, a duration of 0 ms, and "".
+    Frame(Arc<ImageData>),
+    /// `getNextFrame`'s three on failure: null, 0, and why.
+    FrameError(String),
 }
+
+/// A persistent handle to a callback, kept from the native that was given
+/// it until its reply is delivered.
+pub(crate) struct Persistent(sys::Dart_PersistentHandle);
+
+impl Persistent {
+    /// # Safety
+    /// The isolate is current with an API scope open; `h` is a live handle.
+    pub(crate) unsafe fn new(h: sys::Dart_Handle) -> Persistent {
+        // SAFETY: per this function's contract; deleted by deliver_replies,
+        // or with the isolate.
+        Persistent(unsafe { sys::Dart_NewPersistentHandle(h) })
+    }
+}
+
+// SAFETY: a Persistent is made on the UI thread with the isolate current,
+// and only dereferenced by deliver_replies, whose contract is the same
+// thread and isolate. Moving the pointer between is never touching it.
+unsafe impl Send for Persistent {}
 
 /// A reply waiting to be delivered: the response callback, kept alive, and
 /// what to call it with.
 struct Reply {
-    callback: sys::Dart_PersistentHandle,
+    callback: Persistent,
     arg: ReplyArg,
 }
 
@@ -147,27 +171,47 @@ struct Reply {
 /// live handle.
 pub(crate) unsafe fn queue_reply(callback: sys::Dart_Handle, arg: ReplyArg) {
     // SAFETY: per this function's contract.
-    if unsafe { sys::Dart_IsNull(callback) } {
-        return;
+    unsafe {
+        if sys::Dart_IsNull(callback) {
+            return;
+        }
+        queue_persistent(Persistent::new(callback), arg);
     }
-    // SAFETY: as above; deleted by deliver_replies, or with the isolate.
-    let callback = unsafe { sys::Dart_NewPersistentHandle(callback) };
+}
+
+/// Queues `arg` for a callback already kept.
+pub(crate) fn queue_persistent(callback: Persistent, arg: ReplyArg) {
     REPLIES
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .push(Reply { callback, arg });
 }
 
-// SAFETY: a Reply is made on the UI thread with the isolate current, and its
-// handle is only dereferenced by deliver_replies, whose contract is the same
-// thread and isolate. Sending the pointer between is never touching it.
-unsafe impl Send for Reply {}
-
 static REPLIES: Mutex<Vec<Reply>> = Mutex::new(Vec::new());
 
-/// Whether a platform message reply is waiting for [`deliver_replies`].
+static REPLY_WAKER: Mutex<Option<Box<dyn Fn() + Send>>> = Mutex::new(None);
+
+/// Sets what wakes the UI loop when a reply arrives from another thread: a
+/// finished decode. Replies queued on the UI thread need no waking.
+pub fn set_reply_waker(wake: impl Fn() + Send + 'static) {
+    *REPLY_WAKER.lock().unwrap_or_else(|e| e.into_inner()) = Some(Box::new(wake));
+}
+
+/// Wakes the UI loop for a reply, from any thread.
+pub(crate) fn wake_for_replies() {
+    if let Some(wake) = REPLY_WAKER
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .as_ref()
+    {
+        wake();
+    }
+}
+
+/// Whether a reply is waiting for [`deliver_replies`]: a platform message's
+/// or a finished decode's.
 pub fn has_pending_replies() -> bool {
-    !REPLIES.lock().unwrap_or_else(|e| e.into_inner()).is_empty()
+    !REPLIES.lock().unwrap_or_else(|e| e.into_inner()).is_empty() || crate::image::has_done()
 }
 
 /// Calls each waiting reply's response callback with its data, in the order
@@ -179,21 +223,44 @@ pub fn has_pending_replies() -> bool {
 /// The isolate that sent the messages is current on this thread, with an API
 /// scope open.
 pub unsafe fn deliver_replies() -> Result<(), String> {
+    crate::image::take_done();
     let replies = std::mem::take(&mut *REPLIES.lock().unwrap_or_else(|e| e.into_inner()));
     let mut first_error = None;
     for r in replies {
         // SAFETY: per this function's contract; the handle was made by
-        // queue_reply in this isolate and is deleted only here.
+        // Persistent::new in this isolate and is deleted only here.
         unsafe {
-            let callback = sys::Dart_HandleFromPersistent(r.callback);
-            let mut arg = [match &r.arg {
-                ReplyArg::Bytes(d) => args::new_byte_data(d),
-                ReplyArg::Int(n) => sys::Dart_NewInteger(*n),
-                ReplyArg::Null => args::null(),
-                ReplyArg::Void => sys::Dart_TypeVoid(),
-            }];
-            let result = sys::Dart_InvokeClosure(callback, 1, arg.as_mut_ptr());
-            sys::Dart_DeletePersistentHandle(r.callback);
+            let callback = sys::Dart_HandleFromPersistent(r.callback.0);
+            let mut args3 = [
+                args::null(),
+                sys::Dart_NewInteger(0),
+                sys::Dart_EmptyString(),
+            ];
+            let one = match &r.arg {
+                ReplyArg::Bytes(d) => Some(args::new_byte_data(d)),
+                ReplyArg::Int(n) => Some(sys::Dart_NewInteger(*n)),
+                ReplyArg::Null => Some(args::null()),
+                ReplyArg::Void => Some(sys::Dart_TypeVoid()),
+                ReplyArg::Frame(image) => {
+                    match crate::image::new_image(image) {
+                        Ok(h) => args3[0] = h,
+                        Err(e) => args3[2] = error_string(&e),
+                    }
+                    None
+                }
+                ReplyArg::FrameError(e) => {
+                    args3[2] = error_string(e);
+                    None
+                }
+            };
+            let result = match one {
+                Some(a) => {
+                    let mut a = [a];
+                    sys::Dart_InvokeClosure(callback, 1, a.as_mut_ptr())
+                }
+                None => sys::Dart_InvokeClosure(callback, 3, args3.as_mut_ptr()),
+            };
+            sys::Dart_DeletePersistentHandle(r.callback.0);
             if sys::Dart_IsError(result) && first_error.is_none() {
                 let msg = sys::Dart_GetError(result);
                 first_error = Some(if msg.is_null() {
@@ -207,10 +274,22 @@ pub unsafe fn deliver_replies() -> Result<(), String> {
     first_error.map_or(Ok(()), Err)
 }
 
+/// A Dart String of `s`.
+///
+/// # Safety
+/// The isolate is current with an API scope open.
+unsafe fn error_string(s: &str) -> sys::Dart_Handle {
+    let s = std::ffi::CString::new(s).unwrap_or_default();
+    // SAFETY: per this function's contract.
+    unsafe { sys::Dart_NewStringFromCString(s.as_ptr()) }
+}
+
 /// Drops waiting replies without delivering them, for when their isolate is
-/// gone: the VM freed their handles with it.
+/// gone: the VM freed their handles with it. Decodes for it are dropped
+/// too, queued or finishing.
 pub fn discard_replies() {
     REPLIES.lock().unwrap_or_else(|e| e.into_inner()).clear();
+    crate::image::end_generation();
 }
 
 /// `Handle Function()`: the route the app starts at. `/`, the engine's

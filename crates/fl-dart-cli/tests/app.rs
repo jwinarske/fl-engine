@@ -237,6 +237,52 @@ fn counter_renders_without_a_dart_error() {
     assert_eq!(out, want);
 }
 
+/// Exit criterion 1: each image source and draw, against the golden.
+#[test]
+#[ignore = "app lane: needs FLUTTER_ROOT and a Vulkan driver"]
+fn images_matches_its_golden() {
+    matches_golden("images");
+}
+
+/// What the images app prints: each source decoded to its size, a resize
+/// at decode, raw pixels, and the refusals of brief M3 §15 with their
+/// reasons: data no decoder reads, a header over the pixel limit, a file
+/// cut short. Then the rest of the image natives, toByteData refused.
+#[test]
+#[ignore = "app lane: needs FLUTTER_ROOT"]
+fn images_decode_and_refuse_what_they_should() {
+    let app = build_app("images");
+    let o = common::fl_dart(&["run-app".as_ref(), app.as_os_str(), "800x600@2".as_ref()]);
+    assert!(o.status.success(), "{o:?}");
+    let out = String::from_utf8_lossy(&o.stdout);
+    let (log, frames) = out.split_once("frame 1:").unwrap_or((&out, ""));
+    assert_eq!(
+        log,
+        "\
+checker.png: 8x8 frames=1
+photo.jpg: 64x64 frames=1
+nine.png: 24x24 frames=1
+atlas.png: 32x16 frames=1
+quads.gif: 16x16 frames=1
+stripes.webp: 16x16 frames=1
+photo.jpg@16: 16x16 frames=1
+raw: 4x4
+garbage: Exception: Invalid image data
+bomb: Exception: a 65535x65535 image is over the 67108864-pixel limit
+truncated: Exception: Invalid image data: png: unexpected end of file
+descriptor: 8x8 bpp=4 repeat=0 ColorSpace.sRGB
+toByteData: Exception: Image.toByteData is not supported by fl-engine yet
+badge.png: cached
+"
+    );
+    // The asset image is in the first frame; the second is the warm-up's
+    // follow-up, and there is no third.
+    assert!(
+        frames.contains("frame 2:") && !frames.contains("frame 3:"),
+        "{out}"
+    );
+}
+
 /// The natives no other app reaches, one cell each, against their golden.
 #[test]
 #[ignore = "app lane: needs FLUTTER_ROOT and a Vulkan driver"]
@@ -272,7 +318,7 @@ const NOT_YET: &[(&str, &str)] = &[
 #[test]
 #[ignore = "app lane: needs FLUTTER_ROOT"]
 fn every_native_is_called_by_an_app() {
-    let runs: [(&str, &[&str]); 8] = [
+    let runs: [(&str, &[&str]); 9] = [
         ("colored_box", &[]),
         ("shapes", &["--frames", "1"]),
         ("material", &[]),
@@ -281,6 +327,7 @@ fn every_native_is_called_by_an_app() {
         ("ticker", &["--frames", "5"]),
         ("assets", &[]),
         ("counter", &["--frames", "1"]),
+        ("images", &[]),
     ];
     let mut called = std::collections::BTreeSet::new();
     for (name, opts) in runs {

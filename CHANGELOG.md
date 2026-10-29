@@ -7,6 +7,7 @@ Not published, no versions yet.
 ### Milestone 3: images and text (in progress)
 
 * `fl-assets` and `build.sh` bundles: `flutter/assets`, `ImmutableBuffer`, asset keys confined to the bundle. `flutter create`'s counter app renders with no Dart error, text drawn as nothing
+* `fl-image`: PNG, JPEG, GIF, WebP on one decode thread, behind a pixel limit; 22 image natives; GPU image cache in fl-raster. `images` matches its golden
 
 ### Milestone 2: dart:ui (in progress)
 

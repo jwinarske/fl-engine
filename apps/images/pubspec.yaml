@@ -1,0 +1,14 @@
+name: images
+description: fl-engine test program. Images decoded and drawn through dart:ui (docs/m3-images-text.md §8, exit criterion 1).
+publish_to: none
+environment:
+  sdk: ^3.13.0
+dependencies:
+  flutter:
+    sdk: flutter
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+flutter:
+  assets:
+    - assets/

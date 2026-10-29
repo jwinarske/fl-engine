@@ -167,7 +167,7 @@ fn run_app(path: &str, app: AppArgs) -> Result<(), Failure> {
     if app.natives {
         println!("natives: {}", fl_ui::resolved().join(","));
     }
-    finish_raster(raster, &app)
+    finish_raster(raster, &app).map(|_| ())
 }
 
 /// The L5 harness for apps: `n` start-and-stop cycles of one app in one VM,
@@ -196,15 +196,17 @@ fn app_cycle(path: &str, n: u32, app: AppArgs) -> Result<(), Failure> {
     let end = usage_now();
     let warm = warm.unwrap_or(end);
     let mid = mid.unwrap_or(end);
-    finish_raster(raster, &app)?;
+    let gpu = finish_raster(raster, &app)?;
     println!(
-        "cycles={n} frames={frames} rss_warm_kb={} rss_tenth_kb={} rss_end_kb={} fds_warm={} fds_end={} persistent_handles={}",
+        "cycles={n} frames={frames} rss_warm_kb={} rss_tenth_kb={} rss_end_kb={} fds_warm={} fds_end={} persistent_handles={} gpu_images={} gpu_kb={}",
         warm.0,
         mid.0,
         end.0,
         warm.1,
         end.1,
-        fl_dart_vm::live_persistent_handles()
+        fl_dart_vm::live_persistent_handles(),
+        gpu.0,
+        gpu.1 / 1024
     );
     Ok(())
 }
@@ -285,6 +287,10 @@ fn app_once(
             let _ = raster.submit(Arc::clone(&f.scene));
         }
     });
+    // Decoded images go to the device as they arrive, not with the frame.
+    if let Some(r) = raster {
+        fl_ui::set_image_sink(r.uploader());
+    }
     let wake = fl_shell::Wake::default();
     let mut cfg = fl_shell::isolate_config(path, &wake);
     if !echo {
@@ -308,9 +314,10 @@ fn app_once(
         })
     };
     isolate.shutdown();
-    // The sink is the process's, and holds the raster thread: replacing it
-    // is what lets `finish` have the thread to itself.
+    // The sinks are the process's, and hold the raster thread: replacing
+    // them is what lets `finish` have the thread to itself.
     fl_ui::set_frame_sink(|_| {});
+    fl_ui::clear_image_sink();
     let report = report?;
     let count = *rendered.lock().unwrap_or_else(|e| e.into_inner());
     if count == 0 {
@@ -343,13 +350,13 @@ fn raster_for(app: &AppArgs) -> Result<Option<std::sync::Arc<fl_raster::RasterTh
 }
 
 /// Stops the raster thread and writes its last frame to `--png`. Its first
-/// failure is the run's.
+/// failure is the run's. The images still on the device, and their bytes.
 fn finish_raster(
     raster: Option<std::sync::Arc<fl_raster::RasterThread>>,
     app: &AppArgs,
-) -> Result<(), Failure> {
+) -> Result<(usize, u64), Failure> {
     let Some(raster) = raster else {
-        return Ok(());
+        return Ok((0, 0));
     };
     let r = std::sync::Arc::try_unwrap(raster)
         .map_err(|_| Failure::Other("the raster thread is still shared".into()))?
@@ -361,7 +368,7 @@ fn finish_raster(
         fl_raster::write_png(png, r.width, r.height, pixels)
             .map_err(|e| Failure::Other(e.to_string()))?;
     }
-    Ok(())
+    Ok((r.gpu_images, r.gpu_bytes))
 }
 
 /// `vsync: frames=… interval_us=…`: how many frames were begun at vsync, and

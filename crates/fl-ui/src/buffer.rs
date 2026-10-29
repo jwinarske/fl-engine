@@ -50,9 +50,7 @@ pub(crate) fn load_asset(key: &str) -> Option<Vec<u8>> {
 const FILE_LIMIT: u64 = fl_assets::DEFAULT_LIMIT;
 
 /// The `ImmutableBuffer` peer.
-pub(crate) struct Buffer(
-    #[expect(dead_code, reason = "read by the image natives, stage 2")] pub(crate) Arc<[u8]>,
-);
+pub(crate) struct Buffer(pub(crate) Arc<[u8]>);
 
 /// A native's error result: a Dart String, which dart:ui throws.
 ///

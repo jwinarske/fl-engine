@@ -9,7 +9,9 @@
 //!
 //! Platform message replies dart:ui's natives queue are delivered between
 //! steps, before anything else, with the microtasks they complete; any
-//! still waiting when the loop returns are dropped.
+//! still waiting when the loop returns are dropped. So are finished image
+//! decodes, which arrive from the decode thread and wake the loop. The loop
+//! does not end while a decode is outstanding.
 //!
 //! Vsync here is a fixed-interval clock: ticks `period` apart from the loop's
 //! start. On KMS the flip event will take its place (stage 6).
@@ -40,6 +42,8 @@ struct Pending {
     /// is the first from then on: computed from now instead, every wake-up
     /// just after a tick would push the frame to the next one.
     frame: Option<Instant>,
+    /// A reply arrived from another thread.
+    replies: bool,
 }
 
 impl Wake {
@@ -50,6 +54,13 @@ impl Wake {
             inner.lock().messages += 1;
             inner.changed.notify_one();
         })
+    }
+
+    /// Wakes the loop for a reply queued on another thread: dart:ui's reply
+    /// waker.
+    pub fn reply_arrived(&self) {
+        self.inner.lock().replies = true;
+        self.inner.changed.notify_one();
     }
 
     /// A frame at the next vsync: what `ScheduleFrame` does.
@@ -88,10 +99,25 @@ pub fn run(
     isolate: &mut IsolateScope<'_>,
     wake: &Wake,
     period: Duration,
+    stop: impl FnMut() -> bool,
+) -> Result<Report, DartError> {
+    let report = run_steps(isolate, wake, period, stop);
+    // Their isolate is not to be touched once this returns, whether the
+    // loop ended or failed.
+    fl_ui::discard_replies();
+    report
+}
+
+fn run_steps(
+    isolate: &mut IsolateScope<'_>,
+    wake: &Wake,
+    period: Duration,
     mut stop: impl FnMut() -> bool,
 ) -> Result<Report, DartError> {
     let scheduler = wake.clone();
     fl_ui::set_frame_scheduler(move || scheduler.request_frame());
+    let replies = wake.clone();
+    fl_ui::set_reply_waker(move || replies.reply_arrived());
     let inner = &wake.inner;
     let clock = Clock::new(period);
     let mut last_tick = None;
@@ -104,6 +130,9 @@ pub fn run(
         } else {
             let mut p = inner.lock();
             loop {
+                if std::mem::take(&mut p.replies) {
+                    break Step::Replies;
+                }
                 if p.messages > 0 {
                     p.messages -= 1;
                     break Step::Message;
@@ -143,19 +172,18 @@ pub fn run(
             Step::Idle => {
                 let live = isolate.with(|s| s.has_live_ports());
                 let p = inner.lock();
-                if p.messages > 0 || p.frame.is_some() {
+                if p.messages > 0 || p.frame.is_some() || p.replies {
                     continue;
                 }
-                if !live {
-                    // Nothing can post to it and nothing is asked of it.
+                if !live && !fl_ui::awaiting_decodes() {
+                    // Nothing can post to it, nothing is asked of it, and no
+                    // decode is to answer.
                     break;
                 }
                 drop(inner.changed.wait(p).unwrap_or_else(|e| e.into_inner()));
             }
         }
     }
-    // Their isolate is not to be touched once this returns.
-    fl_ui::discard_replies();
     Ok(report)
 }
 

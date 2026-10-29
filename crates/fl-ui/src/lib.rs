@@ -17,6 +17,7 @@ use fl_dart_ffi::{lookup, Symbol};
 
 mod buffer;
 mod compositing;
+mod image;
 mod painting;
 mod path;
 mod platform;
@@ -25,11 +26,15 @@ mod text;
 
 pub use buffer::{asset_bundle, set_asset_bundle};
 pub use compositing::{Clip, LayerOp, Scene};
+pub use image::{
+    awaiting_decodes, clear_image_sink, set_image_sink, set_max_image_pixels, ImageData,
+    ImageShader,
+};
 pub use painting::{Cap, ClipOp, Draw, Join, Paint, Picture, Style};
 pub use path::{Affine, FillType, Path, Point, RRect, Seg};
 pub use platform::{
     deliver_replies, discard_replies, has_pending_replies, set_frame_scheduler, set_frame_sink,
-    Frame,
+    set_reply_waker, Frame,
 };
 
 /// Every dart:ui native this crate implements.
@@ -95,6 +100,41 @@ pub static NATIVES: &[Symbol] = &[
     fl_dart_ffi::symbol!("ImmutableBuffer::initFromAsset", 3, buffer::init_from_asset),
     fl_dart_ffi::symbol!("ImmutableBuffer::initFromFile", 3, buffer::init_from_file),
     fl_dart_ffi::symbol!("ImmutableBuffer::dispose", 1, buffer::dispose),
+    fl_dart_ffi::symbol!(
+        "ImageDescriptor::initEncoded",
+        3,
+        image::descriptor_init_encoded
+    ),
+    fl_dart_ffi::symbol!("ImageDescriptor::initRaw", 6, image::descriptor_init_raw),
+    fl_dart_ffi::symbol!("ImageDescriptor::width", 1, image::descriptor_width),
+    fl_dart_ffi::symbol!("ImageDescriptor::height", 1, image::descriptor_height),
+    fl_dart_ffi::symbol!(
+        "ImageDescriptor::bytesPerPixel",
+        1,
+        image::descriptor_bytes_per_pixel
+    ),
+    fl_dart_ffi::symbol!("ImageDescriptor::dispose", 1, image::descriptor_dispose),
+    fl_dart_ffi::symbol!(
+        "ImageDescriptor::instantiateCodec",
+        5,
+        image::descriptor_instantiate_codec
+    ),
+    fl_dart_ffi::symbol!("Codec::frameCount", 1, image::codec_frame_count),
+    fl_dart_ffi::symbol!("Codec::repetitionCount", 1, image::codec_repetition_count),
+    fl_dart_ffi::symbol!("Codec::getNextFrame", 2, image::codec_get_next_frame),
+    fl_dart_ffi::symbol!("Codec::dispose", 1, image::codec_dispose),
+    fl_dart_ffi::symbol!("Image::width", 1, image::image_width),
+    fl_dart_ffi::symbol!("Image::height", 1, image::image_height),
+    fl_dart_ffi::symbol!("Image::toByteData", 3, image::image_to_byte_data),
+    fl_dart_ffi::symbol!("Image::dispose", 1, image::image_dispose),
+    fl_dart_ffi::symbol!("Image::colorSpace", 1, image::image_color_space),
+    fl_dart_ffi::symbol!("ImageShader::Create", 1, image::image_shader_create),
+    fl_dart_ffi::symbol!("ImageShader::initWithImage", 6, image::image_shader_init),
+    fl_dart_ffi::symbol!("ImageShader::dispose", 1, image::image_shader_dispose),
+    fl_dart_ffi::symbol!("Canvas::drawImage", 7, painting::draw_image),
+    fl_dart_ffi::symbol!("Canvas::drawImageRect", 13, painting::draw_image_rect),
+    fl_dart_ffi::symbol!("Canvas::drawImageNine", 13, painting::draw_image_nine),
+    fl_dart_ffi::symbol!("Canvas::drawAtlas", 10, painting::draw_atlas),
     fl_dart_ffi::symbol!("PictureRecorder::Create", 1, painting::recorder_create),
     fl_dart_ffi::symbol!("PictureRecorder::endRecording", 2, painting::recorder_end),
     fl_dart_ffi::symbol!("Picture::dispose", 1, painting::picture_dispose),
@@ -264,7 +304,7 @@ pub static STUBS: &[(&str, &str)] = &[
     ),
     (
         "PlatformConfigurationNativeApi::SendPlatformMessage",
-        "null (success); flutter/restoration `get` is answered with a null result, every other message dropped and never answered"
+        "null (success); flutter/assets answered from the bundle, flutter/restoration `get` with a null result, every other message dropped and never answered"
     ),
     (
         "PlatformConfigurationNativeApi::SetSemanticsTreeEnabled",
@@ -403,6 +443,16 @@ pub static STUBS: &[(&str, &str)] = &[
         "Canvas::drawShadow",
         "nothing: the shadow is not drawn (M3 stage 3)",
     ),
+    (
+        "Codec::frameCount",
+        "1: an animation's first frame only (M3 stage 7)",
+    ),
+    ("Codec::repetitionCount", "0: a still (M3 stage 7)"),
+    (
+        "Image::toByteData",
+        "an error, thrown: no GPU readback to Dart in M3",
+    ),
+    ("Image::colorSpace", "0, sRGB: every image decodes to sRGB"),
 ];
 
 /// A resolver for dart:ui, for fl-dart-vm's `IsolateConfig::natives`.

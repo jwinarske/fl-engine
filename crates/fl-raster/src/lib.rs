@@ -13,18 +13,25 @@
 
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
-use std::sync::mpsc::{self, Receiver, SyncSender};
-use std::sync::Arc;
+use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::{Arc, Condvar, Mutex};
 use std::thread::JoinHandle;
 
 use emblema::{
     Affine2, BackendPreference, BlendMode, Canvas, Color, Context, Extent2D, FillRule, Layer,
     LineCap, LineJoin, MaskBlurStyle, Paint as EPaint, PathBuilder, PixelFormat, Rect,
-    RoundingRadii, StrokeStyle, Style as EStyle, Surface, Vec2,
+    RoundingRadii, Sampling, SourceRect, Sprite, StrokeStyle, Style as EStyle, Surface, TileMode,
+    Vec2,
 };
 use fl_ui::{
-    Cap, Clip, ClipOp, Draw, FillType, Join, LayerOp, Paint, Picture, RRect, Scene, Seg, Style,
+    Cap, Clip, ClipOp, Draw, FillType, ImageData, ImageShader, Join, LayerOp, Paint, Picture,
+    RRect, Scene, Seg, Style,
 };
+
+mod images;
+
+pub use images::GpuImages;
+use images::Slots;
 
 /// Why a frame was not drawn.
 #[derive(Debug)]
@@ -62,6 +69,7 @@ impl From<emblema::Error> for RasterError {
 pub struct Offscreen {
     ctx: Context,
     surface: Option<Surface>,
+    images: GpuImages,
     width: u32,
     height: u32,
     _raster_thread: PhantomData<*const ()>,
@@ -75,6 +83,7 @@ impl Offscreen {
         Ok(Offscreen {
             ctx,
             surface: Some(surface),
+            images: GpuImages::default(),
             width,
             height,
             _raster_thread: PhantomData,
@@ -87,39 +96,128 @@ impl Offscreen {
 
     /// Draws `scene` over transparent black and reads the pixels back:
     /// `width * height` RGBA8 pixels, top row first, as the target holds them.
+    ///
+    /// Images nothing refers to any more are destroyed first; images the
+    /// scene draws and [`Offscreen::upload`] has not seen are uploaded.
     pub fn render(&mut self, scene: &Scene) -> Result<Vec<u8>, RasterError> {
+        self.images.sweep(&mut self.ctx);
+        let mut found = Vec::new();
+        for op in &scene.ops {
+            if let LayerOp::AddPicture { picture, .. } = op {
+                images_in(picture, &mut found);
+            }
+        }
+        for image in &found {
+            self.images.upload(&mut self.ctx, image)?;
+        }
         let mut canvas = Canvas::new(Extent2D::new(self.width, self.height));
         canvas.clear(Color::TRANSPARENT);
-        replay(&mut canvas, scene)?;
+        let mut slots = Slots::new(&self.images);
+        replay(&mut canvas, scene, &mut slots)?;
         let recording = canvas.finish();
         let surface = self
             .surface
             .as_mut()
             .ok_or_else(|| RasterError::Unsupported("a destroyed target".into()))?;
-        self.ctx.draw(surface, &recording)?;
+        self.ctx
+            .draw_with_images(surface, &recording, &slots.table)?;
         Ok(self.ctx.read(surface)?)
+    }
+
+    /// Puts `image` on the device ahead of the frame that draws it.
+    pub fn upload(&mut self, image: &Arc<ImageData>) -> Result<(), RasterError> {
+        self.images.upload(&mut self.ctx, image)
+    }
+
+    /// The images on the device.
+    pub fn images(&self) -> &GpuImages {
+        &self.images
     }
 }
 
 impl Drop for Offscreen {
-    /// emblema frees nothing on drop; the surface goes before its context.
+    /// emblema frees nothing on drop; images and the surface go before
+    /// their context.
     fn drop(&mut self) {
+        self.images.clear(&mut self.ctx);
         if let Some(surface) = self.surface.take() {
             self.ctx.destroy_surface(surface);
         }
     }
 }
 
+/// Every image `picture` draws, its nested pictures' and its shaders'
+/// included, into `out`.
+fn images_in(picture: &Picture, out: &mut Vec<Arc<ImageData>>) {
+    for d in &picture.draws {
+        match d {
+            Draw::Image { image, .. }
+            | Draw::ImageNine { image, .. }
+            | Draw::Atlas { image, .. } => out.push(Arc::clone(image)),
+            Draw::Picture(p) => images_in(p, out),
+            _ => {}
+        }
+        if let Some(shader) = paint_in(d).and_then(|p| p.shader.as_ref()) {
+            out.push(Arc::clone(&shader.image));
+        }
+    }
+}
+
+/// The paint a draw carries, if it carries one.
+fn paint_in(d: &Draw) -> Option<&Paint> {
+    match d {
+        Draw::SaveLayer { paint, .. }
+        | Draw::Line { paint, .. }
+        | Draw::Rect { paint, .. }
+        | Draw::RRect { paint, .. }
+        | Draw::DRRect { paint, .. }
+        | Draw::Oval { paint, .. }
+        | Draw::Circle { paint, .. }
+        | Draw::Path { paint, .. }
+        | Draw::Image { paint, .. }
+        | Draw::ImageNine { paint, .. }
+        | Draw::Atlas { paint, .. } => Some(paint),
+        Draw::Paint(paint) => Some(paint),
+        _ => None,
+    }
+}
+
 /// The raster thread: an [`Offscreen`] made and used on a thread of its
-/// own, drawing the scenes the UI thread submits, in order.
+/// own, drawing the scenes the UI thread submits, in order, and uploading
+/// images as they are decoded ([`RasterThread::uploader`]).
 ///
-/// The queue holds one scene beyond the one being drawn, Flutter's pipeline
-/// depth of two: a UI thread that gets further ahead waits in
-/// [`RasterThread::submit`] rather than piling up frames.
+/// One scene may wait beyond the one being drawn, Flutter's pipeline depth
+/// of two: a UI thread that gets further ahead waits in
+/// [`RasterThread::submit`] rather than piling up frames. Uploads do not
+/// wait.
 pub struct RasterThread {
-    tx: Option<SyncSender<Arc<Scene>>>,
+    tx: Option<Sender<Work>>,
+    scenes: Arc<InFlight>,
     thread: Option<JoinHandle<Rastered>>,
 }
+
+enum Work {
+    Scene(Arc<Scene>),
+    Upload(Arc<ImageData>),
+}
+
+/// Scenes submitted and not yet drawn.
+#[derive(Default)]
+struct InFlight {
+    n: Mutex<usize>,
+    changed: Condvar,
+}
+
+impl InFlight {
+    fn done(&self) {
+        let mut n = self.n.lock().unwrap_or_else(|e| e.into_inner());
+        *n = n.saturating_sub(1);
+        self.changed.notify_all();
+    }
+}
+
+/// Scenes queued or drawing before [`RasterThread::submit`] waits.
+const PIPELINE_DEPTH: usize = 2;
 
 /// What a raster thread did, from [`RasterThread::finish`].
 #[derive(Debug, Default)]
@@ -132,6 +230,10 @@ pub struct Rastered {
     pub height: u32,
     /// The first failure, naming the frame. Frames after it are not drawn.
     pub error: Option<String>,
+    /// Images on the device when the thread finished, those still
+    /// referenced, and their bytes.
+    pub gpu_images: usize,
+    pub gpu_bytes: u64,
 }
 
 impl RasterThread {
@@ -151,15 +253,27 @@ impl RasterThread {
         height: u32,
         capture: Option<PathBuf>,
     ) -> Result<RasterThread, RasterError> {
-        let (tx, rx) = mpsc::sync_channel::<Arc<Scene>>(1);
+        let (tx, rx) = mpsc::channel::<Work>();
         let (ready_tx, ready_rx) = mpsc::channel::<Result<(), RasterError>>();
+        let scenes = Arc::new(InFlight::default());
+        let in_flight = Arc::clone(&scenes);
         let thread = std::thread::Builder::new()
             .name("fl-raster".into())
-            .spawn(move || raster_main(width, height, capture.as_deref(), &rx, &ready_tx))
+            .spawn(move || {
+                raster_main(
+                    width,
+                    height,
+                    capture.as_deref(),
+                    &rx,
+                    &ready_tx,
+                    &in_flight,
+                )
+            })
             .map_err(|e| RasterError::Unsupported(format!("raster thread: {e}")))?;
         match ready_rx.recv() {
             Ok(Ok(())) => Ok(RasterThread {
                 tx: Some(tx),
+                scenes,
                 thread: Some(thread),
             }),
             Ok(Err(e)) => {
@@ -178,7 +292,36 @@ impl RasterThread {
     /// Queues `scene` to be drawn; waits while one is already queued. False
     /// if the thread has gone, which only a panic in it does.
     pub fn submit(&self, scene: Arc<Scene>) -> bool {
-        self.tx.as_ref().is_some_and(|tx| tx.send(scene).is_ok())
+        let Some(tx) = self.tx.as_ref() else {
+            return false;
+        };
+        let mut n = self.scenes.n.lock().unwrap_or_else(|e| e.into_inner());
+        while *n >= PIPELINE_DEPTH {
+            n = self
+                .scenes
+                .changed
+                .wait(n)
+                .unwrap_or_else(|e| e.into_inner());
+        }
+        *n += 1;
+        drop(n);
+        if tx.send(Work::Scene(scene)).is_ok() {
+            true
+        } else {
+            self.scenes.done();
+            false
+        }
+    }
+
+    /// What uploads a decoded image ahead of the frame that draws it: for
+    /// [`fl_ui::set_image_sink`]. Never waits.
+    pub fn uploader(&self) -> impl Fn(Arc<ImageData>) + Send + 'static {
+        let tx = self.tx.clone();
+        move |image| {
+            if let Some(tx) = &tx {
+                let _ = tx.send(Work::Upload(image));
+            }
+        }
     }
 
     /// Draws what is queued, stops the thread and says what it did.
@@ -209,8 +352,9 @@ fn raster_main(
     width: u32,
     height: u32,
     capture: Option<&Path>,
-    rx: &Receiver<Arc<Scene>>,
+    rx: &Receiver<Work>,
     ready: &mpsc::Sender<Result<(), RasterError>>,
+    in_flight: &InFlight,
 ) -> Rastered {
     let mut target = match Offscreen::new(width, height) {
         Ok(t) => {
@@ -229,11 +373,29 @@ fn raster_main(
     };
     // Until the UI side hangs up. After a failure the rest are taken and
     // dropped, so the UI thread is never left waiting on a full queue.
-    for scene in rx {
-        if r.error.is_some() {
+    for work in rx {
+        let scene = match work {
+            Work::Scene(s) => s,
+            Work::Upload(image) => {
+                // A failed upload is retried, and named, by the frame that
+                // draws the image.
+                if r.error.is_none() {
+                    let _ = target.upload(&image);
+                }
+                continue;
+            }
+        };
+        let drawn = if r.error.is_some() {
+            None
+        } else {
+            Some(target.render(&scene))
+        };
+        drop(scene);
+        in_flight.done();
+        let Some(drawn) = drawn else {
             continue;
-        }
-        match target.render(&scene) {
+        };
+        match drawn {
             Ok(pixels) => {
                 r.frames += 1;
                 if let Some(dir) = capture {
@@ -247,12 +409,16 @@ fn raster_main(
             Err(e) => r.error = Some(format!("frame {}: {e}", r.frames + 1)),
         }
     }
+    // What is still referenced once the UI side is done: a leak shows here.
+    target.images.sweep(&mut target.ctx);
+    r.gpu_images = target.images().len();
+    r.gpu_bytes = target.images().bytes();
     r
 }
 
 /// Walks the layer operations into `canvas`. A `pop` with nothing pushed is
 /// ignored, as the engine's builder ignores it; layers left open are closed.
-fn replay(canvas: &mut Canvas, scene: &Scene) -> Result<(), RasterError> {
+fn replay(canvas: &mut Canvas, scene: &Scene, slots: &mut Slots) -> Result<(), RasterError> {
     let base = canvas.save_depth();
     // The canvas depth before each open layer, so a pop restores exactly
     // what its push saved, a clip's save layer included.
@@ -289,7 +455,7 @@ fn replay(canvas: &mut Canvas, scene: &Scene) -> Result<(), RasterError> {
                 let depth = canvas.save_depth();
                 canvas.save();
                 canvas.translate(*dx as f32, *dy as f32);
-                let drawn = draw_picture(canvas, picture);
+                let drawn = draw_picture(canvas, picture, slots);
                 restore_to(canvas, depth);
                 drawn?;
             }
@@ -318,14 +484,21 @@ fn restore_to(canvas: &mut Canvas, depth: usize) {
 }
 
 /// A picture's draws, balanced: saves it leaves open are restored.
-fn draw_picture(canvas: &mut Canvas, picture: &Picture) -> Result<(), RasterError> {
+fn draw_picture(
+    canvas: &mut Canvas,
+    picture: &Picture,
+    slots: &mut Slots,
+) -> Result<(), RasterError> {
     let depth = canvas.save_depth();
-    let drawn = picture.draws.iter().try_for_each(|d| draw_one(canvas, d));
+    let drawn = picture
+        .draws
+        .iter()
+        .try_for_each(|d| draw_one(canvas, d, slots));
     restore_to(canvas, depth);
     drawn
 }
 
-fn draw_one(canvas: &mut Canvas, draw: &Draw) -> Result<(), RasterError> {
+fn draw_one(canvas: &mut Canvas, draw: &Draw, slots: &mut Slots) -> Result<(), RasterError> {
     match draw {
         Draw::Save => {
             canvas.save();
@@ -367,7 +540,7 @@ fn draw_one(canvas: &mut Canvas, draw: &Draw) -> Result<(), RasterError> {
         }
         Draw::ClipPath { path, .. } => clip_to(canvas, path)?,
         Draw::Paint(p) => {
-            canvas.draw_paint(&paint_of(p)?)?;
+            canvas.draw_paint(&paint_of(p, slots)?)?;
         }
         Draw::Color { color, blend_mode } => {
             let [r, g, b, a] = *color;
@@ -378,15 +551,19 @@ fn draw_one(canvas: &mut Canvas, draw: &Draw) -> Result<(), RasterError> {
             // and Impeller draw it.
             let paint = Paint {
                 style: Style::Stroke,
-                ..*paint
+                ..paint.clone()
             };
-            canvas.draw_line(vec2(*from), vec2(*to), &paint_of(&paint)?)?;
+            canvas.draw_line(vec2(*from), vec2(*to), &paint_of(&paint, slots)?)?;
         }
         Draw::Rect { ltrb, paint } => {
-            canvas.draw_rect(rect(*ltrb), &paint_of(paint)?)?;
+            canvas.draw_rect(rect(*ltrb), &paint_of(paint, slots)?)?;
         }
         Draw::RRect { rrect, paint } => {
-            canvas.draw_rrect_with_radii(rect(rrect.ltrb), radii(rrect), &paint_of(paint)?)?;
+            canvas.draw_rrect_with_radii(
+                rect(rrect.ltrb),
+                radii(rrect),
+                &paint_of(paint, slots)?,
+            )?;
         }
         Draw::DRRect {
             outer,
@@ -398,29 +575,176 @@ fn draw_one(canvas: &mut Canvas, draw: &Draw) -> Result<(), RasterError> {
                 radii(outer),
                 rect(inner.ltrb),
                 radii(inner),
-                &paint_of(paint)?,
+                &paint_of(paint, slots)?,
             )?;
         }
         Draw::Oval { ltrb, paint } => {
-            canvas.draw_oval(rect(*ltrb), &paint_of(paint)?)?;
+            canvas.draw_oval(rect(*ltrb), &paint_of(paint, slots)?)?;
         }
         Draw::Circle {
             center,
             radius,
             paint,
         } => {
-            canvas.draw_circle(vec2(*center), *radius, &paint_of(paint)?)?;
+            canvas.draw_circle(vec2(*center), *radius, &paint_of(paint, slots)?)?;
         }
         Draw::Path { path, paint } => {
             // A path with a non-finite point draws nothing, as in Skia.
             let path = path_of(path);
             if path.is_finite() {
-                canvas.draw_path(&path, &paint_of(paint)?)?;
+                canvas.draw_path(&path, &paint_of(paint, slots)?)?;
             }
         }
-        Draw::Picture(p) => draw_picture(canvas, p)?,
+        Draw::Picture(p) => draw_picture(canvas, p, slots)?,
+        Draw::Image {
+            image,
+            src,
+            dst,
+            paint,
+            quality,
+        } => {
+            let (slot, size) = slots.slot(image)?;
+            let p = image_paint(paint, EPaint::image(slot, rect(*dst)), *quality)?
+                .with_source_pixels(rect(*src), size);
+            canvas.draw_rect(rect(*dst), &p)?;
+        }
+        Draw::ImageNine {
+            image,
+            center,
+            dst,
+            paint,
+            quality,
+        } => {
+            // emblema samples the nine linearly, with its own inset; the
+            // paint gives the blend and the edges, not an alpha.
+            if paint.color[3] < 1.0 {
+                return Err(RasterError::Unsupported(
+                    "drawImageNine with a translucent paint".into(),
+                ));
+            }
+            let (slot, size) = slots.slot(image)?;
+            let p = image_paint(paint, EPaint::image(slot, rect(*dst)), *quality)?;
+            canvas.draw_image_nine(slot, size, rect(*center), rect(*dst), &p)?;
+        }
+        Draw::Atlas {
+            image,
+            transforms,
+            rects,
+            colors,
+            blend_mode,
+            paint,
+            quality,
+        } => {
+            // A sprite's color is multiplied in: modulate, and nothing else.
+            if colors.is_some() && *blend_mode != MODULATE {
+                return Err(RasterError::Unsupported(format!(
+                    "drawAtlas colors with blend mode {blend_mode} (only modulate, {MODULATE})"
+                )));
+            }
+            let (slot, size) = slots.slot(image)?;
+            let sprites: Vec<Sprite> = transforms
+                .iter()
+                .zip(rects)
+                .enumerate()
+                .map(|(i, ([scos, ssin, tx, ty], [l, t, r, b]))| Sprite {
+                    source: SourceRect::new(*l, *t, r - l, b - t),
+                    color: colors
+                        .as_ref()
+                        .and_then(|c| c.get(i))
+                        .map_or(Color::WHITE, |c| argb(*c)),
+                    // x' = scos x - ssin y + tx, y' = ssin x + scos y + ty.
+                    transform: Affine2::from_cols_array(&[*scos, *ssin, -ssin, *scos, *tx, *ty]),
+                })
+                .collect();
+            let p = image_paint(
+                paint,
+                EPaint::image(slot, Rect::new(0.0, 0.0, 1.0, 1.0)),
+                *quality,
+            )?;
+            canvas.draw_atlas(&sprites, size, &p)?;
+        }
     }
     Ok(())
+}
+
+/// `BlendMode.modulate`.
+const MODULATE: i32 = 13;
+
+/// A dart:ui color, `0xAARRGGBB`, straight sRGB.
+fn argb(c: u32) -> Color {
+    let ch = |shift: u32| f32::from(((c >> shift) & 0xFF) as u8) / 255.0;
+    Color::srgb(ch(16), ch(8), ch(0), ch(24))
+}
+
+/// `FilterQuality` to emblema's sampling (brief M3 §4): none is nearest,
+/// low linear, medium linear between mip levels, high cubic.
+fn sampling_of(quality: i32) -> Sampling {
+    match quality {
+        0 => Sampling::Nearest,
+        2 => Sampling::Mipmap,
+        3 => Sampling::Cubic,
+        _ => Sampling::Linear,
+    }
+}
+
+/// `TileMode`: clamp, repeated, mirror, decal, in dart:ui's order and
+/// emblema's.
+fn tile_of(i: i32) -> Result<TileMode, RasterError> {
+    Ok(match i {
+        0 => TileMode::Clamp,
+        1 => TileMode::Repeat,
+        2 => TileMode::Mirror,
+        3 => TileMode::Decal,
+        _ => return Err(RasterError::Unsupported(format!("tile mode {i}"))),
+    })
+}
+
+/// An image draw's paint: `base` sampled at `quality`, with the paint's
+/// alpha, blend, edges and mask filter. The paint's color is otherwise
+/// unused, as Skia draws an image.
+fn image_paint(p: &Paint, base: EPaint, quality: i32) -> Result<EPaint, RasterError> {
+    if let Some(what) = unmapped(p) {
+        return Err(RasterError::Unsupported(what));
+    }
+    let paint = with_mask(base, p)
+        .with_sampling(sampling_of(quality))
+        .with_image_alpha(p.color[3]);
+    Ok(paint
+        .with_blend(blend_of(p.blend_mode)?)
+        .with_anti_alias(p.anti_alias))
+}
+
+/// An image shader's fill: the image placed by its matrix, which may scale
+/// and translate; a rotation, skew or perspective is not mapped yet, nor
+/// tile modes that differ between the axes.
+fn shader_paint(
+    s: &ImageShader,
+    filter_quality: i32,
+    slots: &mut Slots,
+) -> Result<EPaint, RasterError> {
+    let m = &s.matrix;
+    let affine_only = m[1] == 0.0 && m[4] == 0.0 && m[3] == 0.0 && m[7] == 0.0 && m[15] == 1.0;
+    if !affine_only || m[0] <= 0.0 || m[5] <= 0.0 {
+        return Err(RasterError::Unsupported(
+            "an ImageShader matrix other than a scale and translation".into(),
+        ));
+    }
+    if s.tile[0] != s.tile[1] {
+        return Err(RasterError::Unsupported(
+            "an ImageShader with a tile mode per axis".into(),
+        ));
+    }
+    let (slot, size) = slots.slot(&s.image)?;
+    let (w, h) = (size.width as f64, size.height as f64);
+    let covers = Rect::new(
+        m[12] as f32,
+        m[13] as f32,
+        (m[12] + m[0] * w) as f32,
+        (m[13] + m[5] * h) as f32,
+    );
+    Ok(EPaint::image(slot, covers)
+        .with_tile_mode(tile_of(s.tile[0])?)
+        .with_sampling(sampling_of(s.quality.unwrap_or(filter_quality))))
 }
 
 fn rect([l, t, r, b]: [f32; 4]) -> Rect {
@@ -489,7 +813,7 @@ fn unmapped(p: &Paint) -> Option<String> {
         ));
     }
     if p.objects {
-        return Some("a shader, color filter or image filter".into());
+        return Some("a shader other than ImageShader, a color filter or an image filter".into());
     }
     if p.invert_colors {
         return Some("invertColors".into());
@@ -499,22 +823,29 @@ fn unmapped(p: &Paint) -> Option<String> {
 
 /// A `saveLayer` paint: its alpha and blend mode composite the layer.
 fn layer_of(p: &Paint) -> Result<Layer, RasterError> {
-    if let Some(what) = unmapped(p).or_else(|| p.mask_blur.map(|_| "a layer mask filter".into())) {
+    if let Some(what) = unmapped(p)
+        .or_else(|| p.mask_blur.map(|_| "a layer mask filter".into()))
+        .or_else(|| p.shader.as_ref().map(|_| "a layer shader".into()))
+    {
         return Err(RasterError::Unsupported(what));
     }
     Ok(Layer::opacity(p.color[3]).with_blend(blend_of(p.blend_mode)?))
 }
 
-fn paint_of(p: &Paint) -> Result<EPaint, RasterError> {
+fn paint_of(p: &Paint, slots: &mut Slots) -> Result<EPaint, RasterError> {
     if let Some(what) = unmapped(p) {
         return Err(RasterError::Unsupported(what));
     }
     // dart:ui colors are sRGB-encoded components, as emblema's `srgb` takes.
+    // A shader replaces the color, but for its alpha.
     let [r, g, b, a] = p.color;
-    let color = Color::srgb(r, g, b, a);
-    let mut paint = match p.style {
-        Style::Fill => EPaint::fill(color),
-        Style::Stroke => EPaint::fill(color).with_style(EStyle::Stroke(StrokeStyle {
+    let base = match &p.shader {
+        Some(s) => shader_paint(s, p.filter_quality, slots)?.with_image_alpha(a),
+        None => EPaint::fill(Color::srgb(r, g, b, a)),
+    };
+    let paint = match p.style {
+        Style::Fill => base,
+        Style::Stroke => base.with_style(EStyle::Stroke(StrokeStyle {
             width: p.stroke_width,
             cap: match p.stroke_cap {
                 Cap::Butt => LineCap::Butt,
@@ -529,19 +860,24 @@ fn paint_of(p: &Paint) -> Result<EPaint, RasterError> {
             miter_limit: p.stroke_miter_limit,
         })),
     };
-    if let Some((style, sigma)) = p.mask_blur {
-        paint = paint
+    Ok(with_mask(paint, p)
+        .with_blend(blend_of(p.blend_mode)?)
+        .with_anti_alias(p.anti_alias))
+}
+
+/// `paint` with `p`'s blur mask filter, if it has one.
+fn with_mask(paint: EPaint, p: &Paint) -> EPaint {
+    match p.mask_blur {
+        Some((style, sigma)) => paint
             .with_mask_blur(sigma)
             .with_mask_blur_style(match style {
                 1 => MaskBlurStyle::Solid,
                 2 => MaskBlurStyle::Outer,
                 3 => MaskBlurStyle::Inner,
                 _ => MaskBlurStyle::Normal,
-            });
+            }),
+        None => paint,
     }
-    Ok(paint
-        .with_blend(blend_of(p.blend_mode)?)
-        .with_anti_alias(p.anti_alias))
 }
 
 /// Writes `rgba` (`width * height` RGBA8 pixels, top row first) as a PNG.
@@ -573,23 +909,26 @@ mod tests {
             ..Paint::default()
         };
         assert!(matches!(
-            paint_of(&out_of_range),
+            paint_of(&out_of_range, &mut Slots::new(&GpuImages::default())),
             Err(RasterError::Unsupported(_))
         ));
         let p3 = Paint {
             color_space: 2,
             ..Paint::default()
         };
-        assert!(matches!(paint_of(&p3), Err(RasterError::Unsupported(_))));
+        assert!(matches!(
+            paint_of(&p3, &mut Slots::new(&GpuImages::default())),
+            Err(RasterError::Unsupported(_))
+        ));
         let shader = Paint {
             objects: true,
             ..Paint::default()
         };
         assert!(matches!(
-            paint_of(&shader),
+            paint_of(&shader, &mut Slots::new(&GpuImages::default())),
             Err(RasterError::Unsupported(_))
         ));
-        assert!(paint_of(&Paint::default()).is_ok());
+        assert!(paint_of(&Paint::default(), &mut Slots::new(&GpuImages::default())).is_ok());
     }
 
     #[test]
@@ -621,7 +960,7 @@ mod tests {
         let scene = Scene {
             ops: vec![LayerOp::Pop, LayerOp::Pop],
         };
-        assert!(replay(&mut canvas, &scene).is_ok());
+        assert!(replay(&mut canvas, &scene, &mut Slots::new(&GpuImages::default())).is_ok());
         assert_eq!(canvas.save_depth(), 0);
     }
 
@@ -649,7 +988,7 @@ mod tests {
                 // The clip layer left open.
             ],
         };
-        assert!(replay(&mut canvas, &scene).is_ok());
+        assert!(replay(&mut canvas, &scene, &mut Slots::new(&GpuImages::default())).is_ok());
         assert_eq!(canvas.save_depth(), 0);
     }
 
@@ -674,7 +1013,7 @@ mod tests {
             }],
         };
         assert!(matches!(
-            replay(&mut canvas, &scene),
+            replay(&mut canvas, &scene, &mut Slots::new(&GpuImages::default())),
             Err(RasterError::Unsupported(_))
         ));
         assert_eq!(canvas.save_depth(), 0);
@@ -704,7 +1043,7 @@ mod tests {
                 ]),
             }],
         };
-        assert!(replay(&mut canvas, &scene).is_ok());
+        assert!(replay(&mut canvas, &scene, &mut Slots::new(&GpuImages::default())).is_ok());
         assert_eq!(canvas.finish().draw_count(), 0);
     }
 

@@ -88,14 +88,22 @@ fn app_cycles_stay_flat() {
         .map(std::ffi::OsStr::new)
         .chain([png.as_os_str()])
         .collect();
+    let images_png = common::out_dir().join("apps/images-soak.png");
+    let images: Vec<&std::ffi::OsStr> = ["800x600@2", "--png"]
+        .iter()
+        .map(std::ffi::OsStr::new)
+        .chain([images_png.as_os_str()])
+        .collect();
     // App, cycles, frames each cycle renders, its options. colored_box,
     // material and shapes run to their own end: the warm-up frame and the
-    // one scheduled after it.
-    let runs: [(&str, u32, u64, Vec<&std::ffi::OsStr>); 4] = [
+    // one scheduled after it. images decodes and uploads its nine images
+    // each cycle, and draws them twice.
+    let runs: [(&str, u32, u64, Vec<&std::ffi::OsStr>); 5] = [
         ("colored_box", 1000, 2, vec![]),
         ("material", 1000, 2, vec![]),
         ("shapes", 300, 2, vec![]),
         ("ticker", 100, 100, ticker),
+        ("images", 300, 2, images),
     ];
     for (name, n, per_cycle, opts) in runs {
         let app = common::build_app(name);
@@ -115,6 +123,8 @@ fn app_cycles_stay_flat() {
             "{name}: descriptors leaked: {r:?}"
         );
         assert_eq!(r["persistent_handles"], 0, "{name}: {r:?}");
+        // Every image freed with its isolate is gone from the device too.
+        assert_eq!(r["gpu_images"], 0, "{name}: GPU images leaked: {r:?}");
         println!("{name}: {r:?}");
     }
 }
@@ -188,7 +198,8 @@ fn valgrind_finds_no_errors_or_leaks() {
 }
 
 /// App lifecycles under memcheck: ten cycles each of the apps whose peers
-/// differ (pictures, scenes and layers; paths; reply callbacks). A peer a
+/// differ (pictures, scenes and layers; paths; reply callbacks; images,
+/// codecs and the decode thread). A peer a
 /// finalizer misses, or a retained layer never freed, is named here.
 #[cfg(feature = "aot")]
 #[test]
@@ -196,7 +207,7 @@ fn valgrind_finds_no_errors_or_leaks() {
 fn valgrind_finds_no_errors_or_leaks_in_app_cycles() {
     use std::process::Command;
 
-    for name in ["colored_box", "shapes", "material"] {
+    for name in ["colored_box", "shapes", "material", "images"] {
         let app = common::build_app(name);
         let log = common::out_dir().join(format!("valgrind-{name}.log"));
         let o = Command::new("valgrind")
@@ -232,10 +243,12 @@ fn valgrind_finds_no_errors_or_leaks_in_app_cycles() {
 #[test]
 #[ignore = "sanitizer lanes: see .github/workflows/sanitize.yml"]
 fn apps_under_a_sanitizer() {
-    let runs: [(&str, &[&str]); 4] = [
+    let runs: [(&str, &[&str]); 5] = [
         ("colored_box", &["3"]),
         ("shapes", &["3", "--frames", "2"]),
         ("material", &["3"]),
+        // The decode thread, and its results crossing to the UI thread.
+        ("images", &["3"]),
         (
             "ticker",
             &["2", "200x100", "--frames", "20", "--hz", "1000"],
