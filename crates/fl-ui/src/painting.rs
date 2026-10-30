@@ -394,7 +394,7 @@ pub(crate) extern "C" fn picture_dispose(picture: *mut c_void) {
 ///
 /// # Safety
 /// As [`fl_dart_ffi::args::bytes`], for both handles.
-unsafe fn paint(objects: sys::Dart_Handle, data: sys::Dart_Handle) -> Paint {
+pub(crate) unsafe fn paint(objects: sys::Dart_Handle, data: sys::Dart_Handle) -> Paint {
     // SAFETY: per this function's contract.
     let bytes = unsafe { args::bytes(data) };
     let p = bytes.as_deref().and_then(Paint::decode).unwrap_or_else(|| {

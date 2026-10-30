@@ -53,7 +53,7 @@ Future<void> main() async {
     }
   }
 
-  // FontLoader: completes (fonts register at M3 stage 4).
+  // FontLoader: completes; the bytes are no font, so nothing registers.
   final FontLoader loader = FontLoader('Nothing')..addFont(Future<ByteData>.value(hello));
   await loader.load();
   print('FontLoader: done');

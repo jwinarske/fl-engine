@@ -25,6 +25,7 @@ static BUNDLE: Mutex<Option<Arc<Bundle>>> = Mutex::new(None);
 /// asset is then not found.
 pub fn set_asset_bundle(bundle: Option<Arc<Bundle>>) {
     *BUNDLE.lock().unwrap_or_else(|e| e.into_inner()) = bundle;
+    crate::text::reset_fonts();
 }
 
 /// The bundle, if one is set.

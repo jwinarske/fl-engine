@@ -1,0 +1,11 @@
+name: metrics
+description: fl-engine test program. Paragraph layout and its queries against the stock engine's numbers (docs/m3-images-text.md stage 4).
+publish_to: none
+environment:
+  sdk: ^3.13.0
+dependencies:
+  flutter:
+    sdk: flutter
+dev_dependencies:
+  flutter_test:
+    sdk: flutter

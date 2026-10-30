@@ -1,0 +1,748 @@
+plain: width=400.000 height=16.000 longest=70.178 min=34.535 max=70.178 alphabetic=12.988 ideographic=16.406 exceeded=false lines=1
+plain line 0: hard=true ascent=12.988 descent=3.418 unscaled=12.988 height=16.000 width=70.178 left=0.000 baseline=12.582
+plain lineAt 0: 12.582 70.178
+plain boxes tight: [0.000 -0.406 70.178 16.000 ltr]
+plain boxes max: [0.000 -0.406 70.178 16.000 ltr]
+plain boxes includeLineSpacingMiddle: [0.000 -0.406 70.178 16.000 ltr]
+plain boxes includeLineSpacingTop: [0.000 -0.406 70.178 16.000 ltr]
+plain boxes includeLineSpacingBottom: [0.000 -0.406 70.178 16.000 ltr]
+plain boxes strut: [0.000 -0.406 70.178 16.000 ltr]
+plain boxes max-width: [0.000 -0.406 70.178 16.000 ltr]
+plain boxes 2..9: [17.397 -0.406 58.885 16.000 ltr]
+plain placeholders: 
+plain positions: 0d 0d 0d 4d 9d 11u 11u
+plain words: 0:0-5 1:0-5 2:0-5 3:0-5 4:0-5 5:5-6 6:6-11 7:6-11 8:6-11 9:6-11 10:6-11 11:11-11
+plain lineBoundaries: 0:0-11 1:0-11 2:0-11 3:0-11 4:0-11 5:0-11 6:0-11 7:0-11 8:0-11 9:0-11 10:0-11 11:0-11
+plain lineNumbers: 0:0 1:0 2:0 3:0 4:0 5:0 6:0 7:0 8:0 9:0 10:0 11:-
+plain glyphs: 0:0-1l(0.000,-0.406,9.980,16.000) 1:1-2l(9.980,-0.406,17.397,16.000) 2:2-3l(17.397,-0.406,20.795,16.000) 3:3-4l(20.795,-0.406,24.192,16.000) 4:4-5l(24.192,-0.406,32.177,16.000) 5:5-6l(32.177,-0.406,35.643,16.000) 6:6-7l(35.643,-0.406,46.163,16.000) 7:7-8l(46.163,-0.406,54.147,16.000) 8:8-9l(54.147,-0.406,58.885,16.000) 9:9-10l(58.885,-0.406,62.282,16.000) 10:10-11l(62.282,-0.406,70.178,16.000) 11:none
+plain closest: 4-5
+wrap: width=120.000 height=64.000 longest=114.871 min=44.208 max=395.623 alphabetic=12.988 ideographic=16.406 exceeded=false lines=4
+wrap line 0: hard=false ascent=12.988 descent=3.418 unscaled=12.988 height=16.000 width=102.594 left=0.000 baseline=12.582
+wrap line 1: hard=false ascent=12.988 descent=3.418 unscaled=12.988 height=16.000 width=114.871 left=0.000 baseline=28.582
+wrap line 2: hard=false ascent=12.988 descent=3.418 unscaled=12.988 height=16.000 width=112.116 left=0.000 baseline=44.582
+wrap line 3: hard=true ascent=12.988 descent=3.418 unscaled=12.988 height=16.000 width=55.645 left=0.000 baseline=60.582
+wrap lineAt 0: 12.582 102.594
+wrap boxes tight: [0.000 -0.406 106.060 16.000 ltr] [0.000 15.594 118.337 32.000 ltr] [0.000 31.594 115.582 48.000 ltr] [0.000 47.594 55.645 64.000 ltr]
+wrap boxes max: [0.000 -0.406 106.060 16.000 ltr] [0.000 15.594 118.337 32.000 ltr] [0.000 31.594 115.582 48.000 ltr] [0.000 47.594 55.645 64.000 ltr]
+wrap boxes includeLineSpacingMiddle: [0.000 -0.406 106.060 16.000 ltr] [0.000 15.594 118.337 32.000 ltr] [0.000 31.594 115.582 48.000 ltr] [0.000 47.594 55.645 64.000 ltr]
+wrap boxes includeLineSpacingTop: [0.000 -0.406 106.060 16.000 ltr] [0.000 15.594 118.337 32.000 ltr] [0.000 31.594 115.582 48.000 ltr] [0.000 47.594 55.645 64.000 ltr]
+wrap boxes includeLineSpacingBottom: [0.000 -0.406 106.060 16.000 ltr] [0.000 15.594 118.337 32.000 ltr] [0.000 31.594 115.582 48.000 ltr] [0.000 47.594 55.645 64.000 ltr]
+wrap boxes strut: [0.000 -0.406 106.060 16.000 ltr] [0.000 15.594 118.337 32.000 ltr] [0.000 31.594 115.582 48.000 ltr] [0.000 47.594 55.645 64.000 ltr]
+wrap boxes max-width: [0.000 -0.406 106.060 16.000 ltr] [106.060 -0.406 118.337 16.000 ltr] [0.000 15.594 118.337 32.000 ltr] [0.000 31.594 115.582 48.000 ltr] [115.582 31.594 118.337 48.000 ltr] [0.000 47.594 55.645 64.000 ltr]
+wrap boxes 2..62: [16.064 -0.406 106.060 16.000 ltr] [0.000 15.594 118.337 32.000 ltr] [0.000 31.594 115.582 48.000 ltr] [0.000 47.594 44.741 64.000 ltr]
+wrap placeholders: 
+wrap positions: 0d 0d 0d 3d 25u 53u 64u
+wrap words: 0:0-3 5:4-9 10:10-15 15:15-16 20:20-25 25:25-26 30:30-31 35:35-39 40:40-43 45:45-48 50:49-53 55:54-56 60:57-63
+wrap lineBoundaries: 0:0-16 5:0-16 10:0-16 15:0-16 20:16-35 25:16-35 30:16-35 35:35-54 40:35-54 45:35-54 50:35-54 55:54-64 60:54-64
+wrap lineNumbers: 0:0 5:0 10:0 15:0 20:1 25:1 30:1 35:2 40:2 45:2 50:2 55:3 60:3
+wrap glyphs: 0:0-1l(0.000,-0.406,8.354,16.000) 5:5-6l(34.904,-0.406,42.622,16.000) 10:10-11l(63.909,-0.406,71.764,16.000) 15:15-16l(102.594,-0.406,106.060,16.000) 20:20-21l(23.105,15.594,26.448,32.000) 25:25-26l(61.510,15.594,64.976,32.000) 30:30-31l(91.704,15.594,95.170,32.000) 35:35-36l(0.000,31.594,3.397,48.000) 40:40-41l(28.041,31.594,35.937,48.000) 45:45-46l(57.989,31.594,65.604,48.000) 50:50-51l(89.264,31.594,96.975,48.000) 55:55-56l(3.397,47.594,7.971,64.000) 60:60-61l(29.470,47.594,36.887,64.000)
+wrap closest: 4-5
+wrap-narrow: width=30.000 height=240.000 longest=29.470 min=40.523 max=395.623 alphabetic=12.988 ideographic=16.406 exceeded=false lines=15
+wrap-narrow line 0: hard=false ascent=12.988 descent=3.418 unscaled=12.988 height=16.000 width=23.481 left=0.000 baseline=12.582
+wrap-narrow line 1: hard=false ascent=12.988 descent=3.418 unscaled=12.988 height=16.000 width=26.400 left=0.000 baseline=28.582
+wrap-narrow line 2: hard=false ascent=12.988 descent=3.418 unscaled=12.988 height=16.000 width=23.017 left=0.000 baseline=44.582
+wrap-narrow line 3: hard=false ascent=12.988 descent=3.418 unscaled=12.988 height=16.000 width=26.229 left=0.000 baseline=60.582
+wrap-narrow line 4: hard=false ascent=12.988 descent=3.418 unscaled=12.988 height=16.000 width=19.640 left=0.000 baseline=76.582
+wrap-narrow line 5: hard=false ascent=12.988 descent=3.418 unscaled=12.988 height=16.000 width=23.331 left=0.000 baseline=92.582
+wrap-narrow line 6: hard=false ascent=12.988 descent=3.418 unscaled=12.988 height=16.000 width=15.073 left=0.000 baseline=108.582
+wrap-narrow line 7: hard=false ascent=12.988 descent=3.418 unscaled=12.988 height=16.000 width=26.729 left=0.000 baseline=124.582
+wrap-narrow line 8: hard=false ascent=12.988 descent=3.418 unscaled=12.988 height=16.000 width=19.701 left=0.000 baseline=140.582
+wrap-narrow line 9: hard=false ascent=12.988 descent=3.418 unscaled=12.988 height=16.000 width=24.575 left=0.000 baseline=156.582
+wrap-narrow line 10: hard=false ascent=12.988 descent=3.418 unscaled=12.988 height=16.000 width=26.482 left=0.000 baseline=172.582
+wrap-narrow line 11: hard=false ascent=12.988 descent=3.418 unscaled=12.988 height=16.000 width=23.235 left=0.000 baseline=188.582
+wrap-narrow line 12: hard=false ascent=12.988 descent=3.418 unscaled=12.988 height=16.000 width=27.426 left=0.000 baseline=204.582
+wrap-narrow line 13: hard=false ascent=12.988 descent=3.418 unscaled=12.988 height=16.000 width=29.470 left=0.000 baseline=220.582
+wrap-narrow line 14: hard=true ascent=12.988 descent=3.418 unscaled=12.988 height=16.000 width=26.175 left=0.000 baseline=236.582
+wrap-narrow lineAt 0: 12.582 23.481
+wrap-narrow boxes tight: [0.000 -0.406 26.947 16.000 ltr] [0.000 15.594 26.400 32.000 ltr] [0.000 31.594 23.017 48.000 ltr] [0.000 47.594 29.695 64.000 ltr] [0.000 63.594 23.105 80.000 ltr] [0.000 79.594 23.331 96.000 ltr] [0.000 95.594 18.539 112.000 ltr] [0.000 111.594 30.194 128.000 ltr] [0.000 127.594 23.167 144.000 ltr] [0.000 143.594 28.041 160.000 ltr] [0.000 159.594 29.948 176.000 ltr] [0.000 175.594 26.701 192.000 ltr] [0.000 191.594 30.892 208.000 ltr] [0.000 207.594 29.470 224.000 ltr] [0.000 223.594 26.175 240.000 ltr]
+wrap-narrow boxes max: [0.000 -0.406 26.947 16.000 ltr] [0.000 15.594 26.400 32.000 ltr] [0.000 31.594 23.017 48.000 ltr] [0.000 47.594 29.695 64.000 ltr] [0.000 63.594 23.105 80.000 ltr] [0.000 79.594 23.331 96.000 ltr] [0.000 95.594 18.539 112.000 ltr] [0.000 111.594 30.194 128.000 ltr] [0.000 127.594 23.167 144.000 ltr] [0.000 143.594 28.041 160.000 ltr] [0.000 159.594 29.948 176.000 ltr] [0.000 175.594 26.701 192.000 ltr] [0.000 191.594 30.892 208.000 ltr] [0.000 207.594 29.470 224.000 ltr] [0.000 223.594 26.175 240.000 ltr]
+wrap-narrow boxes includeLineSpacingMiddle: [0.000 -0.406 26.947 16.000 ltr] [0.000 15.594 26.400 32.000 ltr] [0.000 31.594 23.017 48.000 ltr] [0.000 47.594 29.695 64.000 ltr] [0.000 63.594 23.105 80.000 ltr] [0.000 79.594 23.331 96.000 ltr] [0.000 95.594 18.539 112.000 ltr] [0.000 111.594 30.194 128.000 ltr] [0.000 127.594 23.167 144.000 ltr] [0.000 143.594 28.041 160.000 ltr] [0.000 159.594 29.948 176.000 ltr] [0.000 175.594 26.701 192.000 ltr] [0.000 191.594 30.892 208.000 ltr] [0.000 207.594 29.470 224.000 ltr] [0.000 223.594 26.175 240.000 ltr]
+wrap-narrow boxes includeLineSpacingTop: [0.000 -0.406 26.947 16.000 ltr] [0.000 15.594 26.400 32.000 ltr] [0.000 31.594 23.017 48.000 ltr] [0.000 47.594 29.695 64.000 ltr] [0.000 63.594 23.105 80.000 ltr] [0.000 79.594 23.331 96.000 ltr] [0.000 95.594 18.539 112.000 ltr] [0.000 111.594 30.194 128.000 ltr] [0.000 127.594 23.167 144.000 ltr] [0.000 143.594 28.041 160.000 ltr] [0.000 159.594 29.948 176.000 ltr] [0.000 175.594 26.701 192.000 ltr] [0.000 191.594 30.892 208.000 ltr] [0.000 207.594 29.470 224.000 ltr] [0.000 223.594 26.175 240.000 ltr]
+wrap-narrow boxes includeLineSpacingBottom: [0.000 -0.406 26.947 16.000 ltr] [0.000 15.594 26.400 32.000 ltr] [0.000 31.594 23.017 48.000 ltr] [0.000 47.594 29.695 64.000 ltr] [0.000 63.594 23.105 80.000 ltr] [0.000 79.594 23.331 96.000 ltr] [0.000 95.594 18.539 112.000 ltr] [0.000 111.594 30.194 128.000 ltr] [0.000 127.594 23.167 144.000 ltr] [0.000 143.594 28.041 160.000 ltr] [0.000 159.594 29.948 176.000 ltr] [0.000 175.594 26.701 192.000 ltr] [0.000 191.594 30.892 208.000 ltr] [0.000 207.594 29.470 224.000 ltr] [0.000 223.594 26.175 240.000 ltr]
+wrap-narrow boxes strut: [0.000 -0.406 26.947 16.000 ltr] [0.000 15.594 26.400 32.000 ltr] [0.000 31.594 23.017 48.000 ltr] [0.000 47.594 29.695 64.000 ltr] [0.000 63.594 23.105 80.000 ltr] [0.000 79.594 23.331 96.000 ltr] [0.000 95.594 18.539 112.000 ltr] [0.000 111.594 30.194 128.000 ltr] [0.000 127.594 23.167 144.000 ltr] [0.000 143.594 28.041 160.000 ltr] [0.000 159.594 29.948 176.000 ltr] [0.000 175.594 26.701 192.000 ltr] [0.000 191.594 30.892 208.000 ltr] [0.000 207.594 29.470 224.000 ltr] [0.000 223.594 26.175 240.000 ltr]
+wrap-narrow boxes max-width: [0.000 -0.406 26.947 16.000 ltr] [26.947 -0.406 30.892 16.000 ltr] [0.000 15.594 26.400 32.000 ltr] [26.400 15.594 30.892 32.000 ltr] [0.000 31.594 23.017 48.000 ltr] [23.017 31.594 30.892 48.000 ltr] [0.000 47.594 29.695 64.000 ltr] [29.695 47.594 30.892 64.000 ltr] [0.000 63.594 23.105 80.000 ltr] [23.105 63.594 30.892 80.000 ltr] [0.000 79.594 23.331 96.000 ltr] [23.331 79.594 30.892 96.000 ltr] [0.000 95.594 18.539 112.000 ltr] [18.539 95.594 30.892 112.000 ltr] [0.000 111.594 30.194 128.000 ltr] [30.194 111.594 30.892 128.000 ltr] [0.000 127.594 23.167 144.000 ltr] [23.167 127.594 30.892 144.000 ltr] [0.000 143.594 28.041 160.000 ltr] [28.041 143.594 30.892 160.000 ltr] [0.000 159.594 29.948 176.000 ltr] [29.948 159.594 30.892 176.000 ltr] [0.000 175.594 26.701 192.000 ltr] [26.701 175.594 30.892 192.000 ltr] [0.000 191.594 30.892 208.000 ltr] [0.000 207.594 29.470 224.000 ltr] [29.470 207.594 30.892 224.000 ltr] [0.000 223.594 26.175 240.000 ltr]
+wrap-narrow boxes 2..62: [16.064 -0.406 26.947 16.000 ltr] [0.000 15.594 26.400 32.000 ltr] [0.000 31.594 23.017 48.000 ltr] [0.000 47.594 29.695 64.000 ltr] [0.000 63.594 23.105 80.000 ltr] [0.000 79.594 23.331 96.000 ltr] [0.000 95.594 18.539 112.000 ltr] [0.000 111.594 30.194 128.000 ltr] [0.000 127.594 23.167 144.000 ltr] [0.000 143.594 28.041 160.000 ltr] [0.000 159.594 29.948 176.000 ltr] [0.000 175.594 26.701 192.000 ltr] [0.000 191.594 30.892 208.000 ltr] [0.000 207.594 29.470 224.000 ltr] [0.000 223.594 15.271 240.000 ltr]
+wrap-narrow placeholders: 
+wrap-narrow positions: 0d 0d 0d 3d 8u 12u 64u
+wrap-narrow words: 0:0-3 5:4-9 10:10-15 15:15-16 20:20-25 25:25-26 30:30-31 35:35-39 40:40-43 45:45-48 50:49-53 55:54-56 60:57-63
+wrap-narrow lineBoundaries: 0:0-4 5:4-8 10:8-12 15:12-16 20:20-23 25:23-26 30:26-31 35:35-40 40:40-45 45:45-49 50:49-54 55:54-60 60:60-64
+wrap-narrow lineNumbers: 0:0 5:1 10:2 15:3 20:5 25:6 30:7 35:9 40:10 45:11 50:12 55:13 60:14
+wrap-narrow glyphs: 0:0-1l(0.000,-0.406,8.354,16.000) 5:5-6l(7.957,15.594,15.675,32.000) 10:10-11l(10.562,31.594,18.416,48.000) 15:15-16l(26.229,47.594,29.695,64.000) 20:20-21l(0.000,79.594,3.343,96.000) 25:25-26l(15.073,95.594,18.539,112.000) 30:30-31l(26.729,111.594,30.194,128.000) 35:35-36l(0.000,143.594,3.397,160.000) 40:40-41l(0.000,159.594,7.896,176.000) 45:45-46l(0.000,175.594,7.615,192.000) 50:50-51l(4.573,191.594,12.284,208.000) 55:55-56l(3.397,207.594,7.971,224.000) 60:60-61l(0.000,223.594,7.417,240.000)
+wrap-narrow closest: 3-4
+unbounded: width=inf height=16.000 longest=395.623 min=44.208 max=395.623 alphabetic=12.988 ideographic=16.406 exceeded=false lines=1
+unbounded line 0: hard=true ascent=12.988 descent=3.418 unscaled=12.988 height=16.000 width=395.623 left=0.000 baseline=12.582
+unbounded lineAt 0: 12.582 395.623
+unbounded boxes tight: [0.000 -0.406 395.623 16.000 ltr]
+unbounded boxes max: [0.000 -0.406 395.623 16.000 ltr]
+unbounded boxes includeLineSpacingMiddle: [0.000 -0.406 395.623 16.000 ltr]
+unbounded boxes includeLineSpacingTop: [0.000 -0.406 395.623 16.000 ltr]
+unbounded boxes includeLineSpacingBottom: [0.000 -0.406 395.623 16.000 ltr]
+unbounded boxes strut: [0.000 -0.406 395.623 16.000 ltr]
+unbounded boxes max-width: [0.000 -0.406 395.623 16.000 ltr]
+unbounded boxes 2..62: [16.064 -0.406 384.720 16.000 ltr]
+unbounded placeholders: 
+unbounded positions: 0d 0d 0d 3d 9u 17u 64u
+unbounded words: 0:0-3 5:4-9 10:10-15 15:15-16 20:20-25 25:25-26 30:30-31 35:35-39 40:40-43 45:45-48 50:49-53 55:54-56 60:57-63
+unbounded lineBoundaries: 0:0-64 5:0-64 10:0-64 15:0-64 20:0-64 25:0-64 30:0-64 35:0-64 40:0-64 45:0-64 50:0-64 55:0-64 60:0-64
+unbounded lineNumbers: 0:0 5:0 10:0 15:0 20:0 25:0 30:0 35:0 40:0 45:0 50:0 55:0 60:0
+unbounded glyphs: 0:0-1l(0.000,-0.406,8.354,16.000) 5:5-6l(34.904,-0.406,42.622,16.000) 10:10-11l(63.909,-0.406,71.764,16.000) 15:15-16l(102.594,-0.406,106.060,16.000) 20:20-21l(129.165,-0.406,132.508,16.000) 25:25-26l(167.569,-0.406,171.035,16.000) 30:30-31l(197.764,-0.406,201.229,16.000) 35:35-36l(224.396,-0.406,227.794,16.000) 40:40-41l(252.438,-0.406,260.333,16.000) 45:45-46l(282.386,-0.406,290.001,16.000) 50:50-51l(313.660,-0.406,321.371,16.000) 55:55-56l(343.376,-0.406,347.949,16.000) 60:60-61l(369.448,-0.406,376.865,16.000)
+unbounded closest: 4-5
+newlines: width=300.000 height=80.000 longest=25.300 min=25.300 max=25.300 alphabetic=12.988 ideographic=16.406 exceeded=false lines=5
+newlines line 0: hard=true ascent=12.988 descent=3.418 unscaled=12.988 height=16.000 width=23.126 left=0.000 baseline=12.582
+newlines line 1: hard=true ascent=12.988 descent=3.418 unscaled=12.988 height=16.000 width=23.078 left=0.000 baseline=28.582
+newlines line 2: hard=true ascent=12.988 descent=3.418 unscaled=12.988 height=16.000 width=0.000 left=0.000 baseline=44.582
+newlines line 3: hard=true ascent=12.988 descent=3.418 unscaled=12.988 height=16.000 width=25.300 left=0.000 baseline=60.582
+newlines line 4: hard=true ascent=12.988 descent=3.418 unscaled=12.988 height=16.000 width=0.000 left=0.000 baseline=76.582
+newlines lineAt 0: 12.582 23.126
+newlines boxes tight: [0.000 -0.406 23.126 16.000 ltr] [0.000 15.594 23.078 32.000 ltr] [0.000 31.594 0.000 48.000 ltr] [0.000 47.594 25.300 64.000 ltr]
+newlines boxes max: [0.000 -0.406 23.126 16.000 ltr] [0.000 15.594 23.078 32.000 ltr] [0.000 31.594 0.000 48.000 ltr] [0.000 47.594 25.300 64.000 ltr]
+newlines boxes includeLineSpacingMiddle: [0.000 -0.406 23.126 16.000 ltr] [0.000 15.594 23.078 32.000 ltr] [0.000 31.594 0.000 48.000 ltr] [0.000 47.594 25.300 64.000 ltr]
+newlines boxes includeLineSpacingTop: [0.000 -0.406 23.126 16.000 ltr] [0.000 15.594 23.078 32.000 ltr] [0.000 31.594 0.000 48.000 ltr] [0.000 47.594 25.300 64.000 ltr]
+newlines boxes includeLineSpacingBottom: [0.000 -0.406 23.126 16.000 ltr] [0.000 15.594 23.078 32.000 ltr] [0.000 31.594 0.000 48.000 ltr] [0.000 47.594 25.300 64.000 ltr]
+newlines boxes strut: [0.000 -0.406 23.126 16.000 ltr] [0.000 15.594 23.078 32.000 ltr] [0.000 31.594 0.000 48.000 ltr] [0.000 47.594 25.300 64.000 ltr]
+newlines boxes max-width: [0.000 -0.406 23.126 16.000 ltr] [23.126 -0.406 25.300 16.000 ltr] [0.000 15.594 23.078 32.000 ltr] [23.078 15.594 25.300 32.000 ltr] [0.000 31.594 0.000 48.000 ltr] [0.000 31.594 25.300 48.000 ltr] [0.000 47.594 25.300 64.000 ltr]
+newlines boxes 2..12: [15.709 -0.406 23.126 16.000 ltr] [0.000 15.594 23.078 32.000 ltr] [0.000 31.594 0.000 48.000 ltr] [0.000 47.594 20.563 64.000 ltr]
+newlines placeholders: 
+newlines positions: 0d 0d 0d 3u 7u 8d 14d
+newlines words: 0:0-3 5:4-7 10:9-13
+newlines lineBoundaries: 0:0-3 5:4-7 10:9-14
+newlines lineNumbers: 0:0 5:1 10:3
+newlines glyphs: 0:0-1l(0.000,-0.406,7.984,16.000) 5:5-6l(4.573,15.594,15.094,32.000) 10:10-11l(4.860,47.594,12.845,64.000)
+newlines closest: 2-3
+empty: width=100.000 height=16.000 longest=-inf min=0.000 max=0.000 alphabetic=12.988 ideographic=16.406 exceeded=false lines=0
+empty lineAt 0: none
+empty boxes tight: 
+empty boxes max: 
+empty boxes includeLineSpacingMiddle: 
+empty boxes includeLineSpacingTop: 
+empty boxes includeLineSpacingBottom: 
+empty boxes strut: 
+empty boxes max-width: 
+empty placeholders: 
+empty positions: 0d 0d 0d 0d 0d 0d 0d
+empty words: 0:0-0
+empty lineBoundaries: 0:-1--1
+empty lineNumbers: 0:-
+empty glyphs: 0:none
+empty closest: none
+trailing-spaces: width=300.000 height=16.000 longest=32.177 min=32.177 max=42.574 alphabetic=12.988 ideographic=16.406 exceeded=false lines=1
+trailing-spaces line 0: hard=true ascent=12.988 descent=3.418 unscaled=12.988 height=16.000 width=32.177 left=0.000 baseline=12.582
+trailing-spaces lineAt 0: 12.582 32.177
+trailing-spaces boxes tight: [0.000 -0.406 42.574 16.000 ltr]
+trailing-spaces boxes max: [0.000 -0.406 42.574 16.000 ltr]
+trailing-spaces boxes includeLineSpacingMiddle: [0.000 -0.406 42.574 16.000 ltr]
+trailing-spaces boxes includeLineSpacingTop: [0.000 -0.406 42.574 16.000 ltr]
+trailing-spaces boxes includeLineSpacingBottom: [0.000 -0.406 42.574 16.000 ltr]
+trailing-spaces boxes strut: [0.000 -0.406 42.574 16.000 ltr]
+trailing-spaces boxes max-width: [0.000 -0.406 42.574 16.000 ltr]
+trailing-spaces boxes 2..6: [17.397 -0.406 35.643 16.000 ltr]
+trailing-spaces placeholders: 
+trailing-spaces positions: 0d 0d 0d 4d 8u 8u 8u
+trailing-spaces words: 0:0-5 1:0-5 2:0-5 3:0-5 4:0-5 5:5-8 6:5-8 7:5-8 8:8-8
+trailing-spaces lineBoundaries: 0:0-8 1:0-8 2:0-8 3:0-8 4:0-8 5:0-8 6:0-8 7:0-8 8:0-8
+trailing-spaces lineNumbers: 0:0 1:0 2:0 3:0 4:0 5:0 6:0 7:0 8:-
+trailing-spaces glyphs: 0:0-1l(0.000,-0.406,9.980,16.000) 1:1-2l(9.980,-0.406,17.397,16.000) 2:2-3l(17.397,-0.406,20.795,16.000) 3:3-4l(20.795,-0.406,24.192,16.000) 4:4-5l(24.192,-0.406,32.177,16.000) 5:5-6l(32.177,-0.406,35.643,16.000) 6:6-7l(35.643,-0.406,39.108,16.000) 7:7-8l(39.108,-0.406,42.574,16.000) 8:none
+trailing-spaces closest: 4-5
+leading-spaces: width=300.000 height=16.000 longest=42.574 min=32.177 max=42.574 alphabetic=12.988 ideographic=16.406 exceeded=false lines=1
+leading-spaces line 0: hard=true ascent=12.988 descent=3.418 unscaled=12.988 height=16.000 width=42.574 left=0.000 baseline=12.582
+leading-spaces lineAt 0: 12.582 42.574
+leading-spaces boxes tight: [0.000 -0.406 42.574 16.000 ltr]
+leading-spaces boxes max: [0.000 -0.406 42.574 16.000 ltr]
+leading-spaces boxes includeLineSpacingMiddle: [0.000 -0.406 42.574 16.000 ltr]
+leading-spaces boxes includeLineSpacingTop: [0.000 -0.406 42.574 16.000 ltr]
+leading-spaces boxes includeLineSpacingBottom: [0.000 -0.406 42.574 16.000 ltr]
+leading-spaces boxes strut: [0.000 -0.406 42.574 16.000 ltr]
+leading-spaces boxes max-width: [0.000 -0.406 42.574 16.000 ltr]
+leading-spaces boxes 2..6: [6.932 -0.406 31.192 16.000 ltr]
+leading-spaces placeholders: 
+leading-spaces positions: 0d 0d 1u 5u 8u 8u 8u
+leading-spaces words: 0:0-3 1:0-3 2:0-3 3:3-8 4:3-8 5:3-8 6:3-8 7:3-8 8:8-8
+leading-spaces lineBoundaries: 0:0-8 1:0-8 2:0-8 3:0-8 4:0-8 5:0-8 6:0-8 7:0-8 8:0-8
+leading-spaces lineNumbers: 0:0 1:0 2:0 3:0 4:0 5:0 6:0 7:0 8:-
+leading-spaces glyphs: 0:0-1l(0.000,-0.406,3.466,16.000) 1:1-2l(3.466,-0.406,6.932,16.000) 2:2-3l(6.932,-0.406,10.397,16.000) 3:3-4l(10.397,-0.406,20.378,16.000) 4:4-5l(20.378,-0.406,27.795,16.000) 5:5-6l(27.795,-0.406,31.192,16.000) 6:6-7l(31.192,-0.406,34.590,16.000) 7:7-8l(34.590,-0.406,42.574,16.000) 8:none
+leading-spaces closest: 5-6
+tab: width=300.000 height=16.000 longest=29.729 min=7.854 max=29.729 alphabetic=12.988 ideographic=16.406 exceeded=false lines=1
+tab line 0: hard=true ascent=12.988 descent=3.418 unscaled=12.988 height=16.000 width=29.729 left=0.000 baseline=12.582
+tab lineAt 0: 12.582 29.729
+tab boxes tight: [0.000 -0.406 29.729 16.000 ltr]
+tab boxes max: [0.000 -0.406 29.729 16.000 ltr]
+tab boxes includeLineSpacingMiddle: [0.000 -0.406 29.729 16.000 ltr]
+tab boxes includeLineSpacingTop: [0.000 -0.406 29.729 16.000 ltr]
+tab boxes includeLineSpacingBottom: [0.000 -0.406 29.729 16.000 ltr]
+tab boxes strut: [0.000 -0.406 29.729 16.000 ltr]
+tab boxes max-width: [0.000 -0.406 29.729 16.000 ltr]
+tab boxes 2..3: [11.081 -0.406 18.936 16.000 ltr]
+tab placeholders: 
+tab positions: 0d 0d 0d 4d 5u 5u 5u
+tab words: 0:0-1 1:1-2 2:2-3 3:3-4 4:4-5 5:5-5
+tab lineBoundaries: 0:0-5 1:0-5 2:0-5 3:0-5 4:0-5 5:0-5
+tab lineNumbers: 0:0 1:0 2:0 3:0 4:0 5:-
+tab glyphs: 0:0-1l(0.000,-0.406,7.615,16.000) 1:1-2l(7.615,-0.406,11.081,16.000) 2:2-3l(11.081,-0.406,18.936,16.000) 3:3-4l(18.936,-0.406,22.401,16.000) 4:4-5l(22.401,-0.406,29.729,16.000) 5:none
+tab closest: 4-5
+long-word: width=50.000 height=80.000 longest=49.410 min=204.688 max=239.162 alphabetic=12.988 ideographic=16.406 exceeded=false lines=5
+long-word line 0: hard=false ascent=12.988 descent=3.418 unscaled=12.988 height=16.000 width=43.230 left=0.000 baseline=12.582
+long-word line 1: hard=false ascent=12.988 descent=3.418 unscaled=12.988 height=16.000 width=49.396 left=0.000 baseline=28.582
+long-word line 2: hard=false ascent=12.988 descent=3.418 unscaled=12.988 height=16.000 width=48.125 left=0.000 baseline=44.582
+long-word line 3: hard=false ascent=12.988 descent=3.418 unscaled=12.988 height=16.000 width=49.000 left=0.000 baseline=60.582
+long-word line 4: hard=true ascent=12.988 descent=3.418 unscaled=12.988 height=16.000 width=49.410 left=0.000 baseline=76.582
+long-word lineAt 0: 12.582 43.230
+long-word boxes tight: [0.000 -0.406 43.230 16.000 ltr] [0.000 15.594 49.396 32.000 ltr] [0.000 31.594 48.125 48.000 ltr] [0.000 47.594 49.000 64.000 ltr] [0.000 63.594 49.410 80.000 ltr]
+long-word boxes max: [0.000 -0.406 43.230 16.000 ltr] [0.000 15.594 49.396 32.000 ltr] [0.000 31.594 48.125 48.000 ltr] [0.000 47.594 49.000 64.000 ltr] [0.000 63.594 49.410 80.000 ltr]
+long-word boxes includeLineSpacingMiddle: [0.000 -0.406 43.230 16.000 ltr] [0.000 15.594 49.396 32.000 ltr] [0.000 31.594 48.125 48.000 ltr] [0.000 47.594 49.000 64.000 ltr] [0.000 63.594 49.410 80.000 ltr]
+long-word boxes includeLineSpacingTop: [0.000 -0.406 43.230 16.000 ltr] [0.000 15.594 49.396 32.000 ltr] [0.000 31.594 48.125 48.000 ltr] [0.000 47.594 49.000 64.000 ltr] [0.000 63.594 49.410 80.000 ltr]
+long-word boxes includeLineSpacingBottom: [0.000 -0.406 43.230 16.000 ltr] [0.000 15.594 49.396 32.000 ltr] [0.000 31.594 48.125 48.000 ltr] [0.000 47.594 49.000 64.000 ltr] [0.000 63.594 49.410 80.000 ltr]
+long-word boxes strut: [0.000 -0.406 43.230 16.000 ltr] [0.000 15.594 49.396 32.000 ltr] [0.000 31.594 48.125 48.000 ltr] [0.000 47.594 49.000 64.000 ltr] [0.000 63.594 49.410 80.000 ltr]
+long-word boxes max-width: [0.000 -0.406 43.230 16.000 ltr] [43.230 -0.406 49.410 16.000 ltr] [0.000 15.594 49.396 32.000 ltr] [49.396 15.594 49.410 32.000 ltr] [0.000 31.594 48.125 48.000 ltr] [48.125 31.594 49.410 48.000 ltr] [0.000 47.594 49.000 64.000 ltr] [49.000 47.594 49.410 64.000 ltr] [0.000 63.594 49.410 80.000 ltr]
+long-word boxes 2..37: [16.023 -0.406 43.230 16.000 ltr] [0.000 15.594 49.396 32.000 ltr] [0.000 31.594 48.125 48.000 ltr] [0.000 47.594 49.000 64.000 ltr] [0.000 63.594 36.907 80.000 ltr]
+long-word placeholders: 
+long-word positions: 0d 0d 0d 3d 16u 24u 39u
+long-word words: 0:0-34 5:0-34 10:0-34 15:0-34 20:0-34 25:0-34 30:0-34 35:35-39
+long-word lineBoundaries: 0:0-6 5:0-6 10:6-16 15:6-16 20:16-24 25:24-32 30:24-32 35:32-39
+long-word lineNumbers: 0:0 5:0 10:1 15:1 20:2 25:3 30:3 35:4
+long-word glyphs: 0:0-1l(0.000,-0.406,8.306,16.000) 5:5-6l(35.902,-0.406,43.230,16.000) 10:10-11l(19.271,15.594,23.734,32.000) 15:15-16l(45.999,15.594,49.396,32.000) 20:20-21l(22.518,31.594,29.935,48.000) 25:25-26l(7.615,47.594,11.013,64.000) 30:30-31l(37.618,47.594,41.016,64.000) 35:35-36l(18.402,63.594,28.923,80.000)
+long-word closest: 3-4
+size-30-bold: width=300.000 height=35.000 longest=167.666 min=60.967 max=167.666 alphabetic=27.832 ideographic=35.156 exceeded=false lines=1
+size-30-bold line 0: hard=true ascent=27.832 descent=7.324 unscaled=27.832 height=35.000 width=167.666 left=0.000 baseline=27.676
+size-30-bold lineAt 0: 27.676 167.666
+size-30-bold boxes tight: [0.000 -0.156 167.666 35.000 ltr]
+size-30-bold boxes max: [0.000 -0.156 167.666 35.000 ltr]
+size-30-bold boxes includeLineSpacingMiddle: [0.000 -0.156 167.666 35.000 ltr]
+size-30-bold boxes includeLineSpacingTop: [0.000 -0.156 167.666 35.000 ltr]
+size-30-bold boxes includeLineSpacingBottom: [0.000 -0.156 167.666 35.000 ltr]
+size-30-bold boxes strut: [0.000 -0.156 167.666 35.000 ltr]
+size-30-bold boxes max-width: [0.000 -0.156 167.666 35.000 ltr]
+size-30-bold boxes 2..10: [36.108 -0.156 142.588 35.000 ltr]
+size-30-bold placeholders: 
+size-30-bold positions: 0d 0d 0d 1d 4u 8u 12u
+size-30-bold words: 0:0-4 1:0-4 2:0-4 3:0-4 4:4-5 5:5-8 6:5-8 7:5-8 8:8-9 9:9-12 10:9-12 11:9-12 12:12-12
+size-30-bold lineBoundaries: 0:0-12 1:0-12 2:0-12 3:0-12 4:0-12 5:0-12 6:0-12 7:0-12 8:0-12 9:0-12 10:0-12 11:0-12 12:0-12
+size-30-bold lineNumbers: 0:0 1:0 2:0 3:0 4:0 5:0 6:0 7:0 8:0 9:0 10:0 11:0 12:-
+size-30-bold glyphs: 0:0-1l(0.000,-0.156,19.146,35.000) 1:1-2l(19.146,-0.156,36.108,35.000) 2:2-3l(36.108,-0.156,44.063,35.000) 3:3-4l(44.063,-0.156,60.967,35.000) 4:4-5l(60.967,-0.156,68.438,35.000) 5:5-6l(68.438,-0.156,84.521,35.000) 6:6-7l(84.521,-0.156,101.323,35.000) 7:7-8l(101.323,-0.156,118.228,35.000) 8:8-9l(118.228,-0.156,125.698,35.000) 9:9-10l(125.698,-0.156,142.588,35.000) 10:10-11l(142.588,-0.156,150.542,35.000) 11:11-12l(150.542,-0.156,167.666,35.000) 12:none
+size-30-bold closest: 1-2
+italic: width=300.000 height=16.000 longest=74.771 min=48.269 max=74.771 alphabetic=12.988 ideographic=16.406 exceeded=false lines=1
+italic line 0: hard=true ascent=12.988 descent=3.418 unscaled=12.988 height=16.000 width=74.771 left=0.000 baseline=12.582
+italic lineAt 0: 12.582 74.771
+italic boxes tight: [0.000 -0.406 74.771 16.000 ltr]
+italic boxes max: [0.000 -0.406 74.771 16.000 ltr]
+italic boxes includeLineSpacingMiddle: [0.000 -0.406 74.771 16.000 ltr]
+italic boxes includeLineSpacingTop: [0.000 -0.406 74.771 16.000 ltr]
+italic boxes includeLineSpacingBottom: [0.000 -0.406 74.771 16.000 ltr]
+italic boxes strut: [0.000 -0.406 74.771 16.000 ltr]
+italic boxes max-width: [0.000 -0.406 74.771 16.000 ltr]
+italic boxes 2..10: [14.636 -0.406 63.465 16.000 ltr]
+italic placeholders: 
+italic positions: 0d 0d 0d 3d 10u 12u 12u
+italic words: 0:0-7 1:0-7 2:0-7 3:0-7 4:0-7 5:0-7 6:0-7 7:7-8 8:8-12 9:8-12 10:8-12 11:8-12 12:12-12
+italic lineBoundaries: 0:0-12 1:0-12 2:0-12 3:0-12 4:0-12 5:0-12 6:0-12 7:0-12 8:0-12 9:0-12 10:0-12 11:0-12 12:0-12
+italic lineNumbers: 0:0 1:0 2:0 3:0 4:0 5:0 6:0 7:0 8:0 9:0 10:0 11:0 12:-
+italic glyphs: 0:0-1l(0.000,-0.406,7.376,16.000) 1:1-2l(7.376,-0.406,14.636,16.000) 2:2-3l(14.636,-0.406,22.094,16.000) 3:3-4l(22.094,-0.406,29.654,16.000) 4:4-5l(29.654,-0.406,33.018,16.000) 5:5-6l(33.018,-0.406,40.578,16.000) 6:6-7l(40.578,-0.406,48.269,16.000) 7:7-8l(48.269,-0.406,51.700,16.000) 8:8-9l(51.700,-0.406,56.205,16.000) 9:9-10l(56.205,-0.406,63.465,16.000) 10:10-11l(63.465,-0.406,70.267,16.000) 11:11-12l(70.267,-0.406,74.771,16.000) 12:none
+italic closest: 4-5
+height-1.5: width=150.000 height=63.000 longest=149.755 min=44.208 max=395.623 alphabetic=16.625 ideographic=21.000 exceeded=false lines=3
+height-1.5 line 0: hard=false ascent=16.625 descent=4.375 unscaled=16.625 height=21.000 width=125.699 left=0.000 baseline=16.625
+height-1.5 line 1: hard=false ascent=16.625 descent=4.375 unscaled=16.625 height=21.000 width=149.755 left=0.000 baseline=37.625
+height-1.5 line 2: hard=true ascent=16.625 descent=4.375 unscaled=16.625 height=21.000 width=113.237 left=0.000 baseline=58.625
+height-1.5 lineAt 0: 16.625 125.699
+height-1.5 boxes tight: [0.000 3.637 129.165 20.043 ltr] [0.000 24.637 153.221 41.043 ltr] [0.000 45.637 113.237 62.043 ltr]
+height-1.5 boxes max: [0.000 0.000 129.165 21.000 ltr] [0.000 21.000 153.221 42.000 ltr] [0.000 42.000 113.237 63.000 ltr]
+height-1.5 boxes includeLineSpacingMiddle: [0.000 3.637 129.165 22.818 ltr] [0.000 22.818 153.221 43.818 ltr] [0.000 43.818 113.237 63.000 ltr]
+height-1.5 boxes includeLineSpacingTop: [0.000 3.637 129.165 21.000 ltr] [0.000 21.000 153.221 42.000 ltr] [0.000 42.000 113.237 63.000 ltr]
+height-1.5 boxes includeLineSpacingBottom: [0.000 3.637 129.165 24.637 ltr] [0.000 24.637 153.221 45.637 ltr] [0.000 45.637 113.237 63.000 ltr]
+height-1.5 boxes strut: [0.000 0.000 129.165 21.000 ltr] [0.000 21.000 153.221 42.000 ltr] [0.000 42.000 113.237 63.000 ltr]
+height-1.5 boxes max-width: [0.000 3.637 129.165 20.043 ltr] [129.165 3.637 153.221 20.043 ltr] [0.000 24.637 153.221 41.043 ltr] [0.000 45.637 113.237 62.043 ltr]
+height-1.5 boxes 2..62: [16.064 3.637 129.165 20.043 ltr] [0.000 24.637 153.221 41.043 ltr] [0.000 45.637 102.334 62.043 ltr]
+height-1.5 placeholders: 
+height-1.5 positions: 0d 0d 0d 3d 9u 38u 64u
+height-1.5 words: 0:0-3 5:4-9 10:10-15 15:15-16 20:20-25 25:25-26 30:30-31 35:35-39 40:40-43 45:45-48 50:49-53 55:54-56 60:57-63
+height-1.5 lineBoundaries: 0:0-20 5:0-20 10:0-20 15:0-20 20:20-45 25:20-45 30:20-45 35:20-45 40:20-45 45:45-64 50:45-64 55:45-64 60:45-64
+height-1.5 lineNumbers: 0:0 5:0 10:0 15:0 20:1 25:1 30:1 35:1 40:1 45:2 50:2 55:2 60:2
+height-1.5 glyphs: 0:0-1l(0.000,3.637,8.354,20.043) 5:5-6l(34.904,3.637,42.622,20.043) 10:10-11l(63.909,3.637,71.764,20.043) 15:15-16l(102.594,3.637,106.060,20.043) 20:20-21l(0.000,24.637,3.343,41.043) 25:25-26l(38.404,24.637,41.870,41.043) 30:30-31l(68.599,24.637,72.064,41.043) 35:35-36l(95.231,24.637,98.629,41.043) 40:40-41l(123.272,24.637,131.168,41.043) 45:45-46l(0.000,45.637,7.615,62.043) 50:50-51l(31.274,45.637,38.985,62.043) 55:55-56l(60.990,45.637,65.563,62.043) 60:60-61l(87.063,45.637,94.479,62.043)
+height-1.5 closest: 4-5
+height-1.5-even: width=150.000 height=63.000 longest=143.896 min=45.302 max=424.320 alphabetic=15.285 ideographic=21.000 exceeded=false lines=3
+height-1.5-even line 0: hard=false ascent=15.285 descent=5.715 unscaled=15.285 height=21.000 width=136.261 left=0.000 baseline=15.285
+height-1.5-even line 1: hard=false ascent=15.285 descent=5.715 unscaled=15.285 height=21.000 width=137.231 left=0.000 baseline=36.285
+height-1.5-even line 2: hard=true ascent=15.285 descent=5.715 unscaled=15.285 height=21.000 width=143.896 left=0.000 baseline=57.285
+height-1.5-even lineAt 0: 15.285 136.261
+height-1.5-even boxes tight: [0.000 2.297 139.727 18.703 ltr] [0.000 23.297 140.697 39.703 ltr] [0.000 44.297 143.896 60.703 ltr]
+height-1.5-even boxes max: [0.000 0.000 139.727 21.000 ltr] [0.000 21.000 140.697 42.000 ltr] [0.000 42.000 143.896 63.000 ltr]
+height-1.5-even boxes includeLineSpacingMiddle: [0.000 2.297 139.727 22.148 ltr] [0.000 22.148 140.697 43.148 ltr] [0.000 43.148 143.896 63.000 ltr]
+height-1.5-even boxes includeLineSpacingTop: [0.000 2.297 139.727 21.000 ltr] [0.000 21.000 140.697 42.000 ltr] [0.000 42.000 143.896 63.000 ltr]
+height-1.5-even boxes includeLineSpacingBottom: [0.000 2.297 139.727 23.297 ltr] [0.000 23.297 140.697 44.297 ltr] [0.000 44.297 143.896 63.000 ltr]
+height-1.5-even boxes strut: [0.000 0.000 139.727 21.000 ltr] [0.000 21.000 140.697 42.000 ltr] [0.000 42.000 143.896 63.000 ltr]
+height-1.5-even boxes max-width: [0.000 2.297 139.727 18.703 ltr] [139.727 2.297 143.896 18.703 ltr] [0.000 23.297 140.697 39.703 ltr] [140.697 23.297 143.896 39.703 ltr] [0.000 44.297 143.896 60.703 ltr]
+height-1.5-even boxes 2..68: [14.472 2.297 139.727 18.703 ltr] [0.000 23.297 140.697 39.703 ltr] [0.000 44.297 130.539 60.703 ltr]
+height-1.5-even placeholders: 
+height-1.5-even positions: 0d 0d 0d 3d 9d 41d 70u
+height-1.5-even words: 0:0-4 5:5-12 10:5-12 15:13-17 20:18-22 25:23-26 30:27-32 35:33-39 40:40-45 45:45-46 50:50-54 55:55-58 60:59-63 65:64-69 70:70-70
+height-1.5-even lineBoundaries: 0:0-23 5:0-23 10:0-23 15:0-23 20:0-23 25:23-46 30:23-46 35:23-46 40:23-46 45:23-46 50:46-70 55:46-70 60:46-70 65:46-70 70:46-70
+height-1.5-even lineNumbers: 0:0 5:0 10:0 15:0 20:0 25:1 30:1 35:1 40:1 45:1 50:2 55:2 60:2 65:2 70:-
+height-1.5-even glyphs: 0:0-1l(0.000,2.297,7.779,18.703) 5:5-6l(33.079,2.297,36.477,18.703) 10:10-11l(62.802,2.297,70.526,18.703) 15:15-16l(97.419,2.297,101.992,18.703) 20:20-21l(128.003,2.297,131.400,18.703) 25:25-26l(12.284,23.297,19.701,39.703) 30:30-31l(42.096,23.297,46.560,39.703) 35:35-36l(72.769,23.297,76.166,39.703) 40:40-41l(99.771,23.297,107.386,39.703) 45:45-46l(137.231,23.297,140.697,39.703) 50:50-51l(23.167,44.297,27.740,60.703) 55:55-56l(50.135,44.297,57.750,60.703) 60:60-61l(84.547,44.297,92.162,60.703) 65:65-66l(111.740,44.297,119.157,60.703) 70:none
+height-1.5-even closest: 4-5
+height-0.5: width=150.000 height=21.000 longest=149.755 min=44.208 max=395.623 alphabetic=5.542 ideographic=7.000 exceeded=false lines=3
+height-0.5 line 0: hard=false ascent=5.542 descent=1.458 unscaled=5.542 height=7.000 width=125.699 left=0.000 baseline=5.542
+height-0.5 line 1: hard=false ascent=5.542 descent=1.458 unscaled=5.542 height=7.000 width=149.755 left=0.000 baseline=12.542
+height-0.5 line 2: hard=true ascent=5.542 descent=1.458 unscaled=5.542 height=7.000 width=113.237 left=0.000 baseline=19.542
+height-0.5 lineAt 0: 5.542 125.699
+height-0.5 boxes tight: [0.000 -7.447 129.165 8.960 ltr] [0.000 -0.447 153.221 15.960 ltr] [0.000 6.553 113.237 22.960 ltr]
+height-0.5 boxes max: [0.000 0.000 129.165 7.000 ltr] [0.000 7.000 153.221 14.000 ltr] [0.000 14.000 113.237 21.000 ltr]
+height-0.5 boxes includeLineSpacingMiddle: [0.000 -7.447 129.165 3.277 ltr] [0.000 3.277 153.221 10.277 ltr] [0.000 10.277 113.237 21.000 ltr]
+height-0.5 boxes includeLineSpacingTop: [0.000 -7.447 129.165 7.000 ltr] [0.000 7.000 153.221 14.000 ltr] [0.000 14.000 113.237 21.000 ltr]
+height-0.5 boxes includeLineSpacingBottom: [0.000 -7.447 129.165 -0.447 ltr] [0.000 -0.447 153.221 6.553 ltr] [0.000 6.553 113.237 21.000 ltr]
+height-0.5 boxes strut: [0.000 0.000 129.165 7.000 ltr] [0.000 7.000 153.221 14.000 ltr] [0.000 14.000 113.237 21.000 ltr]
+height-0.5 boxes max-width: [0.000 -7.447 129.165 8.960 ltr] [129.165 -7.447 153.221 8.960 ltr] [0.000 -0.447 153.221 15.960 ltr] [0.000 6.553 113.237 22.960 ltr]
+height-0.5 boxes 2..62: [16.064 -7.447 129.165 8.960 ltr] [0.000 -0.447 153.221 15.960 ltr] [0.000 6.553 102.334 22.960 ltr]
+height-0.5 placeholders: 
+height-0.5 positions: 0d 0d 0d 23d 55u 63d 64u
+height-0.5 words: 0:0-3 5:4-9 10:10-15 15:15-16 20:20-25 25:25-26 30:30-31 35:35-39 40:40-43 45:45-48 50:49-53 55:54-56 60:57-63
+height-0.5 lineBoundaries: 0:0-20 5:0-20 10:0-20 15:0-20 20:20-45 25:20-45 30:20-45 35:20-45 40:20-45 45:45-64 50:45-64 55:45-64 60:45-64
+height-0.5 lineNumbers: 0:0 5:0 10:0 15:0 20:1 25:1 30:1 35:1 40:1 45:2 50:2 55:2 60:2
+height-0.5 glyphs: 0:0-1l(0.000,-7.447,8.354,8.960) 5:5-6l(34.904,-7.447,42.622,8.960) 10:10-11l(63.909,-7.447,71.764,8.960) 15:15-16l(102.594,-7.447,106.060,8.960) 20:20-21l(0.000,-0.447,3.343,15.960) 25:25-26l(38.404,-0.447,41.870,15.960) 30:30-31l(68.599,-0.447,72.064,15.960) 35:35-36l(95.231,-0.447,98.629,15.960) 40:40-41l(123.272,-0.447,131.168,15.960) 45:45-46l(0.000,6.553,7.615,22.960) 50:50-51l(31.274,6.553,38.985,22.960) 55:55-56l(60.990,6.553,65.563,22.960) 60:60-61l(87.063,6.553,94.479,22.960)
+height-0.5 closest: 4-5
+letter-spacing: width=200.000 height=16.000 longest=148.957 min=58.416 max=148.957 alphabetic=12.988 ideographic=16.406 exceeded=false lines=1
+letter-spacing line 0: hard=true ascent=12.988 descent=3.418 unscaled=12.988 height=16.000 width=148.957 left=1.000 baseline=12.582
+letter-spacing lineAt 0: 12.582 148.957
+letter-spacing boxes tight: [1.000 -0.406 149.957 16.000 ltr]
+letter-spacing boxes max: [1.000 -0.406 149.957 16.000 ltr]
+letter-spacing boxes includeLineSpacingMiddle: [1.000 -0.406 149.957 16.000 ltr]
+letter-spacing boxes includeLineSpacingTop: [1.000 -0.406 149.957 16.000 ltr]
+letter-spacing boxes includeLineSpacingBottom: [1.000 -0.406 149.957 16.000 ltr]
+letter-spacing boxes strut: [1.000 -0.406 149.957 16.000 ltr]
+letter-spacing boxes max-width: [1.000 -0.406 149.957 16.000 ltr]
+letter-spacing boxes 2..16: [21.160 -0.406 134.001 16.000 ltr]
+letter-spacing placeholders: 
+letter-spacing positions: 0d 0d 0d 2d 6d 13u 18u
+letter-spacing words: 0:0-6 5:0-6 10:10-11 15:11-18
+letter-spacing lineBoundaries: 0:0-18 5:0-18 10:0-18 15:0-18
+letter-spacing lineNumbers: 0:0 5:0 10:0 15:0
+letter-spacing glyphs: 0:0-1l(1.000,-0.406,11.306,16.000) 5:5-6l(49.521,-0.406,59.416,16.000) 10:10-11l(91.157,-0.406,96.623,16.000) 15:15-16l(124.584,-0.406,134.001,16.000)
+letter-spacing closest: 2-3
+word-spacing: width=200.000 height=16.000 longest=160.468 min=46.416 max=160.468 alphabetic=12.988 ideographic=16.406 exceeded=false lines=1
+word-spacing line 0: hard=true ascent=12.988 descent=3.418 unscaled=12.988 height=16.000 width=160.468 left=0.000 baseline=12.582
+word-spacing lineAt 0: 12.582 160.468
+word-spacing boxes tight: [0.000 -0.406 160.468 16.000 ltr]
+word-spacing boxes max: [0.000 -0.406 160.468 16.000 ltr]
+word-spacing boxes includeLineSpacingMiddle: [0.000 -0.406 160.468 16.000 ltr]
+word-spacing boxes includeLineSpacingTop: [0.000 -0.406 160.468 16.000 ltr]
+word-spacing boxes includeLineSpacingBottom: [0.000 -0.406 160.468 16.000 ltr]
+word-spacing boxes strut: [0.000 -0.406 160.468 16.000 ltr]
+word-spacing boxes max-width: [0.000 -0.406 160.468 16.000 ltr]
+word-spacing boxes 2..19: [16.160 -0.406 148.443 16.000 ltr]
+word-spacing placeholders: 
+word-spacing positions: 0d 0d 0d 3d 8u 14d 21u
+word-spacing words: 0:0-6 5:0-6 10:10-11 15:11-16 20:17-21
+word-spacing lineBoundaries: 0:0-21 5:0-21 10:0-21 15:0-21 20:0-21
+word-spacing lineNumbers: 0:0 5:0 10:0 15:0 20:0
+word-spacing glyphs: 0:0-1l(0.000,-0.406,8.306,16.000) 5:5-6l(38.521,-0.406,46.416,16.000) 10:10-11l(76.157,-0.406,85.623,16.000) 15:15-16l(116.631,-0.406,123.850,16.000) 20:20-21l(153.051,-0.406,160.468,16.000)
+word-spacing closest: 3-4
+negative-spacing: width=200.000 height=16.000 longest=61.689 min=32.334 max=61.689 alphabetic=12.988 ideographic=16.406 exceeded=false lines=1
+negative-spacing line 0: hard=true ascent=12.988 descent=3.418 unscaled=12.988 height=16.000 width=61.689 left=-0.500 baseline=12.582
+negative-spacing lineAt 0: 12.582 61.689
+negative-spacing boxes tight: [-0.500 -0.406 61.189 16.000 ltr]
+negative-spacing boxes max: [-0.500 -0.406 61.189 16.000 ltr]
+negative-spacing boxes includeLineSpacingMiddle: [-0.500 -0.406 61.189 16.000 ltr]
+negative-spacing boxes includeLineSpacingTop: [-0.500 -0.406 61.189 16.000 ltr]
+negative-spacing boxes includeLineSpacingBottom: [-0.500 -0.406 61.189 16.000 ltr]
+negative-spacing boxes strut: [-0.500 -0.406 61.189 16.000 ltr]
+negative-spacing boxes max-width: [-0.500 -0.406 61.189 16.000 ltr]
+negative-spacing boxes 2..11: [9.251 -0.406 51.233 16.000 ltr]
+negative-spacing placeholders: 
+negative-spacing positions: 0d 0d 0d 5u 13u 13u 13u
+negative-spacing words: 0:0-5 5:5-6 10:6-13
+negative-spacing lineBoundaries: 0:0-13 5:0-13 10:0-13
+negative-spacing lineNumbers: 0:0 5:0 10:0
+negative-spacing glyphs: 0:0-1l(-0.500,-0.406,6.854,16.000) 5:5-6l(26.390,-0.406,28.855,16.000) 10:10-11l(44.816,-0.406,51.233,16.000)
+negative-spacing closest: 6-7
+max-lines-2: width=120.000 height=32.000 longest=114.871 min=44.208 max=395.623 alphabetic=12.988 ideographic=16.406 exceeded=true lines=2
+max-lines-2 line 0: hard=false ascent=12.988 descent=3.418 unscaled=12.988 height=16.000 width=102.594 left=0.000 baseline=12.582
+max-lines-2 line 1: hard=false ascent=12.988 descent=3.418 unscaled=12.988 height=16.000 width=114.871 left=0.000 baseline=28.582
+max-lines-2 lineAt 0: 12.582 102.594
+max-lines-2 boxes tight: [0.000 -0.406 106.060 16.000 ltr] [0.000 15.594 118.337 32.000 ltr]
+max-lines-2 boxes max: [0.000 -0.406 106.060 16.000 ltr] [0.000 15.594 118.337 32.000 ltr]
+max-lines-2 boxes includeLineSpacingMiddle: [0.000 -0.406 106.060 16.000 ltr] [0.000 15.594 118.337 32.000 ltr]
+max-lines-2 boxes includeLineSpacingTop: [0.000 -0.406 106.060 16.000 ltr] [0.000 15.594 118.337 32.000 ltr]
+max-lines-2 boxes includeLineSpacingBottom: [0.000 -0.406 106.060 16.000 ltr] [0.000 15.594 118.337 32.000 ltr]
+max-lines-2 boxes strut: [0.000 -0.406 106.060 16.000 ltr] [0.000 15.594 118.337 32.000 ltr]
+max-lines-2 boxes max-width: [0.000 -0.406 106.060 16.000 ltr] [106.060 -0.406 118.337 16.000 ltr] [0.000 15.594 118.337 32.000 ltr]
+max-lines-2 boxes 2..62: [16.064 -0.406 106.060 16.000 ltr] [0.000 15.594 118.337 32.000 ltr]
+max-lines-2 placeholders: 
+max-lines-2 positions: 0d 0d 0d 3d 25u 33d 35u
+max-lines-2 words: 0:0-3 5:4-9 10:10-15 15:15-16 20:20-25 25:25-26 30:30-31 35:35-39 40:40-43 45:45-48 50:49-53 55:54-56 60:57-63
+max-lines-2 lineBoundaries: 0:0-16 5:0-16 10:0-16 15:0-16 20:16-35 25:16-35 30:16-35 35:16-35 40:-1--1 45:-1--1 50:-1--1 55:-1--1 60:-1--1
+max-lines-2 lineNumbers: 0:0 5:0 10:0 15:0 20:1 25:1 30:1 35:- 40:- 45:- 50:- 55:- 60:-
+max-lines-2 glyphs: 0:0-1l(0.000,-0.406,8.354,16.000) 5:5-6l(34.904,-0.406,42.622,16.000) 10:10-11l(63.909,-0.406,71.764,16.000) 15:15-16l(102.594,-0.406,106.060,16.000) 20:20-21l(23.105,15.594,26.448,32.000) 25:25-26l(61.510,15.594,64.976,32.000) 30:30-31l(91.704,15.594,95.170,32.000) 35:none 40:none 45:none 50:none 55:none 60:none
+max-lines-2 closest: 4-5
+ellipsis: width=120.000 height=32.000 longest=116.819 min=44.208 max=395.623 alphabetic=12.988 ideographic=16.406 exceeded=true lines=2
+ellipsis line 0: hard=false ascent=12.988 descent=3.418 unscaled=12.988 height=16.000 width=102.594 left=0.000 baseline=12.582
+ellipsis line 1: hard=true ascent=12.988 descent=3.418 unscaled=12.988 height=16.000 width=107.454 left=0.000 baseline=28.582
+ellipsis lineAt 0: 12.582 102.594
+ellipsis boxes tight: [0.000 -0.406 106.060 16.000 ltr] [0.000 15.594 116.819 32.000 ltr]
+ellipsis boxes max: [0.000 -0.406 106.060 16.000 ltr] [0.000 15.594 116.819 32.000 ltr]
+ellipsis boxes includeLineSpacingMiddle: [0.000 -0.406 106.060 16.000 ltr] [0.000 15.594 116.819 32.000 ltr]
+ellipsis boxes includeLineSpacingTop: [0.000 -0.406 106.060 16.000 ltr] [0.000 15.594 116.819 32.000 ltr]
+ellipsis boxes includeLineSpacingBottom: [0.000 -0.406 106.060 16.000 ltr] [0.000 15.594 116.819 32.000 ltr]
+ellipsis boxes strut: [0.000 -0.406 106.060 16.000 ltr] [0.000 15.594 116.819 32.000 ltr]
+ellipsis boxes max-width: [0.000 -0.406 106.060 16.000 ltr] [106.060 -0.406 118.337 16.000 ltr] [0.000 15.594 116.819 32.000 ltr]
+ellipsis boxes 2..62: [16.064 -0.406 106.060 16.000 ltr] [0.000 15.594 116.819 32.000 ltr]
+ellipsis placeholders: 
+ellipsis positions: 0d 0d 0d 3d 25u 33d 33d
+ellipsis words: 0:0-3 5:4-9 10:10-15 15:15-16 20:20-25 25:25-26 30:30-31 35:35-39 40:40-43 45:45-48 50:49-53 55:54-56 60:57-63
+ellipsis lineBoundaries: 0:0-16 5:0-16 10:0-16 15:0-16 20:16-33 25:16-33 30:16-33 35:-1--1 40:-1--1 45:-1--1 50:-1--1 55:-1--1 60:-1--1
+ellipsis lineNumbers: 0:0 5:0 10:0 15:0 20:1 25:1 30:1 35:- 40:- 45:- 50:- 55:- 60:-
+ellipsis glyphs: 0:0-1l(0.000,-0.406,8.354,16.000) 5:5-6l(34.904,-0.406,42.622,16.000) 10:10-11l(63.909,-0.406,71.764,16.000) 15:15-16l(102.594,-0.406,106.060,16.000) 20:20-21l(23.105,15.594,26.448,32.000) 25:25-26l(61.510,15.594,64.976,32.000) 30:30-31l(91.704,15.594,95.170,32.000) 35:none 40:none 45:none 50:none 55:none 60:none
+ellipsis closest: 4-5
+ellipsis-one: width=100.000 height=16.000 longest=95.402 min=395.623 max=395.623 alphabetic=12.988 ideographic=16.406 exceeded=true lines=1
+ellipsis-one line 0: hard=true ascent=12.988 descent=3.418 unscaled=12.988 height=16.000 width=84.349 left=0.000 baseline=12.582
+ellipsis-one lineAt 0: 12.582 84.349
+ellipsis-one boxes tight: [0.000 -0.406 95.402 16.000 ltr]
+ellipsis-one boxes max: [0.000 -0.406 95.402 16.000 ltr]
+ellipsis-one boxes includeLineSpacingMiddle: [0.000 -0.406 95.402 16.000 ltr]
+ellipsis-one boxes includeLineSpacingTop: [0.000 -0.406 95.402 16.000 ltr]
+ellipsis-one boxes includeLineSpacingBottom: [0.000 -0.406 95.402 16.000 ltr]
+ellipsis-one boxes strut: [0.000 -0.406 95.402 16.000 ltr]
+ellipsis-one boxes max-width: [0.000 -0.406 95.402 16.000 ltr]
+ellipsis-one boxes 2..62: [16.064 -0.406 95.402 16.000 ltr]
+ellipsis-one placeholders: 
+ellipsis-one positions: 0d 0d 0d 3d 9u 13d 13d
+ellipsis-one words: 0:0-3 5:4-9 10:10-15 15:15-16 20:20-25 25:25-26 30:30-31 35:35-39 40:40-43 45:45-48 50:49-53 55:54-56 60:57-63
+ellipsis-one lineBoundaries: 0:0-13 5:0-13 10:0-13 15:-1--1 20:-1--1 25:-1--1 30:-1--1 35:-1--1 40:-1--1 45:-1--1 50:-1--1 55:-1--1 60:-1--1
+ellipsis-one lineNumbers: 0:0 5:0 10:0 15:- 20:- 25:- 30:- 35:- 40:- 45:- 50:- 55:- 60:-
+ellipsis-one glyphs: 0:0-1l(0.000,-0.406,8.354,16.000) 5:5-6l(34.904,-0.406,42.622,16.000) 10:10-11l(63.909,-0.406,71.764,16.000) 15:none 20:none 25:none 30:none 35:none 40:none 45:none 50:none 55:none 60:none
+ellipsis-one closest: 4-5
+center: width=200.000 height=32.000 longest=197.764 min=44.208 max=395.623 alphabetic=12.988 ideographic=16.406 exceeded=false lines=2
+center line 0: hard=false ascent=12.988 descent=3.418 unscaled=12.988 height=16.000 width=197.764 left=1.118 baseline=12.582
+center line 1: hard=true ascent=12.988 descent=3.418 unscaled=12.988 height=16.000 width=194.394 left=2.803 baseline=28.582
+center lineAt 0: 12.582 197.764
+center boxes tight: [1.118 -0.406 202.348 16.000 ltr] [2.803 15.594 197.197 32.000 ltr]
+center boxes max: [1.118 -0.406 202.348 16.000 ltr] [2.803 15.594 197.197 32.000 ltr]
+center boxes includeLineSpacingMiddle: [1.118 -0.406 202.348 16.000 ltr] [2.803 15.594 197.197 32.000 ltr]
+center boxes includeLineSpacingTop: [1.118 -0.406 202.348 16.000 ltr] [2.803 15.594 197.197 32.000 ltr]
+center boxes includeLineSpacingBottom: [1.118 -0.406 202.348 16.000 ltr] [2.803 15.594 197.197 32.000 ltr]
+center boxes strut: [1.118 -0.406 202.348 16.000 ltr] [2.803 15.594 197.197 32.000 ltr]
+center boxes max-width: [1.118 -0.406 202.348 16.000 ltr] [2.803 15.594 197.197 32.000 ltr]
+center boxes 2..62: [17.183 -0.406 202.348 16.000 ltr] [2.803 15.594 186.293 32.000 ltr]
+center placeholders: 
+center positions: 0d 0d 0d 3d 41u 49u 64u
+center words: 0:0-3 5:4-9 10:10-15 15:15-16 20:20-25 25:25-26 30:30-31 35:35-39 40:40-43 45:45-48 50:49-53 55:54-56 60:57-63
+center lineBoundaries: 0:0-31 5:0-31 10:0-31 15:0-31 20:0-31 25:0-31 30:0-31 35:31-64 40:31-64 45:31-64 50:31-64 55:31-64 60:31-64
+center lineNumbers: 0:0 5:0 10:0 15:0 20:0 25:0 30:0 35:1 40:1 45:1 50:1 55:1 60:1
+center glyphs: 0:0-1l(1.118,-0.406,9.472,16.000) 5:5-6l(36.022,-0.406,43.740,16.000) 10:10-11l(65.027,-0.406,72.882,16.000) 15:15-16l(103.712,-0.406,107.178,16.000) 20:20-21l(130.283,-0.406,133.626,16.000) 25:25-26l(168.688,-0.406,172.153,16.000) 30:30-31l(198.882,-0.406,202.348,16.000) 35:35-36l(25.970,15.594,29.368,32.000) 40:40-41l(54.011,15.594,61.907,32.000) 45:45-46l(83.959,15.594,91.575,32.000) 50:50-51l(115.234,15.594,122.945,32.000) 55:55-56l(144.950,15.594,149.523,32.000) 60:60-61l(171.022,15.594,178.439,32.000)
+center closest: 4-5
+right: width=200.000 height=32.000 longest=197.764 min=44.208 max=395.623 alphabetic=12.988 ideographic=16.406 exceeded=false lines=2
+right line 0: hard=false ascent=12.988 descent=3.418 unscaled=12.988 height=16.000 width=197.764 left=2.236 baseline=12.582
+right line 1: hard=true ascent=12.988 descent=3.418 unscaled=12.988 height=16.000 width=194.394 left=5.606 baseline=28.582
+right lineAt 0: 12.582 197.764
+right boxes tight: [2.236 -0.406 203.466 16.000 ltr] [5.606 15.594 200.000 32.000 ltr]
+right boxes max: [2.236 -0.406 203.466 16.000 ltr] [5.606 15.594 200.000 32.000 ltr]
+right boxes includeLineSpacingMiddle: [2.236 -0.406 203.466 16.000 ltr] [5.606 15.594 200.000 32.000 ltr]
+right boxes includeLineSpacingTop: [2.236 -0.406 203.466 16.000 ltr] [5.606 15.594 200.000 32.000 ltr]
+right boxes includeLineSpacingBottom: [2.236 -0.406 203.466 16.000 ltr] [5.606 15.594 200.000 32.000 ltr]
+right boxes strut: [2.236 -0.406 203.466 16.000 ltr] [5.606 15.594 200.000 32.000 ltr]
+right boxes max-width: [2.236 -0.406 203.466 16.000 ltr] [5.606 15.594 200.000 32.000 ltr]
+right boxes 2..62: [18.301 -0.406 203.466 16.000 ltr] [5.606 15.594 189.097 32.000 ltr]
+right placeholders: 
+right positions: 0d 0d 0d 3u 40d 48d 64u
+right words: 0:0-3 5:4-9 10:10-15 15:15-16 20:20-25 25:25-26 30:30-31 35:35-39 40:40-43 45:45-48 50:49-53 55:54-56 60:57-63
+right lineBoundaries: 0:0-31 5:0-31 10:0-31 15:0-31 20:0-31 25:0-31 30:0-31 35:31-64 40:31-64 45:31-64 50:31-64 55:31-64 60:31-64
+right lineNumbers: 0:0 5:0 10:0 15:0 20:0 25:0 30:0 35:1 40:1 45:1 50:1 55:1 60:1
+right glyphs: 0:0-1l(2.236,-0.406,10.590,16.000) 5:5-6l(37.141,-0.406,44.858,16.000) 10:10-11l(66.146,-0.406,74.000,16.000) 15:15-16l(104.830,-0.406,108.296,16.000) 20:20-21l(131.401,-0.406,134.744,16.000) 25:25-26l(169.806,-0.406,173.271,16.000) 30:30-31l(200.000,-0.406,203.466,16.000) 35:35-36l(28.773,15.594,32.171,32.000) 40:40-41l(56.814,15.594,64.710,32.000) 45:45-46l(86.763,15.594,94.378,32.000) 50:50-51l(118.037,15.594,125.748,32.000) 55:55-56l(147.753,15.594,152.326,32.000) 60:60-61l(173.825,15.594,181.242,32.000)
+right closest: 4-5
+justify: width=200.000 height=32.000 longest=197.764 min=44.208 max=395.623 alphabetic=12.988 ideographic=16.406 exceeded=false lines=2
+justify line 0: hard=false ascent=12.988 descent=3.418 unscaled=12.988 height=16.000 width=200.000 left=0.000 baseline=12.582
+justify line 1: hard=true ascent=12.988 descent=3.418 unscaled=12.988 height=16.000 width=194.394 left=0.000 baseline=28.582
+justify lineAt 0: 12.582 200.000
+justify boxes tight: [0.000 -0.406 203.466 16.000 ltr] [0.000 15.594 194.394 32.000 ltr]
+justify boxes max: [0.000 -0.406 203.466 16.000 ltr] [0.000 15.594 194.394 32.000 ltr]
+justify boxes includeLineSpacingMiddle: [0.000 -0.406 203.466 16.000 ltr] [0.000 15.594 194.394 32.000 ltr]
+justify boxes includeLineSpacingTop: [0.000 -0.406 203.466 16.000 ltr] [0.000 15.594 194.394 32.000 ltr]
+justify boxes includeLineSpacingBottom: [0.000 -0.406 203.466 16.000 ltr] [0.000 15.594 194.394 32.000 ltr]
+justify boxes strut: [0.000 -0.406 203.466 16.000 ltr] [0.000 15.594 194.394 32.000 ltr]
+justify boxes max-width: [0.000 -0.406 203.466 16.000 ltr] [0.000 15.594 194.394 32.000 ltr]
+justify boxes 2..62: [16.064 -0.406 203.466 16.000 ltr] [0.000 15.594 183.490 32.000 ltr]
+justify placeholders: 
+justify positions: 0d 0d 0d 3d 41d 49d 64u
+justify words: 0:0-3 5:4-9 10:10-15 15:15-16 20:20-25 25:25-26 30:30-31 35:35-39 40:40-43 45:45-48 50:49-53 55:54-56 60:57-63
+justify lineBoundaries: 0:0-31 5:0-31 10:0-31 15:0-31 20:0-31 25:0-31 30:0-31 35:31-64 40:31-64 45:31-64 50:31-64 55:31-64 60:31-64
+justify lineNumbers: 0:0 5:0 10:0 15:0 20:0 25:0 30:0 35:1 40:1 45:1 50:1 55:1 60:1
+justify glyphs: 0:0-1l(0.000,-0.406,8.354,16.000) 5:5-6l(35.352,-0.406,43.069,16.000) 10:10-11l(64.804,-0.406,72.658,16.000) 15:15-16l(103.488,-0.406,107.401,16.000) 20:20-21l(130.954,-0.406,134.297,16.000) 25:25-26l(169.358,-0.406,173.271,16.000) 30:30-31l(200.000,-0.406,203.466,16.000) 35:35-36l(23.167,15.594,26.564,32.000) 40:40-41l(51.208,15.594,59.104,32.000) 45:45-46l(81.156,15.594,88.771,32.000) 50:50-51l(112.431,15.594,120.142,32.000) 55:55-56l(142.146,15.594,146.720,32.000) 60:60-61l(168.219,15.594,175.636,32.000)
+justify closest: 4-5
+end: width=200.000 height=32.000 longest=197.764 min=44.208 max=395.623 alphabetic=12.988 ideographic=16.406 exceeded=false lines=2
+end line 0: hard=false ascent=12.988 descent=3.418 unscaled=12.988 height=16.000 width=197.764 left=2.236 baseline=12.582
+end line 1: hard=true ascent=12.988 descent=3.418 unscaled=12.988 height=16.000 width=194.394 left=5.606 baseline=28.582
+end lineAt 0: 12.582 197.764
+end boxes tight: [2.236 -0.406 203.466 16.000 ltr] [5.606 15.594 200.000 32.000 ltr]
+end boxes max: [2.236 -0.406 203.466 16.000 ltr] [5.606 15.594 200.000 32.000 ltr]
+end boxes includeLineSpacingMiddle: [2.236 -0.406 203.466 16.000 ltr] [5.606 15.594 200.000 32.000 ltr]
+end boxes includeLineSpacingTop: [2.236 -0.406 203.466 16.000 ltr] [5.606 15.594 200.000 32.000 ltr]
+end boxes includeLineSpacingBottom: [2.236 -0.406 203.466 16.000 ltr] [5.606 15.594 200.000 32.000 ltr]
+end boxes strut: [2.236 -0.406 203.466 16.000 ltr] [5.606 15.594 200.000 32.000 ltr]
+end boxes max-width: [2.236 -0.406 203.466 16.000 ltr] [5.606 15.594 200.000 32.000 ltr]
+end boxes 2..62: [18.301 -0.406 203.466 16.000 ltr] [5.606 15.594 189.097 32.000 ltr]
+end placeholders: 
+end positions: 0d 0d 0d 3u 40d 48d 64u
+end words: 0:0-3 5:4-9 10:10-15 15:15-16 20:20-25 25:25-26 30:30-31 35:35-39 40:40-43 45:45-48 50:49-53 55:54-56 60:57-63
+end lineBoundaries: 0:0-31 5:0-31 10:0-31 15:0-31 20:0-31 25:0-31 30:0-31 35:31-64 40:31-64 45:31-64 50:31-64 55:31-64 60:31-64
+end lineNumbers: 0:0 5:0 10:0 15:0 20:0 25:0 30:0 35:1 40:1 45:1 50:1 55:1 60:1
+end glyphs: 0:0-1l(2.236,-0.406,10.590,16.000) 5:5-6l(37.141,-0.406,44.858,16.000) 10:10-11l(66.146,-0.406,74.000,16.000) 15:15-16l(104.830,-0.406,108.296,16.000) 20:20-21l(131.401,-0.406,134.744,16.000) 25:25-26l(169.806,-0.406,173.271,16.000) 30:30-31l(200.000,-0.406,203.466,16.000) 35:35-36l(28.773,15.594,32.171,32.000) 40:40-41l(56.814,15.594,64.710,32.000) 45:45-46l(86.763,15.594,94.378,32.000) 50:50-51l(118.037,15.594,125.748,32.000) 55:55-56l(147.753,15.594,152.326,32.000) 60:60-61l(173.825,15.594,181.242,32.000)
+end closest: 4-5
+rtl: width=200.000 height=32.000 longest=197.764 min=44.208 max=395.623 alphabetic=12.988 ideographic=16.406 exceeded=false lines=2
+rtl line 0: hard=false ascent=12.988 descent=3.418 unscaled=12.988 height=16.000 width=197.764 left=2.236 baseline=12.582
+rtl line 1: hard=true ascent=12.988 descent=3.418 unscaled=12.988 height=16.000 width=194.394 left=5.606 baseline=28.582
+rtl lineAt 0: 12.582 197.764
+rtl boxes tight: [2.236 -0.406 203.466 16.000 ltr] [5.606 15.594 9.291 32.000 rtl] [9.291 15.594 200.000 32.000 ltr]
+rtl boxes max: [2.236 -0.406 203.466 16.000 ltr] [5.606 15.594 9.291 32.000 rtl] [9.291 15.594 200.000 32.000 ltr]
+rtl boxes includeLineSpacingMiddle: [2.236 -0.406 203.466 16.000 ltr] [5.606 15.594 9.291 32.000 rtl] [9.291 15.594 200.000 32.000 ltr]
+rtl boxes includeLineSpacingTop: [2.236 -0.406 203.466 16.000 ltr] [5.606 15.594 9.291 32.000 rtl] [9.291 15.594 200.000 32.000 ltr]
+rtl boxes includeLineSpacingBottom: [2.236 -0.406 203.466 16.000 ltr] [5.606 15.594 9.291 32.000 rtl] [9.291 15.594 200.000 32.000 ltr]
+rtl boxes strut: [2.236 -0.406 203.466 16.000 ltr] [5.606 15.594 9.291 32.000 rtl] [9.291 15.594 200.000 32.000 ltr]
+rtl boxes max-width: [2.236 -0.406 203.466 16.000 ltr] [5.606 15.594 9.291 32.000 rtl] [9.291 15.594 200.000 32.000 ltr]
+rtl boxes 2..62: [18.301 -0.406 203.466 16.000 ltr] [9.291 15.594 192.781 32.000 ltr]
+rtl placeholders: 
+rtl positions: 0d 0d 0d 3u 40u 48u 63u
+rtl words: 0:0-3 5:4-9 10:10-15 15:15-16 20:20-25 25:25-26 30:30-31 35:35-39 40:40-43 45:45-48 50:49-53 55:54-56 60:57-63
+rtl lineBoundaries: 0:0-31 5:0-31 10:0-31 15:0-31 20:0-31 25:0-31 30:0-31 35:31-64 40:31-64 45:31-64 50:31-64 55:31-64 60:31-64
+rtl lineNumbers: 0:0 5:0 10:0 15:0 20:0 25:0 30:0 35:1 40:1 45:1 50:1 55:1 60:1
+rtl glyphs: 0:0-1l(2.236,-0.406,10.590,16.000) 5:5-6l(37.141,-0.406,44.858,16.000) 10:10-11l(66.146,-0.406,74.000,16.000) 15:15-16l(104.830,-0.406,108.296,16.000) 20:20-21l(131.401,-0.406,134.744,16.000) 25:25-26l(169.806,-0.406,173.271,16.000) 30:30-31l(200.000,-0.406,203.466,16.000) 35:35-36l(32.458,15.594,35.855,32.000) 40:40-41l(60.499,15.594,68.395,32.000) 45:45-46l(90.447,15.594,98.063,32.000) 50:50-51l(121.722,15.594,129.433,32.000) 55:55-56l(151.438,15.594,156.011,32.000) 60:60-61l(177.510,15.594,184.927,32.000)
+rtl closest: 4-5
+rtl-justify: width=200.000 height=32.000 longest=197.764 min=44.208 max=395.623 alphabetic=12.988 ideographic=16.406 exceeded=false lines=2
+rtl-justify line 0: hard=false ascent=12.988 descent=3.418 unscaled=12.988 height=16.000 width=200.000 left=0.000 baseline=12.582
+rtl-justify line 1: hard=true ascent=12.988 descent=3.418 unscaled=12.988 height=16.000 width=194.394 left=5.606 baseline=28.582
+rtl-justify lineAt 0: 12.582 200.000
+rtl-justify boxes tight: [0.000 -0.406 203.466 16.000 ltr] [5.606 15.594 9.291 32.000 rtl] [9.291 15.594 200.000 32.000 ltr]
+rtl-justify boxes max: [0.000 -0.406 203.466 16.000 ltr] [5.606 15.594 9.291 32.000 rtl] [9.291 15.594 200.000 32.000 ltr]
+rtl-justify boxes includeLineSpacingMiddle: [0.000 -0.406 203.466 16.000 ltr] [5.606 15.594 9.291 32.000 rtl] [9.291 15.594 200.000 32.000 ltr]
+rtl-justify boxes includeLineSpacingTop: [0.000 -0.406 203.466 16.000 ltr] [5.606 15.594 9.291 32.000 rtl] [9.291 15.594 200.000 32.000 ltr]
+rtl-justify boxes includeLineSpacingBottom: [0.000 -0.406 203.466 16.000 ltr] [5.606 15.594 9.291 32.000 rtl] [9.291 15.594 200.000 32.000 ltr]
+rtl-justify boxes strut: [0.000 -0.406 203.466 16.000 ltr] [5.606 15.594 9.291 32.000 rtl] [9.291 15.594 200.000 32.000 ltr]
+rtl-justify boxes max-width: [0.000 -0.406 203.466 16.000 ltr] [5.606 15.594 9.291 32.000 rtl] [9.291 15.594 200.000 32.000 ltr]
+rtl-justify boxes 2..62: [16.064 -0.406 203.466 16.000 ltr] [9.291 15.594 192.781 32.000 ltr]
+rtl-justify placeholders: 
+rtl-justify positions: 0d 0d 0d 3d 40u 48u 63u
+rtl-justify words: 0:0-3 5:4-9 10:10-15 15:15-16 20:20-25 25:25-26 30:30-31 35:35-39 40:40-43 45:45-48 50:49-53 55:54-56 60:57-63
+rtl-justify lineBoundaries: 0:0-31 5:0-31 10:0-31 15:0-31 20:0-31 25:0-31 30:0-31 35:31-64 40:31-64 45:31-64 50:31-64 55:31-64 60:31-64
+rtl-justify lineNumbers: 0:0 5:0 10:0 15:0 20:0 25:0 30:0 35:1 40:1 45:1 50:1 55:1 60:1
+rtl-justify glyphs: 0:0-1l(0.000,-0.406,8.354,16.000) 5:5-6l(35.352,-0.406,43.069,16.000) 10:10-11l(64.804,-0.406,72.658,16.000) 15:15-16l(103.488,-0.406,107.401,16.000) 20:20-21l(130.954,-0.406,134.297,16.000) 25:25-26l(169.358,-0.406,173.271,16.000) 30:30-31l(200.000,-0.406,203.466,16.000) 35:35-36l(32.458,15.594,35.855,32.000) 40:40-41l(60.499,15.594,68.395,32.000) 45:45-46l(90.447,15.594,98.063,32.000) 50:50-51l(121.722,15.594,129.433,32.000) 55:55-56l(151.438,15.594,156.011,32.000) 60:60-61l(177.510,15.594,184.927,32.000)
+rtl-justify closest: 4-5
+strut: width=150.000 height=72.000 longest=149.755 min=44.208 max=395.623 alphabetic=19.000 ideographic=24.000 exceeded=false lines=3
+strut line 0: hard=false ascent=12.988 descent=3.418 unscaled=12.988 height=16.000 width=125.699 left=0.000 baseline=19.000
+strut line 1: hard=false ascent=12.988 descent=3.418 unscaled=12.988 height=16.000 width=149.755 left=0.000 baseline=43.000
+strut line 2: hard=true ascent=12.988 descent=3.418 unscaled=12.988 height=16.000 width=113.237 left=0.000 baseline=67.000
+strut lineAt 0: 19.000 125.699
+strut boxes tight: [0.000 6.012 129.165 22.418 ltr] [0.000 30.012 153.221 46.418 ltr] [0.000 54.012 113.237 70.418 ltr]
+strut boxes max: [0.000 0.000 129.165 24.000 ltr] [0.000 24.000 153.221 48.000 ltr] [0.000 48.000 113.237 72.000 ltr]
+strut boxes includeLineSpacingMiddle: [0.000 0.445 129.165 24.223 ltr] [0.000 24.223 153.221 48.223 ltr] [0.000 48.223 113.237 72.000 ltr]
+strut boxes includeLineSpacingTop: [0.000 0.445 129.165 24.000 ltr] [0.000 24.000 153.221 48.000 ltr] [0.000 48.000 113.237 72.000 ltr]
+strut boxes includeLineSpacingBottom: [0.000 0.445 129.165 24.445 ltr] [0.000 24.445 153.221 48.445 ltr] [0.000 48.445 113.237 72.000 ltr]
+strut boxes strut: [0.000 0.000 129.165 24.000 ltr] [0.000 24.000 153.221 48.000 ltr] [0.000 48.000 113.237 72.000 ltr]
+strut boxes max-width: [0.000 6.012 129.165 22.418 ltr] [129.165 6.012 153.221 22.418 ltr] [0.000 30.012 153.221 46.418 ltr] [0.000 54.012 113.237 70.418 ltr]
+strut boxes 2..62: [16.064 6.012 129.165 22.418 ltr] [0.000 30.012 153.221 46.418 ltr] [0.000 54.012 102.334 70.418 ltr]
+strut placeholders: 
+strut positions: 0d 0d 0d 3d 9u 38u 64u
+strut words: 0:0-3 5:4-9 10:10-15 15:15-16 20:20-25 25:25-26 30:30-31 35:35-39 40:40-43 45:45-48 50:49-53 55:54-56 60:57-63
+strut lineBoundaries: 0:0-20 5:0-20 10:0-20 15:0-20 20:20-45 25:20-45 30:20-45 35:20-45 40:20-45 45:45-64 50:45-64 55:45-64 60:45-64
+strut lineNumbers: 0:0 5:0 10:0 15:0 20:1 25:1 30:1 35:1 40:1 45:2 50:2 55:2 60:2
+strut glyphs: 0:0-1l(0.000,6.012,8.354,22.418) 5:5-6l(34.904,6.012,42.622,22.418) 10:10-11l(63.909,6.012,71.764,22.418) 15:15-16l(102.594,6.012,106.060,22.418) 20:20-21l(0.000,30.012,3.343,46.418) 25:25-26l(38.404,30.012,41.870,46.418) 30:30-31l(68.599,30.012,72.064,46.418) 35:35-36l(95.231,30.012,98.629,46.418) 40:40-41l(123.272,30.012,131.168,46.418) 45:45-46l(0.000,54.012,7.615,70.418) 50:50-51l(31.274,54.012,38.985,70.418) 55:55-56l(60.990,54.012,65.563,70.418) 60:60-61l(87.063,54.012,94.479,70.418)
+strut closest: 4-5
+strut-forced: width=150.000 height=45.000 longest=149.755 min=44.208 max=395.623 alphabetic=10.417 ideographic=15.000 exceeded=false lines=3
+strut-forced line 0: hard=false ascent=12.988 descent=3.418 unscaled=12.988 height=16.000 width=125.699 left=0.000 baseline=12.917
+strut-forced line 1: hard=false ascent=12.988 descent=3.418 unscaled=12.988 height=16.000 width=149.755 left=0.000 baseline=27.917
+strut-forced line 2: hard=true ascent=12.988 descent=3.418 unscaled=12.988 height=16.000 width=113.237 left=0.000 baseline=42.917
+strut-forced lineAt 0: 12.917 125.699
+strut-forced boxes tight: [0.000 -2.572 129.165 13.835 ltr] [0.000 12.428 153.221 28.835 ltr] [0.000 27.428 113.237 43.835 ltr]
+strut-forced boxes max: [0.000 0.000 129.165 15.000 ltr] [0.000 15.000 153.221 30.000 ltr] [0.000 30.000 113.237 45.000 ltr]
+strut-forced boxes includeLineSpacingMiddle: [0.000 -1.361 129.165 14.320 ltr] [0.000 14.320 153.221 29.320 ltr] [0.000 29.320 113.237 45.000 ltr]
+strut-forced boxes includeLineSpacingTop: [0.000 -1.361 129.165 15.000 ltr] [0.000 15.000 153.221 30.000 ltr] [0.000 30.000 113.237 45.000 ltr]
+strut-forced boxes includeLineSpacingBottom: [0.000 -1.361 129.165 13.639 ltr] [0.000 13.639 153.221 28.639 ltr] [0.000 28.639 113.237 45.000 ltr]
+strut-forced boxes strut: [0.000 2.500 129.165 12.500 ltr] [0.000 17.500 153.221 27.500 ltr] [0.000 32.500 113.237 42.500 ltr]
+strut-forced boxes max-width: [0.000 -2.572 129.165 13.835 ltr] [129.165 -2.572 153.221 13.835 ltr] [0.000 12.428 153.221 28.835 ltr] [0.000 27.428 113.237 43.835 ltr]
+strut-forced boxes 2..62: [16.064 -2.572 129.165 13.835 ltr] [0.000 12.428 153.221 28.835 ltr] [0.000 27.428 102.334 43.835 ltr]
+strut-forced placeholders: 
+strut-forced positions: 0d 0d 0d 3d 28d 63d 64u
+strut-forced words: 0:0-3 5:4-9 10:10-15 15:15-16 20:20-25 25:25-26 30:30-31 35:35-39 40:40-43 45:45-48 50:49-53 55:54-56 60:57-63
+strut-forced lineBoundaries: 0:0-20 5:0-20 10:0-20 15:0-20 20:20-45 25:20-45 30:20-45 35:20-45 40:20-45 45:45-64 50:45-64 55:45-64 60:45-64
+strut-forced lineNumbers: 0:0 5:0 10:0 15:0 20:1 25:1 30:1 35:1 40:1 45:2 50:2 55:2 60:2
+strut-forced glyphs: 0:0-1l(0.000,-2.572,8.354,13.835) 5:5-6l(34.904,-2.572,42.622,13.835) 10:10-11l(63.909,-2.572,71.764,13.835) 15:15-16l(102.594,-2.572,106.060,13.835) 20:20-21l(0.000,12.428,3.343,28.835) 25:25-26l(38.404,12.428,41.870,28.835) 30:30-31l(68.599,12.428,72.064,28.835) 35:35-36l(95.231,12.428,98.629,28.835) 40:40-41l(123.272,12.428,131.168,28.835) 45:45-46l(0.000,27.428,7.615,43.835) 50:50-51l(31.274,27.428,38.985,43.835) 55:55-56l(60.990,27.428,65.563,43.835) 60:60-61l(87.063,27.428,94.479,43.835)
+strut-forced closest: 4-5
+disable-ascent-descent: width=150.000 height=73.000 longest=149.755 min=44.208 max=395.623 alphabetic=12.988 ideographic=18.822 exceeded=false lines=3
+disable-ascent-descent line 0: hard=false ascent=22.167 descent=5.833 unscaled=22.167 height=28.000 width=125.699 left=0.000 baseline=13.167
+disable-ascent-descent line 1: hard=false ascent=22.167 descent=5.833 unscaled=22.167 height=28.000 width=149.755 left=0.000 baseline=41.167
+disable-ascent-descent line 2: hard=true ascent=22.167 descent=5.833 unscaled=22.167 height=28.000 width=113.237 left=0.000 baseline=69.582
+disable-ascent-descent lineAt 0: 13.167 125.699
+disable-ascent-descent boxes tight: [0.000 0.178 129.165 16.585 ltr] [0.000 28.178 153.221 44.585 ltr] [0.000 56.594 113.237 73.000 ltr]
+disable-ascent-descent boxes max: [0.000 0.178 129.165 19.000 ltr] [0.000 19.000 153.221 47.000 ltr] [0.000 47.415 113.237 73.000 ltr]
+disable-ascent-descent boxes includeLineSpacingMiddle: [0.000 0.178 129.165 19.000 ltr] [0.000 23.589 153.221 51.589 ltr] [0.000 52.005 113.237 73.000 ltr]
+disable-ascent-descent boxes includeLineSpacingTop: [0.000 0.178 129.165 19.000 ltr] [0.000 19.000 153.221 47.000 ltr] [0.000 47.415 113.237 73.000 ltr]
+disable-ascent-descent boxes includeLineSpacingBottom: [0.000 0.178 129.165 19.000 ltr] [0.000 28.178 153.221 56.178 ltr] [0.000 56.594 113.237 73.000 ltr]
+disable-ascent-descent boxes strut: [0.000 0.178 129.165 19.000 ltr] [0.000 19.000 153.221 47.000 ltr] [0.000 47.415 113.237 73.000 ltr]
+disable-ascent-descent boxes max-width: [0.000 0.178 129.165 16.585 ltr] [129.165 0.178 153.221 16.585 ltr] [0.000 28.178 153.221 44.585 ltr] [0.000 56.594 113.237 73.000 ltr]
+disable-ascent-descent boxes 2..62: [16.064 0.178 129.165 16.585 ltr] [0.000 28.178 153.221 44.585 ltr] [0.000 56.594 102.334 73.000 ltr]
+disable-ascent-descent placeholders: 
+disable-ascent-descent positions: 0d 0d 0d 3d 28d 38u 64u
+disable-ascent-descent words: 0:0-3 5:4-9 10:10-15 15:15-16 20:20-25 25:25-26 30:30-31 35:35-39 40:40-43 45:45-48 50:49-53 55:54-56 60:57-63
+disable-ascent-descent lineBoundaries: 0:0-20 5:0-20 10:0-20 15:0-20 20:20-45 25:20-45 30:20-45 35:20-45 40:20-45 45:45-64 50:45-64 55:45-64 60:45-64
+disable-ascent-descent lineNumbers: 0:0 5:0 10:0 15:0 20:1 25:1 30:1 35:1 40:1 45:2 50:2 55:2 60:2
+disable-ascent-descent glyphs: 0:0-1l(0.000,0.178,8.354,16.585) 5:5-6l(34.904,0.178,42.622,16.585) 10:10-11l(63.909,0.178,71.764,16.585) 15:15-16l(102.594,0.178,106.060,16.585) 20:20-21l(0.000,28.178,3.343,44.585) 25:25-26l(38.404,28.178,41.870,44.585) 30:30-31l(68.599,28.178,72.064,44.585) 35:35-36l(95.231,28.178,98.629,44.585) 40:40-41l(123.272,28.178,131.168,44.585) 45:45-46l(0.000,56.594,7.615,73.000) 50:50-51l(31.274,56.594,38.985,73.000) 55:55-56l(60.990,56.594,65.563,73.000) 60:60-61l(87.063,56.594,94.479,73.000)
+disable-ascent-descent closest: 4-5
+tabular: width=300.000 height=16.000 longest=101.268 min=31.445 max=101.268 alphabetic=12.988 ideographic=16.406 exceeded=false lines=1
+tabular line 0: hard=true ascent=12.988 descent=3.418 unscaled=12.988 height=16.000 width=101.268 left=0.000 baseline=12.582
+tabular lineAt 0: 12.582 101.268
+tabular boxes tight: [0.000 -0.406 101.268 16.000 ltr]
+tabular boxes max: [0.000 -0.406 101.268 16.000 ltr]
+tabular boxes includeLineSpacingMiddle: [0.000 -0.406 101.268 16.000 ltr]
+tabular boxes includeLineSpacingTop: [0.000 -0.406 101.268 16.000 ltr]
+tabular boxes includeLineSpacingBottom: [0.000 -0.406 101.268 16.000 ltr]
+tabular boxes strut: [0.000 -0.406 101.268 16.000 ltr]
+tabular boxes max-width: [0.000 -0.406 101.268 16.000 ltr]
+tabular boxes 2..12: [15.723 -0.406 85.545 16.000 ltr]
+tabular placeholders: 
+tabular positions: 0d 0d 0d 3d 8d 14u 14u
+tabular words: 0:0-4 5:5-9 10:10-14
+tabular lineBoundaries: 0:0-14 5:0-14 10:0-14
+tabular lineNumbers: 0:0 5:0 10:0
+tabular glyphs: 0:0-1l(0.000,-0.406,7.861,16.000) 5:5-6l(34.911,-0.406,42.772,16.000) 10:10-11l(69.822,-0.406,77.684,16.000)
+tabular closest: 3-4
+no-liga: width=300.000 height=16.000 longest=63.629 min=35.848 max=63.629 alphabetic=12.988 ideographic=16.406 exceeded=false lines=1
+no-liga line 0: hard=true ascent=12.988 descent=3.418 unscaled=12.988 height=16.000 width=63.629 left=0.000 baseline=12.582
+no-liga lineAt 0: 12.582 63.629
+no-liga boxes tight: [0.000 -0.406 63.629 16.000 ltr]
+no-liga boxes max: [0.000 -0.406 63.629 16.000 ltr]
+no-liga boxes includeLineSpacingMiddle: [0.000 -0.406 63.629 16.000 ltr]
+no-liga boxes includeLineSpacingTop: [0.000 -0.406 63.629 16.000 ltr]
+no-liga boxes includeLineSpacingBottom: [0.000 -0.406 63.629 16.000 ltr]
+no-liga boxes strut: [0.000 -0.406 63.629 16.000 ltr]
+no-liga boxes max-width: [0.000 -0.406 63.629 16.000 ltr]
+no-liga boxes 2..10: [12.845 -0.406 52.432 16.000 ltr]
+no-liga placeholders: 
+no-liga positions: 0d 0d 0d 5u 11d 12u 12u
+no-liga words: 0:0-6 1:0-6 2:0-6 3:0-6 4:0-6 5:0-6 6:6-7 7:7-12 8:7-12 9:7-12 10:7-12 11:7-12 12:12-12
+no-liga lineBoundaries: 0:0-12 1:0-12 2:0-12 3:0-12 4:0-12 5:0-12 6:0-12 7:0-12 8:0-12 9:0-12 10:0-12 11:0-12 12:0-12
+no-liga lineNumbers: 0:0 1:0 2:0 3:0 4:0 5:0 6:0 7:0 8:0 9:0 10:0 11:0 12:-
+no-liga glyphs: 0:0-1l(0.000,-0.406,7.984,16.000) 1:1-2l(7.984,-0.406,12.845,16.000) 2:2-3l(12.845,-0.406,17.705,16.000) 3:3-4l(17.705,-0.406,21.103,16.000) 4:4-5l(21.103,-0.406,28.431,16.000) 5:5-6l(28.431,-0.406,35.848,16.000) 6:6-7l(35.848,-0.406,39.313,16.000) 7:7-8l(39.313,-0.406,44.174,16.000) 8:8-9l(44.174,-0.406,47.571,16.000) 9:9-10l(47.571,-0.406,52.432,16.000) 10:10-11l(52.432,-0.406,57.005,16.000) 11:11-12l(57.005,-0.406,63.629,16.000) 12:none
+no-liga closest: 5-6
+locale: width=300.000 height=16.000 longest=70.178 min=34.535 max=70.178 alphabetic=12.988 ideographic=16.406 exceeded=false lines=1
+locale line 0: hard=true ascent=12.988 descent=3.418 unscaled=12.988 height=16.000 width=70.178 left=0.000 baseline=12.582
+locale lineAt 0: 12.582 70.178
+locale boxes tight: [0.000 -0.406 70.178 16.000 ltr]
+locale boxes max: [0.000 -0.406 70.178 16.000 ltr]
+locale boxes includeLineSpacingMiddle: [0.000 -0.406 70.178 16.000 ltr]
+locale boxes includeLineSpacingTop: [0.000 -0.406 70.178 16.000 ltr]
+locale boxes includeLineSpacingBottom: [0.000 -0.406 70.178 16.000 ltr]
+locale boxes strut: [0.000 -0.406 70.178 16.000 ltr]
+locale boxes max-width: [0.000 -0.406 70.178 16.000 ltr]
+locale boxes 2..9: [17.397 -0.406 58.885 16.000 ltr]
+locale placeholders: 
+locale positions: 0d 0d 0d 4d 9d 11u 11u
+locale words: 0:0-5 1:0-5 2:0-5 3:0-5 4:0-5 5:5-6 6:6-11 7:6-11 8:6-11 9:6-11 10:6-11 11:11-11
+locale lineBoundaries: 0:0-11 1:0-11 2:0-11 3:0-11 4:0-11 5:0-11 6:0-11 7:0-11 8:0-11 9:0-11 10:0-11 11:0-11
+locale lineNumbers: 0:0 1:0 2:0 3:0 4:0 5:0 6:0 7:0 8:0 9:0 10:0 11:-
+locale glyphs: 0:0-1l(0.000,-0.406,9.980,16.000) 1:1-2l(9.980,-0.406,17.397,16.000) 2:2-3l(17.397,-0.406,20.795,16.000) 3:3-4l(20.795,-0.406,24.192,16.000) 4:4-5l(24.192,-0.406,32.177,16.000) 5:5-6l(32.177,-0.406,35.643,16.000) 6:6-7l(35.643,-0.406,46.163,16.000) 7:7-8l(46.163,-0.406,54.147,16.000) 8:8-9l(54.147,-0.406,58.885,16.000) 9:9-10l(58.885,-0.406,62.282,16.000) 10:10-11l(62.282,-0.406,70.178,16.000) 11:none
+locale closest: 4-5
+accents: width=300.000 height=16.000 longest=132.836 min=41.289 max=132.836 alphabetic=12.988 ideographic=16.406 exceeded=false lines=1
+accents line 0: hard=true ascent=12.988 descent=3.418 unscaled=12.988 height=16.000 width=132.836 left=0.000 baseline=12.582
+accents lineAt 0: 12.582 132.836
+accents boxes tight: [0.000 -0.406 132.836 16.000 ltr]
+accents boxes max: [0.000 -0.406 132.836 16.000 ltr]
+accents boxes includeLineSpacingMiddle: [0.000 -0.406 132.836 16.000 ltr]
+accents boxes includeLineSpacingTop: [0.000 -0.406 132.836 16.000 ltr]
+accents boxes includeLineSpacingBottom: [0.000 -0.406 132.836 16.000 ltr]
+accents boxes strut: [0.000 -0.406 132.836 16.000 ltr]
+accents boxes max-width: [0.000 -0.406 132.836 16.000 ltr]
+accents boxes 2..20: [13.720 -0.406 118.727 16.000 ltr]
+accents placeholders: 
+accents positions: 0d 0d 0d 3d 8d 18d 22u
+accents words: 0:0-5 5:5-6 10:6-12 15:14-16 20:17-22
+accents lineBoundaries: 0:0-22 5:0-22 10:0-22 15:0-22 20:0-22
+accents lineNumbers: 0:0 5:0 10:0 15:0 20:0
+accents glyphs: 0:0-1l(0.000,-0.406,9.112,16.000) 5:5-6l(40.824,-0.406,44.290,16.000) 10:10-11l(67.997,-0.406,75.414,16.000) 15:14-16l(89.045,-0.406,96.462,16.000) 20:20-21l(118.727,-0.406,125.419,16.000)
+accents closest: 3-4
+greek-cyrillic: width=300.000 height=16.000 longest=93.810 min=50.709 max=93.810 alphabetic=12.988 ideographic=16.406 exceeded=false lines=1
+greek-cyrillic line 0: hard=true ascent=12.988 descent=3.418 unscaled=12.988 height=16.000 width=93.810 left=0.000 baseline=12.582
+greek-cyrillic lineAt 0: 12.582 93.810
+greek-cyrillic boxes tight: [0.000 -0.406 93.810 16.000 ltr]
+greek-cyrillic boxes max: [0.000 -0.406 93.810 16.000 ltr]
+greek-cyrillic boxes includeLineSpacingMiddle: [0.000 -0.406 93.810 16.000 ltr]
+greek-cyrillic boxes includeLineSpacingTop: [0.000 -0.406 93.810 16.000 ltr]
+greek-cyrillic boxes includeLineSpacingBottom: [0.000 -0.406 93.810 16.000 ltr]
+greek-cyrillic boxes strut: [0.000 -0.406 93.810 16.000 ltr]
+greek-cyrillic boxes max-width: [0.000 -0.406 93.810 16.000 ltr]
+greek-cyrillic boxes 2..10: [17.104 -0.406 78.196 16.000 ltr]
+greek-cyrillic placeholders: 
+greek-cyrillic positions: 0d 0d 0d 3u 8u 12u 12u
+greek-cyrillic words: 0:0-5 1:0-5 2:0-5 3:0-5 4:0-5 5:5-6 6:6-12 7:6-12 8:6-12 9:6-12 10:6-12 11:6-12 12:12-12
+greek-cyrillic lineBoundaries: 0:0-12 1:0-12 2:0-12 3:0-12 4:0-12 5:0-12 6:0-12 7:0-12 8:0-12 9:0-12 10:0-12 11:0-12 12:0-12
+greek-cyrillic lineNumbers: 0:0 1:0 2:0 3:0 4:0 5:0 6:0 7:0 8:0 9:0 10:0 11:0 12:-
+greek-cyrillic glyphs: 0:0-1l(0.000,-0.406,9.133,16.000) 1:1-2l(9.133,-0.406,17.104,16.000) 2:2-3l(17.104,-0.406,25.033,16.000) 3:3-4l(25.033,-0.406,31.726,16.000) 4:4-5l(31.726,-0.406,39.635,16.000) 5:5-6l(39.635,-0.406,43.101,16.000) 6:6-7l(43.101,-0.406,55.323,16.000) 7:7-8l(55.323,-0.406,63.308,16.000) 8:8-9l(63.308,-0.406,70.636,16.000) 9:9-10l(70.636,-0.406,78.196,16.000) 10:10-11l(78.196,-0.406,86.194,16.000) 11:11-12l(86.194,-0.406,93.810,16.000) 12:none
+greek-cyrillic closest: 3-4
+mixed: width=300.000 height=28.000 longest=134.099 min=33.574 max=134.099 alphabetic=22.266 ideographic=28.125 exceeded=false lines=1
+mixed line 0: hard=true ascent=22.266 descent=5.859 unscaled=22.266 height=28.000 width=134.099 left=0.000 baseline=22.141
+mixed lineAt 0: 22.141 134.099
+mixed boxes tight: [0.000 9.152 34.433 25.559 ltr] [34.433 9.152 65.317 25.559 ltr] [65.317 -0.125 104.868 28.000 ltr] [104.868 9.152 134.099 25.559 ltr]
+mixed boxes max: [0.000 -0.125 34.433 28.000 ltr] [34.433 -0.125 65.317 28.000 ltr] [65.317 -0.125 104.868 28.000 ltr] [104.868 -0.125 134.099 28.000 ltr]
+mixed boxes includeLineSpacingMiddle: [0.000 -0.125 34.433 28.000 ltr] [34.433 -0.125 65.317 28.000 ltr] [65.317 -0.125 104.868 28.000 ltr] [104.868 -0.125 134.099 28.000 ltr]
+mixed boxes includeLineSpacingTop: [0.000 -0.125 34.433 28.000 ltr] [34.433 -0.125 65.317 28.000 ltr] [65.317 -0.125 104.868 28.000 ltr] [104.868 -0.125 134.099 28.000 ltr]
+mixed boxes includeLineSpacingBottom: [0.000 -0.125 34.433 28.000 ltr] [34.433 -0.125 65.317 28.000 ltr] [65.317 -0.125 104.868 28.000 ltr] [104.868 -0.125 134.099 28.000 ltr]
+mixed boxes strut: [0.000 9.152 34.433 25.559 ltr] [34.433 9.152 65.317 25.559 ltr] [65.317 -0.125 104.868 28.000 ltr] [104.868 9.152 134.099 25.559 ltr]
+mixed boxes max-width: [0.000 9.152 34.433 25.559 ltr] [34.433 9.152 65.317 25.559 ltr] [65.317 -0.125 104.868 28.000 ltr] [104.868 9.152 134.099 25.559 ltr]
+mixed boxes 2..19: [12.229 9.152 34.433 25.559 ltr] [34.433 9.152 65.317 25.559 ltr] [65.317 -0.125 104.868 28.000 ltr] [104.868 9.152 123.558 25.559 ltr]
+mixed placeholders: 
+mixed positions: 0d 0d 0d 4d 10u 16d 21u
+mixed words: 0:0-5 5:5-6 10:10-11 15:15-21 20:15-21
+mixed lineBoundaries: 0:0-21 5:0-21 10:0-21 15:0-21 20:0-21
+mixed lineNumbers: 0:0 5:0 10:0 15:0 20:0
+mixed glyphs: 0:0-1l(0.000,9.152,8.832,25.559) 5:5-6l(30.967,9.152,34.433,25.559) 10:10-11l(61.831,9.152,65.317,25.559) 15:15-16l(104.868,9.152,108.231,25.559) 20:20-21l(126.921,9.152,134.099,25.559)
+mixed closest: 4-5
+placeholders: width=200.000 height=45.000 longest=107.971 min=30.000 max=107.971 alphabetic=18.000 ideographic=45.012 exceeded=false lines=1
+placeholders line 0: hard=true ascent=18.000 descent=27.012 unscaled=18.000 height=45.000 width=107.971 left=0.000 baseline=17.988
+placeholders lineAt 0: 17.988 107.971
+placeholders boxes tight: [0.000 5.000 15.470 21.406 ltr] [15.470 8.203 35.470 18.203 ltr] [35.470 5.000 50.693 21.406 ltr] [50.693 -0.012 80.693 23.988 ltr] [80.693 5.000 92.971 21.406 ltr] [92.971 5.000 107.971 45.000 ltr]
+placeholders boxes max: [0.000 -0.012 15.470 45.000 ltr] [15.470 -0.012 35.470 45.000 ltr] [35.470 -0.012 50.693 45.000 ltr] [50.693 -0.012 80.693 45.000 ltr] [80.693 -0.012 92.971 45.000 ltr] [92.971 -0.012 107.971 45.000 ltr]
+placeholders boxes includeLineSpacingMiddle: [0.000 -0.012 15.470 45.000 ltr] [15.470 -0.012 35.470 45.000 ltr] [35.470 -0.012 50.693 45.000 ltr] [50.693 -0.012 80.693 45.000 ltr] [80.693 -0.012 92.971 45.000 ltr] [92.971 -0.012 107.971 45.000 ltr]
+placeholders boxes includeLineSpacingTop: [0.000 -0.012 15.470 45.000 ltr] [15.470 -0.012 35.470 45.000 ltr] [35.470 -0.012 50.693 45.000 ltr] [50.693 -0.012 80.693 45.000 ltr] [80.693 -0.012 92.971 45.000 ltr] [92.971 -0.012 107.971 45.000 ltr]
+placeholders boxes includeLineSpacingBottom: [0.000 -0.012 15.470 45.000 ltr] [15.470 -0.012 35.470 45.000 ltr] [35.470 -0.012 50.693 45.000 ltr] [50.693 -0.012 80.693 45.000 ltr] [80.693 -0.012 92.971 45.000 ltr] [92.971 -0.012 107.971 45.000 ltr]
+placeholders boxes strut: [0.000 5.000 15.470 21.406 ltr] [15.470 8.203 35.470 18.203 ltr] [35.470 5.000 50.693 21.406 ltr] [50.693 -0.012 80.693 23.988 ltr] [80.693 5.000 92.971 21.406 ltr] [92.971 5.000 107.971 45.000 ltr]
+placeholders boxes max-width: [0.000 5.000 15.470 21.406 ltr] [15.470 8.203 35.470 18.203 ltr] [35.470 5.000 50.693 21.406 ltr] [50.693 -0.012 80.693 23.988 ltr] [80.693 5.000 92.971 21.406 ltr] [92.971 5.000 107.971 45.000 ltr]
+placeholders boxes 2..7: [15.470 8.203 35.470 18.203 ltr] [35.470 5.000 50.693 21.406 ltr] [50.693 -0.012 80.693 23.988 ltr] [80.693 5.000 88.110 21.406 ltr]
+placeholders placeholders: [15.470 8.203 35.470 18.203 ltr] [50.693 -0.012 80.693 23.988 ltr] [92.971 5.000 107.971 45.000 ltr]
+placeholders positions: 0d 0d 0d 2d 5d 9u 9u
+placeholders words: 0:0-2 1:0-2 2:2-3 3:3-5 4:3-5 5:5-6 6:6-8 7:6-8 8:8-9 9:9-9
+placeholders lineBoundaries: 0:0-9 1:0-9 2:0-9 3:0-9 4:0-9 5:0-9 6:0-9 7:0-9 8:0-9 9:0-9
+placeholders lineNumbers: 0:0 1:0 2:0 3:0 4:0 5:0 6:0 7:0 8:0 9:-
+placeholders glyphs: 0:0-1l(0.000,5.000,7.615,21.406) 1:1-2l(7.615,5.000,15.470,21.406) 2:2-3l(15.470,8.203,35.470,18.203) 3:3-4l(35.470,5.000,42.798,21.406) 4:4-5l(42.798,5.000,50.693,21.406) 5:5-6l(50.693,-0.012,80.693,23.988) 6:6-7l(80.693,5.000,88.110,21.406) 7:7-8l(88.110,5.000,92.971,21.406) 8:8-9l(92.971,5.000,107.971,45.000) 9:none
+placeholders closest: 2-3
+placeholder-aligns: width=400.000 height=60.000 longest=62.798 min=10.000 max=62.798 alphabetic=30.000 ideographic=60.000 exceeded=false lines=1
+placeholder-aligns line 0: hard=true ascent=30.000 descent=30.000 unscaled=30.000 height=60.000 width=62.798 left=0.000 baseline=30.000
+placeholder-aligns lineAt 0: 30.000 62.798
+placeholder-aligns boxes tight: [0.000 0.000 10.000 30.000 ltr] [10.000 17.012 17.615 33.418 ltr] [17.615 30.000 27.615 60.000 ltr] [27.615 17.012 35.470 33.418 ltr] [35.470 3.418 45.470 33.418 ltr] [45.470 17.012 52.798 33.418 ltr] [52.798 25.000 62.798 55.000 ltr]
+placeholder-aligns boxes max: [0.000 0.000 10.000 60.000 ltr] [10.000 0.000 17.615 60.000 ltr] [17.615 0.000 27.615 60.000 ltr] [27.615 0.000 35.470 60.000 ltr] [35.470 0.000 45.470 60.000 ltr] [45.470 0.000 52.798 60.000 ltr] [52.798 0.000 62.798 60.000 ltr]
+placeholder-aligns boxes includeLineSpacingMiddle: [0.000 0.000 10.000 60.000 ltr] [10.000 0.000 17.615 60.000 ltr] [17.615 0.000 27.615 60.000 ltr] [27.615 0.000 35.470 60.000 ltr] [35.470 0.000 45.470 60.000 ltr] [45.470 0.000 52.798 60.000 ltr] [52.798 0.000 62.798 60.000 ltr]
+placeholder-aligns boxes includeLineSpacingTop: [0.000 0.000 10.000 60.000 ltr] [10.000 0.000 17.615 60.000 ltr] [17.615 0.000 27.615 60.000 ltr] [27.615 0.000 35.470 60.000 ltr] [35.470 0.000 45.470 60.000 ltr] [45.470 0.000 52.798 60.000 ltr] [52.798 0.000 62.798 60.000 ltr]
+placeholder-aligns boxes includeLineSpacingBottom: [0.000 0.000 10.000 60.000 ltr] [10.000 0.000 17.615 60.000 ltr] [17.615 0.000 27.615 60.000 ltr] [27.615 0.000 35.470 60.000 ltr] [35.470 0.000 45.470 60.000 ltr] [45.470 0.000 52.798 60.000 ltr] [52.798 0.000 62.798 60.000 ltr]
+placeholder-aligns boxes strut: [0.000 0.000 10.000 30.000 ltr] [10.000 17.012 17.615 33.418 ltr] [17.615 30.000 27.615 60.000 ltr] [27.615 17.012 35.470 33.418 ltr] [35.470 3.418 45.470 33.418 ltr] [45.470 17.012 52.798 33.418 ltr] [52.798 25.000 62.798 55.000 ltr]
+placeholder-aligns boxes max-width: [0.000 0.000 10.000 30.000 ltr] [10.000 17.012 17.615 33.418 ltr] [17.615 30.000 27.615 60.000 ltr] [27.615 17.012 35.470 33.418 ltr] [35.470 3.418 45.470 33.418 ltr] [45.470 17.012 52.798 33.418 ltr] [52.798 25.000 62.798 55.000 ltr]
+placeholder-aligns boxes 2..5: [17.615 30.000 27.615 60.000 ltr] [27.615 17.012 35.470 33.418 ltr] [35.470 3.418 45.470 33.418 ltr]
+placeholder-aligns placeholders: [0.000 0.000 10.000 30.000 ltr] [17.615 30.000 27.615 60.000 ltr] [35.470 3.418 45.470 33.418 ltr] [52.798 25.000 62.798 55.000 ltr]
+placeholder-aligns positions: 0d 0d 0d 2d 6d 7u 7u
+placeholder-aligns words: 0:0-1 1:1-2 2:2-3 3:3-4 4:4-5 5:5-6 6:6-7 7:7-7
+placeholder-aligns lineBoundaries: 0:0-7 1:0-7 2:0-7 3:0-7 4:0-7 5:0-7 6:0-7 7:0-7
+placeholder-aligns lineNumbers: 0:0 1:0 2:0 3:0 4:0 5:0 6:0 7:-
+placeholder-aligns glyphs: 0:0-1l(0.000,0.000,10.000,30.000) 1:1-2l(10.000,17.012,17.615,33.418) 2:2-3l(17.615,30.000,27.615,60.000) 3:3-4l(27.615,17.012,35.470,33.418) 4:4-5l(35.470,3.418,45.470,33.418) 5:5-6l(45.470,17.012,52.798,33.418) 6:6-7l(52.798,25.000,62.798,55.000) 7:none
+placeholder-aligns closest: 3-4
+placeholder-wrap: width=60.000 height=52.000 longest=50.000 min=50.000 max=118.947 alphabetic=12.988 ideographic=16.406 exceeded=false lines=3
+placeholder-wrap line 0: hard=false ascent=12.988 descent=3.418 unscaled=12.988 height=16.000 width=31.008 left=0.000 baseline=12.582
+placeholder-wrap line 1: hard=false ascent=14.785 descent=5.215 unscaled=14.785 height=20.000 width=50.000 left=0.000 baseline=30.785
+placeholder-wrap line 2: hard=true ascent=12.988 descent=3.418 unscaled=12.988 height=16.000 width=31.008 left=0.000 baseline=48.582
+placeholder-wrap lineAt 0: 12.582 31.008
+placeholder-wrap boxes tight: [0.000 -0.406 34.474 16.000 ltr] [0.000 16.000 50.000 36.000 ltr] [50.000 17.797 53.466 34.203 ltr] [0.000 35.594 31.008 52.000 ltr]
+placeholder-wrap boxes max: [0.000 -0.406 34.474 16.000 ltr] [0.000 16.000 50.000 36.000 ltr] [50.000 16.000 53.466 36.000 ltr] [0.000 35.594 31.008 52.000 ltr]
+placeholder-wrap boxes includeLineSpacingMiddle: [0.000 -0.406 34.474 16.000 ltr] [0.000 16.000 50.000 36.000 ltr] [50.000 16.000 53.466 36.000 ltr] [0.000 35.594 31.008 52.000 ltr]
+placeholder-wrap boxes includeLineSpacingTop: [0.000 -0.406 34.474 16.000 ltr] [0.000 16.000 50.000 36.000 ltr] [50.000 16.000 53.466 36.000 ltr] [0.000 35.594 31.008 52.000 ltr]
+placeholder-wrap boxes includeLineSpacingBottom: [0.000 -0.406 34.474 16.000 ltr] [0.000 16.000 50.000 36.000 ltr] [50.000 16.000 53.466 36.000 ltr] [0.000 35.594 31.008 52.000 ltr]
+placeholder-wrap boxes strut: [0.000 -0.406 34.474 16.000 ltr] [0.000 16.000 50.000 36.000 ltr] [50.000 17.797 53.466 34.203 ltr] [0.000 35.594 31.008 52.000 ltr]
+placeholder-wrap boxes max-width: [0.000 -0.406 34.474 16.000 ltr] [34.474 -0.406 53.466 16.000 ltr] [0.000 16.000 50.000 36.000 ltr] [50.000 16.000 53.466 36.000 ltr] [50.000 17.797 53.466 34.203 ltr] [0.000 35.594 31.008 52.000 ltr]
+placeholder-wrap boxes 2..9: [18.505 -0.406 34.474 16.000 ltr] [0.000 16.000 50.000 36.000 ltr] [50.000 17.797 53.466 34.203 ltr] [0.000 35.594 18.505 52.000 ltr]
+placeholder-wrap placeholders: [0.000 16.000 50.000 36.000 ltr]
+placeholder-wrap positions: 0d 0d 0d 3d 7u 11u 11u
+placeholder-wrap words: 0:0-4 1:0-4 2:0-4 3:0-4 4:4-5 5:5-6 6:6-7 7:7-11 8:7-11 9:7-11 10:7-11 11:11-11
+placeholder-wrap lineBoundaries: 0:0-5 1:0-5 2:0-5 3:0-5 4:0-5 5:5-7 6:5-7 7:7-11 8:7-11 9:7-11 10:7-11 11:7-11
+placeholder-wrap lineNumbers: 0:0 1:0 2:0 3:0 4:0 5:1 6:1 7:2 8:2 9:2 10:2 11:-
+placeholder-wrap glyphs: 0:0-1l(0.000,-0.406,10.521,16.000) 1:1-2l(10.521,-0.406,18.505,16.000) 2:2-3l(18.505,-0.406,23.112,16.000) 3:3-4l(23.112,-0.406,31.008,16.000) 4:4-5l(31.008,-0.406,34.474,16.000) 5:5-6l(0.000,16.000,50.000,36.000) 6:6-7l(50.000,17.797,53.466,34.203) 7:7-8l(0.000,35.594,10.521,52.000) 8:8-9l(10.521,35.594,18.505,52.000) 9:9-10l(18.505,35.594,23.112,52.000) 10:10-11l(23.112,35.594,31.008,52.000) 11:none
+placeholder-wrap closest: 3-4
+every-field: lines=1 height=17.000 longest=135.375 max=135.375 alphabetic=12.893

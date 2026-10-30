@@ -39,3 +39,4 @@ fl-shell = { path = "crates/fl-shell", version = "0.1.0", default-features = fal
 fl-raster = { path = "crates/fl-raster", version = "0.1.0", default-features = false }
 fl-assets = { path = "crates/fl-assets", version = "0.1.0" }
 fl-image = { path = "crates/fl-image", version = "0.1.0" }
+fl-text = { path = "crates/fl-text", version = "0.1.0" }

@@ -1,0 +1,21 @@
+[package]
+name = "fl-text"
+description = "Text for fl-engine: fonts, shaping, layout, queries, glyph runs. No dart:ui, no emblema"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+harfrust = "0.15"
+skrifa = "0.49"
+unicode-linebreak = "0.1"
+unicode-bidi = "0.3"
+unicode-segmentation = "1"
+# Read, not mapped (brief M3 §15): a font file truncated while mapped is a
+# SIGBUS.
+fontdb = { version = "0.24", default-features = false, features = ["std", "fs", "fontconfig"] }
+
+[lints]
+workspace = true

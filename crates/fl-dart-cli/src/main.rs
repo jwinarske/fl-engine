@@ -3,7 +3,7 @@
 //! ```text
 //! fl-dart run hello.dill [args...]       # JIT, dev hosts (--features jit)
 //! fl-dart run-aot hello.aot [args...]    # precompiled runtime, every target
-//! fl-dart run-app libapp.so [WxH[@dpr]] [--assets DIR] [--png out.png] [--frames-dir DIR] [--ops] [--natives] [--frames N] [--hz H]
+//! fl-dart run-app libapp.so [WxH[@dpr]] [--assets DIR] [--png out.png] [--frames-dir DIR] [--ops] [--natives] [--styles] [--frames N] [--hz H]
 //!                                       # a Flutter app, through dart:ui (M2);
 //!                                       # JIT takes the app's kernel instead
 //! fl-dart app-cycle libapp.so <n> [run-app options]
@@ -87,7 +87,7 @@ fn usage() -> ExitCode {
         "libapp.so"
     };
     eprintln!(
-        "       fl-dart run-app <{app}> [WxH[@dpr]] [--assets DIR] [--png out.png] [--frames-dir DIR] [--ops] [--natives] [--frames N] [--hz H]\n       fl-dart app-cycle <{app}> <n> [run-app options]"
+        "       fl-dart run-app <{app}> [WxH[@dpr]] [--assets DIR] [--png out.png] [--frames-dir DIR] [--ops] [--natives] [--styles] [--frames N] [--hz H]\n       fl-dart app-cycle <{app}> <n> [run-app options]"
     );
     ExitCode::from(64)
 }
@@ -158,6 +158,7 @@ fn run_aot(path: &str, args: &[&str]) -> Result<(), Failure> {
 fn run_app(path: &str, app: AppArgs) -> Result<(), Failure> {
     let program = load_app(path)?;
     set_assets(path, &app)?;
+    fl_ui::set_style_report(app.styles);
     let vm = start_vm()?;
     let raster = raster_for(&app)?;
     let run = app_once(&vm, &program, path, &app, raster.as_ref(), true)?;
@@ -453,16 +454,18 @@ struct AppArgs {
     assets: Option<std::path::PathBuf>,
     ops: bool,
     natives: bool,
+    styles: bool,
     frames: Option<u64>,
 }
 
-/// `[WxH[@dpr]] [--assets DIR] [--png out.png] [--frames-dir DIR] [--ops] [--natives] [--frames N] [--hz H]`,
+/// `[WxH[@dpr]] [--assets DIR] [--png out.png] [--frames-dir DIR] [--ops] [--natives] [--styles] [--frames N] [--hz H]`,
 /// in any order; no size is the default view. Sizes are physical pixels.
 /// `--assets` names the app's asset bundle; without it, `<app>.assets` beside
 /// the program is used if it is there, as `tools/flutter-app/build.sh` puts
 /// it. `--frames-dir` writes every frame there, `frame-NNNN.png`, as `--png`
 /// writes the last. `--ops` prints each frame's [`outline`]; `--natives`, at the end, every
-/// dart:ui native the app called; `--frames` stops after N frames rendered;
+/// dart:ui native the app called; `--styles`, each paragraph and text
+/// style as fl-text decoded it; `--frames` stops after N frames rendered;
 /// `--hz` sets the vsync rate (60 by default).
 fn app_args(args: &[&str]) -> Option<AppArgs> {
     let mut app = AppArgs::default();
@@ -474,6 +477,7 @@ fn app_args(args: &[&str]) -> Option<AppArgs> {
             "--assets" => app.assets = Some(std::path::PathBuf::from(it.next()?)),
             "--ops" => app.ops = true,
             "--natives" => app.natives = true,
+            "--styles" => app.styles = true,
             "--frames" => app.frames = Some(it.next()?.parse().ok().filter(|n| *n > 0)?),
             "--hz" => app.view.refresh_rate = it.next()?.parse().ok().filter(|v: &f64| *v > 0.0)?,
             _ => {

@@ -36,6 +36,7 @@ pub use platform::{
     deliver_replies, discard_replies, has_pending_replies, set_device_pixel_ratio,
     set_frame_scheduler, set_frame_sink, set_reply_waker, Frame,
 };
+pub use text::set_style_report;
 
 /// Every dart:ui native this crate implements.
 pub static NATIVES: &[Symbol] = &[
@@ -220,7 +221,7 @@ pub static NATIVES: &[Symbol] = &[
     fl_dart_ffi::symbol!("SceneBuilder::build", 2, compositing::build),
     fl_dart_ffi::symbol!("Scene::dispose", 1, compositing::scene_dispose),
     fl_dart_ffi::symbol!("EngineLayer::dispose", 1, compositing::layer_dispose),
-    // text.dart: stubs until M3 stage 4
+    // text.dart, on fl-text
     fl_dart_ffi::symbol!("ParagraphBuilder::Create", 9, text::builder_create),
     fl_dart_ffi::symbol!("ParagraphBuilder::pushStyle", 16, text::push_style),
     fl_dart_ffi::symbol!("ParagraphBuilder::pop", 1, text::builder_pop),
@@ -267,7 +268,7 @@ pub static NATIVES: &[Symbol] = &[
     ),
     fl_dart_ffi::symbol!("Paragraph::getWordBoundary", 2, text::word_boundary),
     fl_dart_ffi::symbol!("Paragraph::getLineBoundary", 2, text::line_boundary),
-    fl_dart_ffi::symbol!("Paragraph::paint", 4, text::paint),
+    fl_dart_ffi::symbol!("Paragraph::paint", 4, text::paint_paragraph),
     fl_dart_ffi::symbol!(
         "Paragraph::computeLineMetrics",
         1,
@@ -328,116 +329,8 @@ pub static STUBS: &[(&str, &str)] = &[
         "nothing: one view, no platform focus to move",
     ),
     (
-        "ParagraphBuilder::Create",
-        "an empty builder (M3 stage 4)",
-    ),
-    (
-        "ParagraphBuilder::pushStyle",
-        "nothing (M3 stage 4)",
-    ),
-    (
-        "ParagraphBuilder::pop",
-        "nothing (M3 stage 4)",
-    ),
-    (
-        "ParagraphBuilder::addText",
-        "null (no error); the text is dropped (M3 stage 4)",
-    ),
-    (
-        "ParagraphBuilder::addPlaceholder",
-        "nothing (M3 stage 4)",
-    ),
-    (
-        "ParagraphBuilder::build",
-        "an empty paragraph (M3 stage 4)",
-    ),
-    (
-        "Paragraph::width",
-        "0 (M3 stage 4)",
-    ),
-    (
-        "Paragraph::height",
-        "0 (M3 stage 4)",
-    ),
-    (
-        "Paragraph::longestLine",
-        "0 (M3 stage 4)",
-    ),
-    (
-        "Paragraph::minIntrinsicWidth",
-        "0 (M3 stage 4)",
-    ),
-    (
-        "Paragraph::maxIntrinsicWidth",
-        "0 (M3 stage 4)",
-    ),
-    (
-        "Paragraph::alphabeticBaseline",
-        "0 (M3 stage 4)",
-    ),
-    (
-        "Paragraph::ideographicBaseline",
-        "0 (M3 stage 4)",
-    ),
-    (
-        "Paragraph::didExceedMaxLines",
-        "false (M3 stage 4)",
-    ),
-    (
-        "Paragraph::layout",
-        "nothing (M3 stage 4)",
-    ),
-    (
-        "Paragraph::getRectsForRange",
-        "no boxes (M3 stage 4)",
-    ),
-    (
-        "Paragraph::getRectsForPlaceholders",
-        "no boxes (M3 stage 4)",
-    ),
-    (
-        "Paragraph::getPositionForOffset",
-        "[0, 0]: the start, downstream (M3 stage 4)",
-    ),
-    (
-        "Paragraph::getGlyphInfoAt",
-        "null (M3 stage 4)",
-    ),
-    (
-        "Paragraph::getClosestGlyphInfo",
-        "null (M3 stage 4)",
-    ),
-    (
-        "Paragraph::getWordBoundary",
-        "[0, 0] (M3 stage 4)",
-    ),
-    (
-        "Paragraph::getLineBoundary",
-        "[0, 0] (M3 stage 4)",
-    ),
-    (
         "Paragraph::paint",
-        "nothing drawn (M3 stage 4)",
-    ),
-    (
-        "Paragraph::computeLineMetrics",
-        "no lines (M3 stage 4)",
-    ),
-    (
-        "Paragraph::getLineMetricsAt",
-        "null (M3 stage 4)",
-    ),
-    (
-        "Paragraph::getNumberOfLines",
-        "0 (M3 stage 4)",
-    ),
-    (
-        "Paragraph::getLineNumberAt",
-        "-1 (M3 stage 4)",
-    ),
-    (
-        "FontCollection::LoadFontFromList",
-        "the callback answered; the font not registered (M3 stage 4)",
+        "nothing drawn: glyphs are M3 stage 5",
     ),
     (
         "Codec::frameCount",

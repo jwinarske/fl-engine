@@ -183,9 +183,122 @@ frame 2: view 0 200x100 layers=1 pictures=1 draws=1
     );
 }
 
+/// M3 stage 4's bar: every paragraph's measures and query answers match
+/// the stock engine's (test/metrics.txt, from flutter_tester with
+/// Impeller), numbers within half a pixel, everything else exactly. The
+/// layout time line is the run's own and left out.
+#[test]
+#[ignore = "app lane: needs FLUTTER_ROOT"]
+fn metrics_match_the_stock_engine() {
+    let app = build_app("metrics");
+    let o = common::fl_dart(&[
+        "run-app".as_ref(),
+        app.as_os_str(),
+        "200x100".as_ref(),
+        "--frames".as_ref(),
+        "1".as_ref(),
+    ]);
+    assert!(o.status.success(), "{o:?}");
+    let out = String::from_utf8_lossy(&o.stdout);
+    let ours: Vec<&str> = out
+        .lines()
+        .filter(|l| !l.starts_with("time: ") && !l.starts_with("frame "))
+        .collect();
+    let expected = std::fs::read_to_string(repo().join("apps/metrics/test/metrics.txt")).unwrap();
+    let theirs: Vec<&str> = expected.lines().collect();
+    let mut bad = Vec::new();
+    for (i, (a, b)) in ours.iter().zip(&theirs).enumerate() {
+        if !metrics_line_matches(a, b) {
+            bad.push(format!("line {}:\n  ours:   {a}\n  theirs: {b}", i + 1));
+        }
+    }
+    assert!(
+        bad.is_empty() && ours.len() == theirs.len(),
+        "{} of {} lines differ ({} ours, {} theirs):\n{}",
+        bad.len(),
+        theirs.len(),
+        ours.len(),
+        theirs.len(),
+        bad.join("\n")
+    );
+    assert!(
+        out.lines().any(|l| l.starts_with("time: ")),
+        "no layout time reported"
+    );
+}
+
+/// Format drift (brief M3 §15): a paragraph style and text styles with
+/// every field set, as fl-text decoded them (`--styles`), against
+/// test/styles.txt. A Flutter release that moves a field of
+/// `_encodeTextStyle` or `_encodeParagraphStyle` fails here.
+#[test]
+#[ignore = "app lane: needs FLUTTER_ROOT"]
+fn metrics_decodes_every_style_field() {
+    let app = build_app("metrics");
+    let o = common::fl_dart(&[
+        "run-app".as_ref(),
+        app.as_os_str(),
+        "200x100".as_ref(),
+        "--frames".as_ref(),
+        "1".as_ref(),
+        "--styles".as_ref(),
+    ]);
+    assert!(o.status.success(), "{o:?}");
+    let out = String::from_utf8_lossy(&o.stdout);
+    let styles: Vec<&str> = out
+        .lines()
+        .filter(|l| l.starts_with("paragraph style: ") || l.starts_with("text style"))
+        .collect();
+    // The last paragraph's: the every-field one.
+    let last = styles
+        .iter()
+        .rposition(|l| l.starts_with("paragraph style: "))
+        .expect("no paragraph style reported");
+    let expected = std::fs::read_to_string(repo().join("apps/metrics/test/styles.txt")).unwrap();
+    assert_eq!(styles[last..].join("\n") + "\n", expected);
+}
+
+/// Whether two `metrics` lines agree: the same text around the numbers,
+/// and each number within half a pixel.
+fn metrics_line_matches(a: &str, b: &str) -> bool {
+    fn split(s: &str) -> Vec<(bool, String)> {
+        let mut out: Vec<(bool, String)> = Vec::new();
+        let mut cur = String::new();
+        let mut num = false;
+        let chars: Vec<char> = s.chars().collect();
+        for (i, &c) in chars.iter().enumerate() {
+            let starts_number = c.is_ascii_digit()
+                || (c == '-' && chars.get(i + 1).is_some_and(|d| d.is_ascii_digit()) && !num);
+            let is_num = if num {
+                c.is_ascii_digit() || c == '.'
+            } else {
+                starts_number
+            };
+            if is_num != num && !cur.is_empty() {
+                out.push((num, std::mem::take(&mut cur)));
+            }
+            num = is_num;
+            cur.push(c);
+        }
+        if !cur.is_empty() {
+            out.push((num, cur));
+        }
+        out
+    }
+    let (x, y) = (split(a), split(b));
+    x.len() == y.len()
+        && x.iter().zip(&y).all(|((n1, s1), (n2, s2))| match (n1, n2) {
+            (true, true) => match (s1.parse::<f64>(), s2.parse::<f64>()) {
+                (Ok(p), Ok(q)) => (p - q).abs() <= 0.5,
+                _ => s1 == s2,
+            },
+            _ => s1 == s2,
+        })
+}
+
 /// M3 stage 1's bar: `flutter create`'s counter app, unmodified, renders
-/// with no Dart error, its text drawn as nothing (the text natives are
-/// stubs). The scene: the background and the app bar, the body's clip, and
+/// with no Dart error, its text laid out and drawn as nothing (glyphs are
+/// stage 5). The scene: the background and the app bar, the body's clip, and
 /// the button's shadow (stage 3) and shape.
 #[test]
 #[ignore = "app lane: needs FLUTTER_ROOT"]
@@ -300,25 +413,7 @@ fn natives_matches_its_golden() {
 }
 
 /// Natives no app reaches yet, and the M3 stage whose programs will.
-const NOT_YET: &[(&str, &str)] = &[
-    ("ParagraphBuilder::addPlaceholder", "M3 stage 4, text"),
-    ("Paragraph::width", "M3 stage 4, metrics"),
-    ("Paragraph::longestLine", "M3 stage 4, metrics"),
-    ("Paragraph::minIntrinsicWidth", "M3 stage 4, metrics"),
-    ("Paragraph::alphabeticBaseline", "M3 stage 4, metrics"),
-    ("Paragraph::ideographicBaseline", "M3 stage 4, metrics"),
-    ("Paragraph::getRectsForRange", "M3 stage 4, metrics"),
-    ("Paragraph::getPositionForOffset", "M3 stage 4, metrics"),
-    ("Paragraph::getGlyphInfoAt", "M3 stage 4, metrics"),
-    ("Paragraph::getClosestGlyphInfo", "M3 stage 4, metrics"),
-    ("Paragraph::getWordBoundary", "M3 stage 4, metrics"),
-    ("Paragraph::getLineBoundary", "M3 stage 4, metrics"),
-    ("Paragraph::computeLineMetrics", "M3 stage 4, metrics"),
-    ("Paragraph::getLineMetricsAt", "M3 stage 4, metrics"),
-    ("Paragraph::getNumberOfLines", "M3 stage 4, metrics"),
-    ("Paragraph::getLineNumberAt", "M3 stage 4, metrics"),
-    ("Paragraph::dispose", "M3 stage 4, text"),
-];
+const NOT_YET: &[(&str, &str)] = &[];
 
 /// Exit criterion 5: every native fl-ui implements is called by one of the
 /// apps here. `--natives` lists what a run resolved, and the VM resolves a
@@ -327,7 +422,7 @@ const NOT_YET: &[(&str, &str)] = &[
 #[test]
 #[ignore = "app lane: needs FLUTTER_ROOT"]
 fn every_native_is_called_by_an_app() {
-    let runs: [(&str, &[&str]); 10] = [
+    let runs: [(&str, &[&str]); 11] = [
         ("colored_box", &[]),
         ("shapes", &["--frames", "1"]),
         ("material", &[]),
@@ -338,6 +433,7 @@ fn every_native_is_called_by_an_app() {
         ("counter", &["--frames", "1"]),
         ("images", &[]),
         ("shadows", &["--frames", "1"]),
+        ("metrics", &["--frames", "1"]),
     ];
     let mut called = std::collections::BTreeSet::new();
     for (name, opts) in runs {

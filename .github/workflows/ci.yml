@@ -44,6 +44,7 @@ jobs:
       - run: cargo test -p fl-dart-vm --features aot --lib --test compile_fail
       - run: cargo test -p fl-raster --features aot --test compile_fail
       - run: cargo test -p fl-dart-ffi --features aot --test compile_fail
+      - run: cargo test -p fl-text
       - run: RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
 
   l2:
@@ -142,10 +143,11 @@ jobs:
       # The committed goldens are what the pinned stock engine renders now,
       # with Impeller on lavapipe: flutter test compares exactly, so a pin
       # bump that changes them fails here, not as drift in fl-engine's
-      # tolerance. Impeller, not Skia: fl-engine matches Impeller.
+      # tolerance. Impeller, not Skia: fl-engine matches Impeller. metrics'
+      # golden is its numbers, test/metrics.txt.
       - name: Goldens
         run: |
-          for app in shapes material natives images shadows; do
+          for app in shapes material natives images shadows metrics; do
             (cd "apps/$app" && "$FLUTTER_ROOT/bin/flutter" test --enable-impeller)
           done
       - name: Apps
@@ -184,3 +186,6 @@ jobs:
         run: ci/annotate-on-fail.sh cargo test -p fl-dart-cli --no-default-features --features jit --test app -- --ignored
       - name: dart:ui and shell unit tests
         run: ci/annotate-on-fail.sh cargo test -p fl-dart-ffi -p fl-ui -p fl-raster -p fl-shell --features aot --lib
+      # Layout in Roboto, from the Flutter release's cache.
+      - name: Text layout tests
+        run: ci/annotate-on-fail.sh cargo test -p fl-text -- --ignored

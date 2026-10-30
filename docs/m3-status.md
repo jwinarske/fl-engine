@@ -86,7 +86,41 @@ Parity target Impeller (D6): every golden re-rendered with `flutter test --enabl
 
 Found on the way:
 
-* emblema's `draw_shadow` is not Impeller's at this pin: it translates in local units (`PreConcat` puts Impeller's before the transform, so device pixels) and converts the radius before dividing by the scale. Not used; fl-raster draws the shadow itself
+* emblema's `draw_shadow` is not Impeller's at this pin: it translates in local units (`PreConcat` puts Impeller's before the transform, so device pixels) and converts the radius before dividing by the scale. Not used; fl-raster draws the shadow itself. Reported as jwinarske/emblema#226
 * emblema's normal mask blur is byte-identical to Impeller's at sigma 2, 4 and 8
 * flutter_tester's engine DPR is 3 whatever `tester.view.devicePixelRatio` says; only `drawShadow` reads it. Goldens with shadows render at DPR 3 so both engines agree
 * flutter_test draws a physical model's outline unless `debugDisableShadows` is false, reset before the test ends
+
+## Stage 4: layout (2026-10-30)
+
+Done: `metrics` matches flutter_tester with Impeller: 748 lines, every number equal at three decimals, within the half pixel the test allows.
+
+    tools/flutter-app/build.sh $FLUTTER_ROOT apps/metrics out
+    fl-dart run-app out/metrics.so 200x100 --frames 1
+    time: 39 paragraphs, 422 us each
+
+* `fl-text`: SkParagraph at Flutter's Skia pin, ported: builder, `ParagraphImpl`, `Run`, `Cluster`, `OneLineShaper`, `TextWrapper`, `TextLine`. UTF-8 inside, UTF-16 at the queries. No dart:ui, no emblema
+* Shaping: harfrust, monotone character clusters, 16.16 scale as SkShaper. A feature that covers the text is global, as SkShaper passes it
+* Unicode: unicode-linebreak, unicode-bidi, unicode-segmentation in place of ICU; ICU's space, whitespace, control and ideographic classes as tables
+* Fonts: `loadFontFromList`, then `FontManifest.json` (read on first match), then the system's (fontdb, files read, not mapped). Faces matched by CSS rules, slant first. Fallback per code point from the system only, cached by code point and style
+* Unresolved text: the first face's `.notdef`, counted
+* dart:ui: 27 natives on fl-text. `Paragraph::paint` still a stub: glyphs are stage 5
+* Limits: text shaped in pieces past 32 KiB, split after a space; shaped runs cached by face, variations, size, text, direction, locale and features, 4096 entries then cleared; harfrust's `max_ops` and `max_len` on, its defaults; fonts parsed under `catch_unwind`, and only with head, maxp and cmap; shaping under `catch_unwind`, a panic is the text unresolved
+* `apps/metrics`: 39 paragraphs in Roboto from the Flutter cache. Sizes, weights, italic, height and leading distribution, letter and word spacing, maxLines and ellipsis, every alignment, rtl, strut, text height behavior, features, placeholders of every alignment. Measures, line metrics, boxes in every height style, positions, word and line boundaries, line numbers, glyph info
+* Format drift: `run-app --styles` prints each style as decoded; one paragraph and two text styles with every field set, held against `test/styles.txt`
+* Coverage: every native reached by an app; `NOT_YET` empty
+* fl-text tests: limits and font parsing everywhere; layout in Roboto in the app lane
+
+Not yet:
+
+* Script itemization: a style block is shaped as one run, its script guessed from its text. Mixed-script blocks shape apart from SkShaper's
+* ICU's line-break and word tailorings: UAX #14 and #29 as written
+* Soft hyphens are not rendered (Flutter does not ask)
+
+Found on the way:
+
+* Skia's `ParagraphCache` keys a paragraph without its leading distribution: the stock engine answers an even-leading paragraph with the runs of an earlier proportional one of the same text. `metrics` gives that case its own text
+* harfrust's `Feature::new` takes an exclusive end one short; the struct is built directly
+* A table directory with no tables parses as a font in read-fonts
+* `loadFontFromList` sends `fontsChange` on flutter/system; before the binding is up the message is dropped with a warning. `metrics` initializes the binding first
+* dart:ui encodes `TextStyle.textBaseline`; the engine reads it and drops it, and so does fl-text
