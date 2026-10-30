@@ -1,8 +1,8 @@
-// The reference frame: the stock engine's flutter_tester renders Home in a
+// The reference frame: the stock engine's flutter_tester, with Impeller, renders Home in a
 // MaterialApp at the size and DPR fl-engine's app lane uses
 // (docs/m2-dart-ui.md §9).
 //
-//     flutter test --update-goldens
+//     flutter test --enable-impeller --update-goldens
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material/home.dart';

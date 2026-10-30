@@ -86,6 +86,16 @@ pub enum Draw {
         paint: Paint,
     },
     Picture(Arc<Picture>),
+    /// `drawShadow`: the shadow `path` casts at `elevation` under the
+    /// engine's one light, for a view at `dpr` (the engine takes view 0's).
+    Shadow {
+        path: Arc<Path>,
+        /// Straight sRGB, 0 to 1.
+        color: [f32; 4],
+        elevation: f32,
+        transparent_occluder: bool,
+        dpr: f32,
+    },
     /// `drawImage` and `drawImageRect`: the image's `src` rect, in texels,
     /// drawn into `dst`.
     Image {
@@ -804,15 +814,32 @@ pub(crate) extern "C" fn draw_path(
 }
 
 /// `Void Function(Pointer<Void>, Pointer<Void> path, Uint32 color, Double
-/// elevation, Bool transparentOccluder)`. A stub until M3's stage 3: the
-/// shadow is not drawn.
+/// elevation, Bool transparentOccluder)`. Recorded with the view's device
+/// pixel ratio, which the engine reads here too (canvas.cc).
 pub(crate) extern "C" fn draw_shadow(
-    _canvas: *mut c_void,
-    _path: *mut c_void,
-    _color: u32,
-    _elevation: f64,
-    _transparent: bool,
+    canvas: *mut c_void,
+    p: *mut c_void,
+    color: u32,
+    elevation: f64,
+    transparent_occluder: bool,
 ) {
+    guard((), || {
+        // SAFETY: p is the path argument's native field.
+        let Some(path) = (unsafe { path::snapshot(p) }) else {
+            eprintln!("fl-ui: Canvas::drawShadow: not a live Path");
+            return;
+        };
+        let ch = |shift: u32| f32::from(((color >> shift) & 0xFF) as u8) / 255.0;
+        let d = Draw::Shadow {
+            path,
+            color: [ch(16), ch(8), ch(0), ch(24)],
+            elevation: elevation as f32,
+            transparent_occluder,
+            dpr: crate::platform::device_pixel_ratio() as f32,
+        };
+        // SAFETY: canvas is the receiver's native field.
+        unsafe { push(canvas, d) };
+    });
 }
 
 /// Records an image draw, or says why not: a disposed image draws nothing,

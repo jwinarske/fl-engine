@@ -1,0 +1,11 @@
+name: shadows
+description: fl-engine test program. Canvas.drawShadow at elevations, shapes and colors (docs/m3-images-text.md §12, stage 3).
+publish_to: none
+environment:
+  sdk: ^3.13.0
+dependencies:
+  flutter:
+    sdk: flutter
+dev_dependencies:
+  flutter_test:
+    sdk: flutter

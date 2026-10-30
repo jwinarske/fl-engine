@@ -10,3 +10,5 @@
 /apps/*/build/
 # The app lane's Flutter checkout (ci.yml).
 /.flutter/
+# flutter test leaves these when a golden differs
+apps/*/test/failures/

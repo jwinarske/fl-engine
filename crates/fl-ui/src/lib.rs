@@ -33,8 +33,8 @@ pub use image::{
 pub use painting::{Cap, ClipOp, Draw, Join, Paint, Picture, Style};
 pub use path::{Affine, FillType, Path, Point, RRect, Seg};
 pub use platform::{
-    deliver_replies, discard_replies, has_pending_replies, set_frame_scheduler, set_frame_sink,
-    set_reply_waker, Frame,
+    deliver_replies, discard_replies, has_pending_replies, set_device_pixel_ratio,
+    set_frame_scheduler, set_frame_sink, set_reply_waker, Frame,
 };
 
 /// Every dart:ui native this crate implements.
@@ -438,10 +438,6 @@ pub static STUBS: &[(&str, &str)] = &[
     (
         "FontCollection::LoadFontFromList",
         "the callback answered; the font not registered (M3 stage 4)",
-    ),
-    (
-        "Canvas::drawShadow",
-        "nothing: the shadow is not drawn (M3 stage 3)",
     ),
     (
         "Codec::frameCount",

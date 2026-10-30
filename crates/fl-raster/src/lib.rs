@@ -596,6 +596,20 @@ fn draw_one(canvas: &mut Canvas, draw: &Draw, slots: &mut Slots) -> Result<(), R
             }
         }
         Draw::Picture(p) => draw_picture(canvas, p, slots)?,
+        Draw::Shadow {
+            path,
+            color,
+            elevation,
+            transparent_occluder,
+            dpr,
+        } => {
+            // The occluder flag is unread, as Impeller leaves it.
+            let _ = transparent_occluder;
+            let path = path_of(path);
+            if path.is_finite() {
+                draw_shadow(canvas, &path, *color, *elevation, *dpr)?;
+            }
+        }
         Draw::Image {
             image,
             src,
@@ -667,6 +681,88 @@ fn draw_one(canvas: &mut Canvas, draw: &Draw, slots: &mut Slots) -> Result<(), R
     Ok(())
 }
 
+/// `drawShadow` as Impeller draws it (`DlDispatcherBase::drawShadow`,
+/// dl_dispatcher.cc): the tonal spot color at a quarter of the color's
+/// alpha, the occluder `dpr * elevation` above the canvas, the path moved
+/// down by that much in device pixels (`Canvas::PreConcat` puts the
+/// translation before the transform), and drawn with a normal mask blur
+/// whose radius is that height over the transform's y scale. The light
+/// radius is `800 / 600`, integer division, so 1, as upstream computes it.
+///
+/// Not emblema's `draw_shadow`, which moves the path in local units, so by
+/// the canvas scale times too far, and converts the radius before dividing
+/// by the scale. Measured against flutter_tester with Impeller: the
+/// shadow's centroid `3 * elevation` pixels down at its engine DPR of 3.
+fn draw_shadow(
+    canvas: &mut Canvas,
+    path: &emblema::Path,
+    color: [f32; 4],
+    elevation: f32,
+    dpr: f32,
+) -> Result<(), RasterError> {
+    let occluder_z = dpr * elevation;
+    if !occluder_z.is_finite() || occluder_z <= 0.0 {
+        return Ok(());
+    }
+    let spot = tonal_spot_color(color);
+    if spot[3] <= 0.0 {
+        return Ok(());
+    }
+    let affine = canvas.transform().to_affine();
+    let scale_y = affine
+        .map(|a| a.matrix2.y_axis.length())
+        .filter(|s| s.is_finite() && *s > 0.0)
+        .unwrap_or(1.0);
+    // `occluder_z` down the screen, as a translation in local units: the
+    // transform's linear part, inverted, applied to it.
+    let down = affine
+        .map(|a| a.matrix2)
+        .filter(|m| m.determinant().abs() > f32::EPSILON)
+        .map(|m| m.inverse() * Vec2::new(0.0, occluder_z))
+        .filter(|v| v.is_finite())
+        .unwrap_or(Vec2::new(0.0, occluder_z / scale_y));
+    // Radius to sigma, as `Radius::operator Sigma` converts.
+    let radius = SHADOW_LIGHT_RADIUS * occluder_z / scale_y;
+    let sigma = radius / KERNEL_RADIUS_PER_SIGMA + 0.5;
+    let [r, g, b, a] = spot;
+    let paint = EPaint::fill(Color::srgb(r, g, b, a)).with_mask_blur(sigma);
+    let depth = canvas.save_depth();
+    canvas.save();
+    // `-occluder_z * light_position.y`, the light at (0, -1, 1).
+    canvas.translate(down.x, down.y);
+    let drawn = canvas.draw_path(path, &paint).map(|_| ());
+    restore_to(canvas, depth);
+    Ok(drawn?)
+}
+
+/// Impeller's `kLightRadius`: `800 / 600` in integers.
+const SHADOW_LIGHT_RADIUS: f32 = 1.0;
+
+/// Impeller's `kKernelRadiusPerSigma`, the square root of three.
+const KERNEL_RADIUS_PER_SIGMA: f32 = 1.732_050_8;
+
+/// The spot color, straight sRGB: Impeller's port of
+/// `SkShadowUtils::ComputeTonalColors`, from a color whose alpha is first
+/// quartered.
+fn tonal_spot_color([r, g, b, a]: [f32; 4]) -> [f32; 4] {
+    let alpha = a * 0.25;
+    let max = r.max(g).max(b);
+    let min = r.min(g).min(b);
+    let luminance = (min + max) * 0.5;
+    let alpha_adjust = (2.6 + (-2.666_67 + 1.066_67 * alpha) * alpha) * alpha;
+    let color_alpha = (3.544_762 + (-4.891_428 + 2.346_6 * luminance) * luminance) * luminance;
+    let color_alpha = (alpha_adjust * color_alpha).clamp(0.0, 1.0);
+    let greyscale_alpha = (alpha * (1.0 - 0.4 * luminance)).clamp(0.0, 1.0);
+    let color_scale = color_alpha * (1.0 - greyscale_alpha);
+    let tonal_alpha = color_scale + greyscale_alpha;
+    let unpremul = if tonal_alpha != 0.0 {
+        color_scale / tonal_alpha
+    } else {
+        0.0
+    };
+    [unpremul * r, unpremul * g, unpremul * b, tonal_alpha]
+}
+
 /// `BlendMode.modulate`.
 const MODULATE: i32 = 13;
 
@@ -676,13 +772,14 @@ fn argb(c: u32) -> Color {
     Color::srgb(ch(16), ch(8), ch(0), ch(24))
 }
 
-/// `FilterQuality` to emblema's sampling (brief M3 §4): none is nearest,
-/// low linear, medium linear between mip levels, high cubic.
+/// `FilterQuality` to emblema's sampling, as Impeller samples it
+/// (skia_conversions.cc `ToSamplerDescriptor`): none is nearest, low
+/// linear, medium and high both linear between mip levels. Impeller has no
+/// cubic; it takes `kCubic` as `kMipmapLinear`.
 fn sampling_of(quality: i32) -> Sampling {
     match quality {
         0 => Sampling::Nearest,
-        2 => Sampling::Mipmap,
-        3 => Sampling::Cubic,
+        2 | 3 => Sampling::Mipmap,
         _ => Sampling::Linear,
     }
 }
@@ -929,6 +1026,43 @@ mod tests {
             Err(RasterError::Unsupported(_))
         ));
         assert!(paint_of(&Paint::default(), &mut Slots::new(&GpuImages::default())).is_ok());
+    }
+
+    #[test]
+    fn shadow_colors_are_impellers_tonal_spot() {
+        // Black: luminance 0, so greyscale at a quarter of the alpha.
+        assert_eq!(
+            tonal_spot_color([0.0, 0.0, 0.0, 1.0]),
+            [0.0, 0.0, 0.0, 0.25]
+        );
+        // Transparent: no shadow.
+        assert_eq!(tonal_spot_color([0.2, 0.4, 0.9, 0.0])[3], 0.0);
+        // A color keeps its hue, below its own alpha.
+        let [r, _, b, a] = tonal_spot_color([0.1, 0.2, 0.9, 1.0]);
+        assert!(a > 0.0 && a < 1.0 && b > r, "{r} {b} {a}");
+    }
+
+    #[test]
+    fn a_shadow_falls_down_the_screen_whatever_the_transform() {
+        // Under a quarter turn the local offset is not (0, z), but it still
+        // maps to (0, z) on screen, as Impeller's pre-concatenated
+        // translation does.
+        let mut canvas = Canvas::new(Extent2D::new(64, 64));
+        canvas.rotate(std::f32::consts::FRAC_PI_2);
+        let m = canvas.transform().to_affine().unwrap().matrix2;
+        let down = m.inverse() * Vec2::new(0.0, 8.0);
+        assert!((down - Vec2::new(0.0, 8.0)).length() > 1.0, "{down:?}");
+        assert!((m * down - Vec2::new(0.0, 8.0)).length() < 1e-4);
+        let depth = canvas.save_depth();
+        let path = rrect_path(&RRect {
+            ltrb: [0.0, 0.0, 4.0, 4.0],
+            radii: [[0.0; 2]; 4],
+        });
+        assert!(draw_shadow(&mut canvas, &path, [0.0, 0.0, 0.0, 1.0], 4.0, 2.0).is_ok());
+        assert_eq!(canvas.save_depth(), depth);
+        // Nothing at ground level, or at a non-finite height.
+        assert!(draw_shadow(&mut canvas, &path, [0.0, 0.0, 0.0, 1.0], 0.0, 2.0).is_ok());
+        assert!(draw_shadow(&mut canvas, &path, [0.0, 0.0, 0.0, 1.0], f32::NAN, 2.0).is_ok());
     }
 
     #[test]

@@ -57,6 +57,8 @@ pub fn isolate_config(script_uri: &str, wake: &Wake) -> IsolateConfig {
 /// isolate's scope, before [`HandleScope::invoke_main`].
 pub fn prepare(s: &mut HandleScope<'_>, view: &ViewConfig) -> Result<(), DartError> {
     let ui = s.lookup_library("dart:ui")?;
+    // What `drawShadow` scales its elevation by, view 0's as the engine's.
+    fl_ui::set_device_pixel_ratio(view.device_pixel_ratio);
 
     // Without it `PlatformDispatcher.implicitView` is null and `runApp`
     // throws (dart_ui.cc:381; widgets/binding.dart:1628-1650).

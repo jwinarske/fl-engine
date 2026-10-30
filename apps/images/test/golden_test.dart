@@ -1,8 +1,8 @@
-// The reference frame: the stock engine's flutter_tester renders Images at
+// The reference frame: the stock engine's flutter_tester, with Impeller, renders Images at
 // the size and DPR fl-engine's app lane uses (docs/m3-images-text.md §9).
 // Decoding is real work, so it runs outside the fake async zone.
 //
-//     flutter test --update-goldens
+//     flutter test --enable-impeller --update-goldens
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';

@@ -66,3 +66,27 @@ Found on the way:
 * `getNextFrame`'s callback takes three arguments; the reply queue carries them now
 * The engine makes `_Image` with `Dart_New` and the private constructor `_`, so its fields are initialized
 * `Image.asset` resolving a frame later made the frame count timing-dependent: 2 or 3. The app resolves it through `AssetImage` before `runApp`; the widget finds it in the cache
+
+## Stage 3: shadows, and Impeller parity (2026-10-30)
+
+Done: `shadows` matches flutter_tester's golden with Impeller within the recorded tolerance; the counter app's button casts its shadow.
+
+    tools/flutter-app/build.sh $FLUTTER_ROOT apps/shadows out
+    fl-dart run-app out/shadows.so 1200x900@3 --png shadows.png
+    frame 1: view 0 1200x900 layers=1 pictures=1 draws=23
+
+Parity target Impeller (D6): every golden re-rendered with `flutter test --enable-impeller`, on lavapipe here and in CI. flutter_tester fails rather than fall back when it cannot make a Vulkan context.
+
+* `drawShadow`: Impeller's `DlDispatcherBase::drawShadow` in fl-raster, on emblema's mask blur. Tonal spot color at a quarter of the alpha; occluder `dpr * elevation`; the path moved down by that in device pixels; blur radius that over the y scale, `Radius` to `Sigma` as upstream converts; light radius `800 / 600`, integers, 1
+* The DPR is view 0's, recorded with the draw (`fl_ui::set_device_pixel_ratio`, set by `fl_shell::prepare`), as canvas.cc reads it
+* `FilterQuality.high` sampled linear between mip levels: Impeller has no cubic and takes `kCubic` as `kMipmapLinear`
+* Goldens against Impeller, measured: shapes 0.226% differ, 0.028% over 32 (Skia: 0.628, 0.121); material 0.021, 0.007; natives 1.562, 0.209 (5.048, 0.335); images 10.746, 0.039 (10.411, 0.235); shadows 17.147, 0.002. Tolerances tightened to match
+* `apps/shadows`: rects at elevations 1 to 16, a rounded rect, an oval, a colored shadow, a transparent occluder, two `PhysicalModel`s. 1200x900 at DPR 3
+* `matches_golden_at`: size and DPR per app
+
+Found on the way:
+
+* emblema's `draw_shadow` is not Impeller's at this pin: it translates in local units (`PreConcat` puts Impeller's before the transform, so device pixels) and converts the radius before dividing by the scale. Not used; fl-raster draws the shadow itself
+* emblema's normal mask blur is byte-identical to Impeller's at sigma 2, 4 and 8
+* flutter_tester's engine DPR is 3 whatever `tester.view.devicePixelRatio` says; only `drawShadow` reads it. Goldens with shadows render at DPR 3 so both engines agree
+* flutter_test draws a physical model's outline unless `debugDisableShadows` is false, reset before the test ends

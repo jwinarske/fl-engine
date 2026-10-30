@@ -1,7 +1,7 @@
-// The reference frame: the stock engine's flutter_tester renders Shapes at
+// The reference frame: the stock engine's flutter_tester, with Impeller, renders Shapes at
 // the size and DPR fl-engine's app lane uses (docs/m2-dart-ui.md §9).
 //
-//     flutter test --update-goldens
+//     flutter test --enable-impeller --update-goldens
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shapes/shapes.dart';

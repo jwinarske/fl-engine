@@ -1,6 +1,6 @@
 //! `PlatformConfigurationNativeApi`: the dispatcher's way out to the engine.
 
-use std::sync::atomic::{AtomicI64, Ordering};
+use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use fl_dart_ffi::{args, guard, peer, sys};
@@ -34,6 +34,25 @@ type FrameScheduler = Box<dyn Fn() + Send>;
 
 /// What [`schedule_frame`] calls: the shell's vsync request.
 static FRAME_SCHEDULER: Mutex<Option<FrameScheduler>> = Mutex::new(None);
+
+/// View 0's device pixel ratio, as `f64` bits: what `drawShadow` scales its
+/// elevation by.
+static DPR: AtomicU64 = AtomicU64::new(0x3FF0_0000_0000_0000);
+
+/// Sets the device pixel ratio `drawShadow` reads, the implicit view's, as
+/// the engine reads it from view 0's metrics. 1 until set.
+pub fn set_device_pixel_ratio(dpr: f64) {
+    let dpr = if dpr.is_finite() && dpr > 0.0 {
+        dpr
+    } else {
+        1.0
+    };
+    DPR.store(dpr.to_bits(), Ordering::Relaxed);
+}
+
+pub(crate) fn device_pixel_ratio() -> f64 {
+    f64::from_bits(DPR.load(Ordering::Relaxed))
+}
 
 /// Sets what `PlatformDispatcher.scheduleFrame` asks for a frame through.
 /// It runs on the UI thread, inside the `ScheduleFrame` native, and must not

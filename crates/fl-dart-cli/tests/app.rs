@@ -185,8 +185,8 @@ frame 2: view 0 200x100 layers=1 pictures=1 draws=1
 
 /// M3 stage 1's bar: `flutter create`'s counter app, unmodified, renders
 /// with no Dart error, its text drawn as nothing (the text natives are
-/// stubs) and its button's shadow not drawn. The scene: the background and
-/// the app bar, the body's clip, and the button's shape.
+/// stubs). The scene: the background and the app bar, the body's clip, and
+/// the button's shadow (stage 3) and shape.
 #[test]
 #[ignore = "app lane: needs FLUTTER_ROOT"]
 fn counter_renders_without_a_dart_error() {
@@ -211,7 +211,7 @@ fn counter_renders_without_a_dart_error() {
         );
     }
     // Not a `\` continuation: that would drop the first line's indent.
-    let want = "frame 1: view 0 800x600 layers=3 pictures=3 draws=12
+    let want = "frame 1: view 0 800x600 layers=3 pictures=3 draws=13
   PushTransform
     PushOffset
       PushOffset
@@ -225,6 +225,7 @@ fn counter_renders_without_a_dart_error() {
         AddPicture
           Save
           Transform
+          Shadow
           Path
           Save
           Translate
@@ -283,6 +284,14 @@ badge.png: cached
     );
 }
 
+/// Stage 3: drawShadow as Impeller draws it, against flutter_tester with
+/// Impeller, both at DPR 3.
+#[test]
+#[ignore = "app lane: needs FLUTTER_ROOT and a Vulkan driver"]
+fn shadows_matches_its_golden() {
+    matches_golden_at("shadows", (1200, 900), 3);
+}
+
 /// The natives no other app reaches, one cell each, against their golden.
 #[test]
 #[ignore = "app lane: needs FLUTTER_ROOT and a Vulkan driver"]
@@ -318,7 +327,7 @@ const NOT_YET: &[(&str, &str)] = &[
 #[test]
 #[ignore = "app lane: needs FLUTTER_ROOT"]
 fn every_native_is_called_by_an_app() {
-    let runs: [(&str, &[&str]); 9] = [
+    let runs: [(&str, &[&str]); 10] = [
         ("colored_box", &[]),
         ("shapes", &["--frames", "1"]),
         ("material", &[]),
@@ -328,6 +337,7 @@ fn every_native_is_called_by_an_app() {
         ("assets", &[]),
         ("counter", &["--frames", "1"]),
         ("images", &[]),
+        ("shadows", &["--frames", "1"]),
     ];
     let mut called = std::collections::BTreeSet::new();
     for (name, opts) in runs {
@@ -395,13 +405,21 @@ fn material_records_the_expected_scene() {
 /// `apps/<name>`'s first frame at 800x600, DPR 2, against
 /// `apps/<name>/test/goldens/<name>.png` and the tolerance beside it.
 fn matches_golden(name: &str) {
+    matches_golden_at(name, (800, 600), 2);
+}
+
+/// As [`matches_golden`], at another size and DPR: an app that draws
+/// shadows renders at DPR 3, flutter_tester's engine DPR, so the shadow and
+/// the view agree in both engines.
+fn matches_golden_at(name: &str, (w, h): (u32, u32), dpr: u32) {
     let app = build_app(name);
+    let view = format!("{w}x{h}@{dpr}");
     let png = common::out_dir().join(format!("apps/{name}.png"));
     let _ = std::fs::remove_file(&png);
     let o = common::fl_dart(&[
         "run-app".as_ref(),
         app.as_os_str(),
-        "800x600@2".as_ref(),
+        view.as_ref(),
         "--png".as_ref(),
         png.as_os_str(),
         "--frames".as_ref(),
@@ -409,8 +427,8 @@ fn matches_golden(name: &str) {
     ]);
     assert!(o.status.success(), "{o:?}");
     let goldens = repo().join(format!("apps/{name}/test/goldens"));
-    let ours = read_png(&png, (800, 600));
-    let theirs = read_png(&goldens.join(format!("{name}.png")), (800, 600));
+    let ours = read_png(&png, (w, h));
+    let theirs = read_png(&goldens.join(format!("{name}.png")), (w, h));
     let tolerance = std::fs::read_to_string(goldens.join(format!("{name}.tolerance"))).unwrap();
     let limit = |key: &str| -> f64 {
         tolerance
@@ -441,8 +459,8 @@ fn matches_golden(name: &str) {
         }
     }
     let diff_png = png.with_file_name(format!("{name}-diff.png"));
-    write_png(&diff_png, (800, 600), &diff);
-    let pct = |n: usize| 100.0 * n as f64 / (800.0 * 600.0);
+    write_png(&diff_png, (w, h), &diff);
+    let pct = |n: usize| 100.0 * n as f64 / (f64::from(w * h));
     let report = format!(
         "{:.3}% differ (limit {}), {:.3}% by more than 32 (limit {}); frame at {}, diff at {}",
         pct(differ),

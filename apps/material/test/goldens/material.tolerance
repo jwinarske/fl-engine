@@ -1,9 +1,9 @@
-# material.png, rendered by the stock engine's flutter_tester, against
-# fl-engine's frame through emblema (docs/m2-dart-ui.md §9). Percent of
-# pixels allowed to differ in any channel, and by more than 32.
-#
-# Edges only: the card's rounded corners and sides, covered by emblema its
-# own way. Measured 2026-10-28, lavapipe: 0.067% differ, 0.008% by more
+# material.png, rendered by the stock engine's flutter_tester with Impeller,
+# against fl-engine's frame through emblema (docs/m3-status.md, Impeller
+# parity). Percent of pixels allowed to differ in any channel, and by more
 # than 32.
-differ 0.5
+#
+# Edges only: the card's rounded corners. Measured 2026-10-30, lavapipe:
+# 0.021% differ, 0.007% by more than 32.
+differ 0.1
 differ_over_32 0.05

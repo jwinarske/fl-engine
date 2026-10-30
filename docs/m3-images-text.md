@@ -1,6 +1,6 @@
 # M3: images and text
 
-> Brief, 2026-10-28. The five decisions in §13 were taken 2026-10-29. Findings from bring-up go
+> Brief, 2026-10-28. The decisions in §13 were taken 2026-10-29 and 30. Findings from bring-up go
 > in `docs/m3-status.md`, newer where the two disagree.
 
 **`flutter create`'s counter app, unmodified, renders its first frame on fl-engine and matches the stock engine's golden within a recorded tolerance: app bar title, body text, the count, and the floating action button with its icon and shadow. Images are decoded, text shaped and laid out, and glyphs rasterized in pure Rust; emblema draws both.**
@@ -100,7 +100,8 @@ fl-text and fl-image know neither the VM nor emblema, so each is testable alone 
 
 ## 9. Goldens
 
-* As M2: the stock engine's flutter_tester renders each program; fl-engine's frame is compared with a tolerance recorded beside the golden
+* As M2: the stock engine's flutter_tester renders each program, with Impeller (D6); fl-engine's frame is compared with a tolerance recorded beside the golden
+* Programs that draw shadows render at DPR 3: `drawShadow` reads the engine's view-0 DPR, which flutter_tester fixes at 3
 * flutter_tester draws every glyph as a box (the Ahem test font) unless a test loads fonts. The text goldens load Roboto and MaterialIcons from the Flutter cache (`bin/cache/artifacts/material_fonts`) with `FontLoader`, and the apps name those families, so both engines draw the same faces
 * Text pixels will differ more than shapes did: hinting, subpixel positioning, the rasterizer's coverage. The layout is held separately and tighter, by `metrics`: positions within half a pixel of the stock engine's
 
@@ -143,6 +144,7 @@ Each stage carries its items from §15.
 * **D3, decoders: one crate per format.** `png` (1.73), `zune-jpeg` (1.77), `gif` (1.62), `image-webp` (1.80). Not the `image` crate, which needs 1.88
 * **D4, fallback fonts: the system's, through fontdb** (1.71), scanning the directories fontconfig would, after the manifest's fonts and the app's. As Flutter on Linux behaves. Goldens still load Roboto by name, so they do not depend on what a runner has installed
 * **D5, decoding: one worker thread**, as the engine's IO runner. Results come back through the reply queue, which then wakes the UI loop from another thread; the TSan lane covers that crossing
+* **D6, parity target: Impeller** (2026-10-30). Goldens are rendered by flutter_tester with `--enable-impeller`, and fl-engine matches Impeller's behavior where it and Skia differ: shadows, sampling. Skia is being deprecated
 
 ## 14. Risks
 
