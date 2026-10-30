@@ -86,7 +86,7 @@ Parity target Impeller (D6): every golden re-rendered with `flutter test --enabl
 
 Found on the way:
 
-* emblema's `draw_shadow` is not Impeller's at this pin: it translates in local units (`PreConcat` puts Impeller's before the transform, so device pixels) and converts the radius before dividing by the scale. Not used; fl-raster draws the shadow itself. Reported as jwinarske/emblema#226
+* emblema's `draw_shadow` is not Impeller's at this pin: it translates in local units (`PreConcat` puts Impeller's before the transform, so device pixels) and converts the radius before dividing by the scale. Fixed in jwinarske/emblema#227; fl-raster drew the shadow itself until then, and calls `draw_shadow` with `dpr * elevation` from emblema `657035f` on
 * emblema's normal mask blur is byte-identical to Impeller's at sigma 2, 4 and 8
 * flutter_tester's engine DPR is 3 whatever `tester.view.devicePixelRatio` says; only `drawShadow` reads it. Goldens with shadows render at DPR 3 so both engines agree
 * flutter_test draws a physical model's outline unless `debugDisableShadows` is false, reset before the test ends
