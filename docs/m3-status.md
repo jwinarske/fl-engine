@@ -80,7 +80,7 @@ Parity target Impeller (D6): every golden re-rendered with `flutter test --enabl
 * `drawShadow`: Impeller's `DlDispatcherBase::drawShadow` in fl-raster, on emblema's mask blur. Tonal spot color at a quarter of the alpha; occluder `dpr * elevation`; the path moved down by that in device pixels; blur radius that over the y scale, `Radius` to `Sigma` as upstream converts; light radius `800 / 600`, integers, 1
 * The DPR is view 0's, recorded with the draw (`fl_ui::set_device_pixel_ratio`, set by `fl_shell::prepare`), as canvas.cc reads it
 * `FilterQuality.high` sampled linear between mip levels: Impeller has no cubic and takes `kCubic` as `kMipmapLinear`
-* Goldens against Impeller, measured: shapes 0.226% differ, 0.028% over 32 (Skia: 0.628, 0.121); material 0.021, 0.007; natives 1.562, 0.209 (5.048, 0.335); images 10.746, 0.039 (10.411, 0.235); shadows 17.147, 0.002. Tolerances tightened to match
+* Goldens against Impeller, measured: shapes 0.226% differ, 0.028% over 32 (Skia: 0.628, 0.121); material 0.021, 0.007; natives 1.562, 0.209 (5.048, 0.335); images 10.746, 0.039 (10.411, 0.235); shadows 17.147, 0.002, then 6.290, 0.002 with shapes kept (below). Tolerances tightened to match
 * `apps/shadows`: rects at elevations 1 to 16, a rounded rect, an oval, a colored shadow, a transparent occluder, two `PhysicalModel`s. 1200x900 at DPR 3
 * `matches_golden_at`: size and DPR per app
 
@@ -90,6 +90,8 @@ Found on the way:
 * emblema's normal mask blur is byte-identical to Impeller's at sigma 2, 4 and 8
 * flutter_tester's engine DPR is 3 whatever `tester.view.devicePixelRatio` says; only `drawShadow` reads it. Goldens with shadows render at DPR 3 so both engines agree
 * flutter_test draws a physical model's outline unless `debugDisableShadows` is false, reset before the test ends
+* A shadow's rect, uniform rounded rect or circle reaches emblema as that shape, so it is blurred analytically, as Impeller's `SimplifyOrDrawPath` sends it. Built from segments, emblema could not tell and ran its general blur, about 0.87 of the sigma in effect: 1 to 3 levels off across every falloff. Against Impeller's formula in double precision the stock engine is within 0.6 levels; emblema's analytic route within 1. Ovals that are not circles keep emblema's blur; Impeller draws them as a shadow mesh, which emblema does not build
+* The analytic route drew a colored blur unpremultiplied (jwinarske/emblema#233, fixed in #234); black hid it
 
 ## Stage 4: layout (2026-10-30)
 

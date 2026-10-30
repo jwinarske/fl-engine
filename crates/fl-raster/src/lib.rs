@@ -603,7 +603,11 @@ fn draw_one(canvas: &mut Canvas, draw: &Draw, slots: &mut Slots) -> Result<(), R
             transparent_occluder,
             dpr,
         } => {
-            let path = path_of(path);
+            // A rect, a rounded rect with one circular radius or a circle
+            // goes to emblema as that shape, which takes the analytic blur:
+            // Impeller's `drawShadow` simplifies the path the same way
+            // (`SimplifyOrDrawPath`) and blurs those analytically too.
+            let path = shadow_path_of(path);
             if path.is_finite() {
                 // Impeller's occluder height, `dpr * elevation`, in device
                 // pixels, as emblema's `draw_shadow` takes it.
@@ -816,6 +820,140 @@ fn path_of(p: &fl_ui::Path) -> emblema::Path {
     b.build()
 }
 
+/// A shadow's path, its shape recorded when it is one emblema blurs
+/// analytically.
+fn shadow_path_of(p: &fl_ui::Path) -> emblema::Path {
+    match rounded_rect_of(p) {
+        // The same outline, built by emblema so that it carries the shape.
+        Some((r, radius)) => rect(r).to_rounded_path(radius),
+        None => path_of(p),
+    }
+}
+
+/// The rect, rounded rect or circle `p` is, as its bounds and one corner
+/// radius: what Skia's `IsRect`, `IsRRect` with all corners alike, and
+/// `IsOval` on a square find, read from the segments fl-ui's `addRect`,
+/// `addRRect` and `addOval` write. Anything else is `None`.
+fn rounded_rect_of(p: &fl_ui::Path) -> Option<([f32; 4], f32)> {
+    let close = |a: f32, b: f32, size: f32| (a - b).abs() <= 1e-4 * size.max(1.0);
+    match p.segs.as_slice() {
+        // A closed contour of four axis-aligned sides.
+        [Seg::Move(a), Seg::Line(b), Seg::Line(c), Seg::Line(d), rest @ ..]
+            if matches!(rest, [Seg::Close] | [Seg::Line(_), Seg::Close]) =>
+        {
+            if let [Seg::Line(e), Seg::Close] = rest {
+                if e != a {
+                    return None;
+                }
+            }
+            let pts = [*a, *b, *c, *d];
+            let (l, r) = (
+                pts.iter().map(|q| q[0]).fold(f32::MAX, f32::min),
+                pts.iter().map(|q| q[0]).fold(f32::MIN, f32::max),
+            );
+            let (t, bo) = (
+                pts.iter().map(|q| q[1]).fold(f32::MAX, f32::min),
+                pts.iter().map(|q| q[1]).fold(f32::MIN, f32::max),
+            );
+            let size = (r - l).max(bo - t);
+            let corner = |q: &[f32; 2]| {
+                (close(q[0], l, size) || close(q[0], r, size))
+                    && (close(q[1], t, size) || close(q[1], bo, size))
+            };
+            let sides = pts
+                .iter()
+                .zip(pts.iter().cycle().skip(1))
+                .all(|(u, v)| close(u[0], v[0], size) || close(u[1], v[1], size));
+            (r > l && bo > t && pts.iter().all(corner) && sides).then_some(([l, t, r, bo], 0.0))
+        }
+        // addRRect: four sides, four quarter conics, one circular radius.
+        [Seg::Move(m), Seg::Line(_), Seg::Conic(c0, _, w0), Seg::Line(_), Seg::Conic(c1, _, w1), Seg::Line(_), Seg::Conic(c2, _, w2), Seg::Line(_), Seg::Conic(c3, e3, w3), Seg::Close] =>
+        {
+            let (l, t, r, b) = (c3[0], c0[1], c0[0], c1[1]);
+            let size = (r - l).max(b - t);
+            let radius = m[0] - l;
+            let ok = close(c1[0], r, size)
+                && close(c2[0], l, size)
+                && close(c2[1], b, size)
+                && close(c3[1], t, size)
+                && [w0, w1, w2, w3]
+                    .iter()
+                    .all(|w| close(**w, std::f32::consts::FRAC_1_SQRT_2, 1.0))
+                && radius > 0.0
+                && close(e3[0], m[0], size)
+                && close(e3[1], m[1], size)
+                && corners_alike(&p.segs, [l, t, r, b], radius, size);
+            ok.then_some(([l, t, r, b], radius))
+        }
+        // addOval on a square: four quarter conics around a circle.
+        [Seg::Move(m), Seg::Conic(..), Seg::Conic(..), Seg::Conic(..), Seg::Conic(_, e, _), Seg::Close] =>
+        {
+            let mut pts = vec![*m];
+            for s in &p.segs {
+                if let Seg::Conic(c, q, _) = s {
+                    pts.push(*c);
+                    pts.push(*q);
+                }
+            }
+            let l = pts.iter().map(|q| q[0]).fold(f32::MAX, f32::min);
+            let r = pts.iter().map(|q| q[0]).fold(f32::MIN, f32::max);
+            let t = pts.iter().map(|q| q[1]).fold(f32::MAX, f32::min);
+            let b = pts.iter().map(|q| q[1]).fold(f32::MIN, f32::max);
+            let size = (r - l).max(b - t);
+            let (cx, cy, rad) = ((l + r) / 2.0, (t + b) / 2.0, (r - l) / 2.0);
+            let on_circle = p.segs.iter().all(|s| match s {
+                Seg::Conic(_, q, w) => {
+                    close(*w, std::f32::consts::FRAC_1_SQRT_2, 1.0)
+                        && close(
+                            ((q[0] - cx).powi(2) + (q[1] - cy).powi(2)).sqrt(),
+                            rad,
+                            size,
+                        )
+                }
+                _ => true,
+            });
+            let ok = r > l
+                && close(r - l, b - t, size)
+                && on_circle
+                && close(e[0], m[0], size)
+                && close(e[1], m[1], size);
+            ok.then_some(([l, t, r, b], rad))
+        }
+        _ => None,
+    }
+}
+
+/// Whether every corner of an `addRRect` contour has the circular `radius`:
+/// each side's ends sit `radius` in from the corners.
+fn corners_alike(segs: &[Seg], [l, t, r, b]: [f32; 4], radius: f32, size: f32) -> bool {
+    let close = |a: f32, b: f32| (a - b).abs() <= 1e-4 * size.max(1.0);
+    let want = [
+        [l + radius, t],
+        [r - radius, t],
+        [r, t + radius],
+        [r, b - radius],
+        [r - radius, b],
+        [l + radius, b],
+        [l, b - radius],
+        [l, t + radius],
+    ];
+    let got: Vec<[f32; 2]> = segs
+        .iter()
+        .filter_map(|s| match s {
+            Seg::Move(q) | Seg::Line(q) => Some(*q),
+            Seg::Conic(_, q, _) => Some(*q),
+            _ => None,
+        })
+        .collect();
+    // Move, line, conic end, line, conic end, ... : the eight points in
+    // order, then the conic back to the start.
+    got.len() == 9
+        && got[..8]
+            .iter()
+            .zip(want)
+            .all(|(g, w)| close(g[0], w[0]) && close(g[1], w[1]))
+}
+
 /// dart:ui's `BlendMode`, by index. emblema numbers its modes as upstream
 /// does (jwinarske/emblema#225), and `ALL` is in that order.
 fn blend_of(i: i32) -> Result<BlendMode, RasterError> {
@@ -950,6 +1088,59 @@ mod tests {
             Err(RasterError::Unsupported(_))
         ));
         assert!(paint_of(&Paint::default(), &mut Slots::new(&GpuImages::default())).is_ok());
+    }
+
+    #[test]
+    fn a_shadow_keeps_the_shapes_impeller_blurs_analytically() {
+        let mut rect = fl_ui::Path::default();
+        rect.add_rect([20.0, 20.0, 80.0, 70.0]);
+        assert_eq!(
+            rounded_rect_of(&rect),
+            Some(([20.0, 20.0, 80.0, 70.0], 0.0))
+        );
+        let rr = |radii: [[f32; 2]; 4]| {
+            let mut p = fl_ui::Path::default();
+            p.add_rrect(&RRect {
+                ltrb: [20.0, 120.0, 80.0, 170.0],
+                radii,
+            });
+            p
+        };
+        assert_eq!(
+            rounded_rect_of(&rr([[12.0; 2]; 4])),
+            Some(([20.0, 120.0, 80.0, 170.0], 12.0))
+        );
+        // Corners that differ, or that are not circular: not one radius.
+        assert_eq!(
+            rounded_rect_of(&rr([[12.0; 2], [12.0; 2], [12.0; 2], [6.0; 2]])),
+            None
+        );
+        assert_eq!(rounded_rect_of(&rr([[12.0, 6.0]; 4])), None);
+        let oval = |ltrb| {
+            let mut p = fl_ui::Path::default();
+            p.add_oval(ltrb);
+            p
+        };
+        let (r, radius) = rounded_rect_of(&oval([10.0, 10.0, 70.0, 70.0])).unwrap();
+        assert!(r
+            .iter()
+            .zip([10.0, 10.0, 70.0, 70.0])
+            .all(|(a, b)| (a - b).abs() < 1e-3));
+        assert!((radius - 30.0).abs() < 1e-3);
+        // An ellipse is not a circle; upstream draws its shadow another way.
+        assert_eq!(rounded_rect_of(&oval([10.0, 10.0, 90.0, 60.0])), None);
+        // Two contours, or a triangle, are no shape.
+        let mut two = rect.clone();
+        two.add_rect([100.0, 0.0, 120.0, 20.0]);
+        assert_eq!(rounded_rect_of(&two), None);
+        let mut tri = fl_ui::Path::default();
+        tri.add_polygon(&[0.0, 0.0, 10.0, 0.0, 5.0, 8.0], true);
+        assert_eq!(rounded_rect_of(&tri), None);
+        // A shape-carrying path reaches emblema's analytic route.
+        assert!(shadow_path_of(&rr([[12.0; 2]; 4]))
+            .as_rounded_rect()
+            .is_some());
+        assert!(shadow_path_of(&tri).as_rounded_rect().is_none());
     }
 
     #[test]

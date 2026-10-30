@@ -19,7 +19,7 @@ fl-ui = { workspace = true }
 # BlendMode and TileMode numbered as upstream (jwinarske/emblema#225) and
 # draw_shadow in device pixels (#227). Back to a registry version once one
 # includes them.
-emblema = { git = "https://github.com/jwinarske/emblema", rev = "657035f2eb246343b1157436976053416416d903", default-features = false, features = ["vulkan"] }
+emblema = { git = "https://github.com/jwinarske/emblema", rev = "dd070f30b4491d29b14add7b433aed9c16fdf672", default-features = false, features = ["vulkan"] }
 png = "0.18"
 
 [dev-dependencies]
