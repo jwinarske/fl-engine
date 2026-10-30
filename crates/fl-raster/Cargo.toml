@@ -17,9 +17,9 @@ fl-ui = { workspace = true }
 # now, KMS at stage 6.
 # Pinned to a commit on emblema's main, not 0.2.0 from crates.io: it carries
 # BlendMode and TileMode numbered as upstream (jwinarske/emblema#225) and
-# draw_shadow in device pixels (#227). Back to a registry version once one
-# includes them.
-emblema = { git = "https://github.com/jwinarske/emblema", rev = "dd070f30b4491d29b14add7b433aed9c16fdf672", default-features = false, features = ["vulkan"] }
+# draw_shadow in device pixels (#227), and a colored analytic blur
+# premultiplied (#234). Back to a registry version once one includes them.
+emblema = { git = "https://github.com/jwinarske/emblema", rev = "e4491796f684231026efb7f4bb7c4d8b930c5f66", default-features = false, features = ["vulkan"] }
 png = "0.18"
 
 [dev-dependencies]
