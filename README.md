@@ -37,14 +37,14 @@ Built from dart-lang/sdk at a pinned revision, consumed as a prebuilt static arc
 
 Toolchain is pinned in `rust-toolchain.toml` (1.94.1, Yocto wrynose). MSRV 1.85.
 
-The repo is private, so fetching needs a token:
+Fetching needs no token. If `GITHUB_TOKEN` (or `GH_TOKEN`) is set it is sent, which raises the GitHub API rate limit:
 
-    GITHUB_TOKEN=... cargo xtask fetch-prebuilt --target x86_64-unknown-linux-gnu --mode aot
+    cargo xtask fetch-prebuilt --target x86_64-unknown-linux-gnu --mode aot
     cargo build -p fl-dart-cli
 
 JIT (x86_64 dev hosts only):
 
-    GITHUB_TOKEN=... cargo xtask fetch-prebuilt --target x86_64-unknown-linux-gnu --mode jit
+    cargo xtask fetch-prebuilt --target x86_64-unknown-linux-gnu --mode jit
     cargo build -p fl-dart-cli --no-default-features --features jit
 
 Without a VM (lint, docs, compile-fail tests):
@@ -94,7 +94,7 @@ Soak, release build. 1,000 isolate cycles per program, 100 VM lifecycles, valgri
 
 Sanitizers, x86_64 JIT, pinned nightly (see `.github/workflows/sanitize.yml`):
 
-    GITHUB_TOKEN=... cargo xtask fetch-prebuilt --mode jit-tsan
+    cargo xtask fetch-prebuilt --mode jit-tsan
     FL_DART_SDK_BIN=/path/to/dart-sdk/bin/dart RUSTFLAGS=-Zsanitizer=thread \
       cargo +nightly-2026-10-13 test -Zbuild-std \
       --target x86_64-unknown-linux-gnu -p fl-dart-cli --no-default-features --features jit

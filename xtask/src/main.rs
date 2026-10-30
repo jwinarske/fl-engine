@@ -5,8 +5,9 @@
 //!   CLI (`cargo install bindgen-cli --version 0.72.1 --locked`) and libclang.
 //! - `fetch-prebuilt` downloads and unpacks the pinned VM artifacts.
 
+use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::process::{Command, ExitCode};
+use std::process::{Command, ExitCode, Output, Stdio};
 
 /// Must agree with `fl-dart-sys`. Read from there rather than repeated would be
 /// better, and is not worth a dependency on the crate this regenerates.
@@ -137,33 +138,25 @@ fn fetch_prebuilt(args: &[String]) -> Result<(), String> {
         .ok_or_else(|| format!("{} has no entry for {name}", sums_path.display()))?;
 
     let tmp = std::env::temp_dir().join(&name);
-    // This repository is private, which decides the whole download shape: the
-    // browser URL answers anonymous *and* Actions-token requests with 404, so
-    // the fetch goes through the API asset endpoint, whose octet-stream form
-    // redirects to a signed blob URL. The token rides a curl config file, not
-    // argv, so a failed command echoed by run() cannot leak it.
-    let token = std::env::var("GITHUB_TOKEN")
-        .or_else(|_| std::env::var("GH_TOKEN"))
-        .map_err(|_| {
-            "GITHUB_TOKEN (or GH_TOKEN) is not set; the repository is private and \
-             release assets are only served to it through the API"
-                .to_owned()
-        })?;
+    // The fetch goes through the API asset endpoint, whose octet-stream form
+    // redirects to a signed blob URL. The repository is public, so that works
+    // anonymously; a token, when one is set, is sent as well, which lifts the
+    // API's per-address rate limit that shared CI runners can hit. It rides a
+    // curl config handed over on stdin: not argv, so a failed command echoed
+    // by run() cannot leak it, and not a file, so no early return can leave
+    // it behind on disk.
+    let config = curl_config(token_from(|k| std::env::var(k).ok()).as_deref());
     let api = format!(
         "https://api.github.com/repos/jwinarske/fl-engine/releases/tags/dart-prebuilt-{PINNED_VERSION}"
     );
-    let header_file = std::env::temp_dir().join("fl-dart-fetch-headers");
-    std::fs::write(
-        &header_file,
-        format!("header = \"Authorization: Bearer {token}\"\n"),
-    )
-    .map_err(|e| format!("cannot write curl config: {e}"))?;
-    let release = Command::new("curl")
-        .args(["-fsSL", "--retry", "3", "-K"])
-        .arg(&header_file)
-        .args(["-H", "Accept: application/vnd.github+json", &api])
-        .output()
-        .map_err(|e| format!("cannot run curl: {e}"))?;
+    let release = with_config(
+        Command::new("curl")
+            .args(["-fsSL", "--retry", "3", "-K", "-"])
+            .args(["-H", "Accept: application/vnd.github+json", &api])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped()),
+        &config,
+    )?;
     if !release.status.success() {
         return Err(format!(
             "listing release dart-prebuilt-{PINNED_VERSION} failed: {}",
@@ -189,14 +182,14 @@ fn fetch_prebuilt(args: &[String]) -> Result<(), String> {
     let asset_url =
         format!("https://api.github.com/repos/jwinarske/fl-engine/releases/assets/{asset_id}");
     let mut curl = Command::new("curl");
-    curl.args(["-fL", "--retry", "3", "-K"])
-        .arg(&header_file)
+    curl.args(["-fL", "--retry", "3", "-K", "-"])
         .args(["-H", "Accept: application/octet-stream", "-o"])
         .arg(&tmp)
         .arg(&asset_url);
-    let fetched = run(&mut curl);
-    let _ = std::fs::remove_file(&header_file);
-    fetched?;
+    let fetched = with_config(&mut curl, &config)?;
+    if !fetched.status.success() {
+        return Err(format!("{curl:?} failed: {}", fetched.status));
+    }
 
     let out = Command::new("sha256sum")
         .arg(&tmp)
@@ -221,6 +214,41 @@ fn fetch_prebuilt(args: &[String]) -> Result<(), String> {
     let _ = std::fs::remove_file(&tmp);
     println!("unpacked {name} into {}", dir.display());
     Ok(())
+}
+
+/// The token to send, if any: `GITHUB_TOKEN`, else `GH_TOKEN`. An empty value
+/// counts as unset, since GitHub answers an empty bearer token with 401 where
+/// it would serve the same request anonymously.
+fn token_from(var: impl Fn(&str) -> Option<String>) -> Option<String> {
+    ["GITHUB_TOKEN", "GH_TOKEN"]
+        .into_iter()
+        .filter_map(var)
+        .find(|t| !t.is_empty())
+}
+
+/// A curl config (`-K`) that sends `token` as a bearer header, or an empty one
+/// for an anonymous request.
+fn curl_config(token: Option<&str>) -> String {
+    token.map_or_else(String::new, |t| {
+        format!("header = \"Authorization: Bearer {t}\"\n")
+    })
+}
+
+/// Runs `cmd` with `config` written to its stdin, which is where `curl -K -`
+/// reads its config from, and waits for it.
+fn with_config(cmd: &mut Command, config: &str) -> Result<Output, String> {
+    let mut child = cmd
+        .stdin(Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("cannot run {cmd:?}: {e}"))?;
+    if let Some(mut stdin) = child.stdin.take() {
+        // A failed write means the child exited without reading its config;
+        // its status says why, so the error here adds nothing.
+        let _ = stdin.write_all(config.as_bytes());
+    }
+    child
+        .wait_with_output()
+        .map_err(|e| format!("cannot run {cmd:?}: {e}"))
 }
 
 fn host_target() -> &'static str {
@@ -359,5 +387,52 @@ mod tests {
         );
         assert_eq!(super::asset_id_for(body, "SHA256SUMS"), Some(681784959));
         assert_eq!(super::asset_id_for(body, "absent.tar.xz"), None);
+    }
+
+    /// The repository is public, so no token is needed: none set means an
+    /// anonymous fetch, not an error, and an empty one is the same as none.
+    #[test]
+    fn token_is_optional() {
+        let env = |pairs: &'static [(&'static str, &'static str)]| {
+            move |k: &str| {
+                pairs
+                    .iter()
+                    .find(|(name, _)| *name == k)
+                    .map(|(_, v)| (*v).to_owned())
+            }
+        };
+        assert_eq!(super::token_from(env(&[])), None);
+        assert_eq!(super::token_from(env(&[("GITHUB_TOKEN", "")])), None);
+        assert_eq!(
+            super::token_from(env(&[("GH_TOKEN", "b")])).as_deref(),
+            Some("b")
+        );
+        assert_eq!(
+            super::token_from(env(&[("GITHUB_TOKEN", "a"), ("GH_TOKEN", "b")])).as_deref(),
+            Some("a")
+        );
+        assert_eq!(
+            super::token_from(env(&[("GITHUB_TOKEN", ""), ("GH_TOKEN", "b")])).as_deref(),
+            Some("b")
+        );
+        assert_eq!(super::curl_config(None), "");
+        assert_eq!(
+            super::curl_config(Some("t0k")),
+            "header = \"Authorization: Bearer t0k\"\n"
+        );
+    }
+
+    /// The config, token and all, reaches the child on stdin, so it never
+    /// needs a file that an early return could leave behind.
+    #[test]
+    fn config_is_handed_over_on_stdin() {
+        let config = super::curl_config(Some("t0k"));
+        let out = super::with_config(
+            std::process::Command::new("cat").stdout(std::process::Stdio::piped()),
+            &config,
+        )
+        .unwrap();
+        assert!(out.status.success());
+        assert_eq!(String::from_utf8_lossy(&out.stdout), config);
     }
 }
