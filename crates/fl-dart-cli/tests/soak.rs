@@ -82,44 +82,105 @@ fn isolate_cycles_stay_flat() {
     }
 }
 
-/// App lifecycles (brief M2 §10, L5): each M2 app started and stopped in
-/// one VM, `app-cycle`, with RSS, descriptors and handles held to the same
-/// bounds as isolate cycles. `ticker` runs 100 frames a cycle at 1 kHz
-/// through one raster thread, 10,000 frames in all: picture and scene churn
-/// on both sides of it.
+/// `--font` options for Roboto and MaterialIcons from the Flutter release's
+/// cache, as the counter golden is given them.
+fn material_fonts() -> [String; 4] {
+    let root = std::env::var("FLUTTER_ROOT").expect("FLUTTER_ROOT names the Flutter release");
+    let fonts = format!("{root}/bin/cache/artifacts/material_fonts");
+    [
+        "--font".into(),
+        format!("Roboto={fonts}/Roboto-Regular.ttf"),
+        "--font".into(),
+        format!("MaterialIcons={fonts}/MaterialIcons-Regular.otf"),
+    ]
+}
+
+/// One app's `app-cycle` run in the soak: cycles, frames each renders, its
+/// options; with `--png`, drawn on the raster thread.
+#[cfg(feature = "aot")]
+struct Soak {
+    name: &'static str,
+    cycles: u32,
+    per_cycle: u64,
+    opts: Vec<String>,
+}
+
+#[cfg(feature = "aot")]
+fn soak(name: &'static str, cycles: u32, per_cycle: u64, opts: &[&str], draw: bool) -> Soak {
+    let mut opts: Vec<String> = opts.iter().map(|o| (*o).to_owned()).collect();
+    if draw {
+        let png = common::out_dir().join(format!("apps/{name}-soak.png"));
+        opts.extend(["--png".to_owned(), png.display().to_string()]);
+    }
+    Soak {
+        name,
+        cycles,
+        per_cycle,
+        opts,
+    }
+}
+
+/// App lifecycles (brief M2 §10, M3 §10, L5): each app started and stopped
+/// in one VM, `app-cycle`, with RSS, descriptors and handles held to the
+/// same bounds as isolate cycles, through one raster thread whose GPU
+/// image cache and glyph atlas outlive the cycles.
+///
+/// * colored_box, material and shapes run to their own end, the UI side
+///   only: the warm-up frame and the one scheduled after it
+/// * ticker: 100 frames a cycle at 1 kHz, 10,000 in all, picture and
+///   scene churn on both sides of the raster thread
+/// * images decodes and uploads its nine images each cycle, 2,700 decodes
+///   and disposes, and draws them twice
+/// * text and counter: static text, its glyphs written to the device once
+///   a cycle (each cycle's fonts are new), none on the frame after
+/// * gif: 16 frames a cycle of four animations decoded frame by frame
+/// * text_churn: 100 frames a cycle of text never the same, 10,000 in all;
+///   the atlas evicts, stays within its limit, and so do the placements
+///   kept beside it
 #[cfg(feature = "aot")]
 #[test]
 #[ignore = "soak lane: needs FLUTTER_ROOT"]
 fn app_cycles_stay_flat() {
-    let png = common::out_dir().join("apps/ticker-soak.png");
-    let ticker: Vec<&std::ffi::OsStr> = ["200x100", "--frames", "100", "--hz", "1000", "--png"]
-        .iter()
-        .map(std::ffi::OsStr::new)
-        .chain([png.as_os_str()])
-        .collect();
-    let images_png = common::out_dir().join("apps/images-soak.png");
-    let images: Vec<&std::ffi::OsStr> = ["800x600@2", "--png"]
-        .iter()
-        .map(std::ffi::OsStr::new)
-        .chain([images_png.as_os_str()])
-        .collect();
-    // App, cycles, frames each cycle renders, its options. colored_box,
-    // material and shapes run to their own end: the warm-up frame and the
-    // one scheduled after it. images decodes and uploads its nine images
-    // each cycle, and draws them twice.
-    let runs: [(&str, u32, u64, Vec<&std::ffi::OsStr>); 5] = [
-        ("colored_box", 1000, 2, vec![]),
-        ("material", 1000, 2, vec![]),
-        ("shapes", 300, 2, vec![]),
-        ("ticker", 100, 100, ticker),
-        ("images", 300, 2, images),
+    let fonts = material_fonts();
+    let fonts: Vec<&str> = fonts.iter().map(String::as_str).collect();
+    let with_fonts = |base: &[&'static str]| -> Vec<&str> {
+        base.iter().copied().chain(fonts.iter().copied()).collect()
+    };
+    let runs = [
+        soak("colored_box", 1000, 2, &[], false),
+        soak("material", 1000, 2, &[], false),
+        soak("shapes", 300, 2, &[], false),
+        soak(
+            "ticker",
+            100,
+            100,
+            &["200x100", "--frames", "100", "--hz", "1000"],
+            true,
+        ),
+        soak("images", 300, 2, &["800x600@2"], true),
+        soak("text", 300, 2, &["1600x1200@2"], true),
+        soak("counter", 100, 2, &with_fonts(&["1200x900@3"]), true),
+        soak("gif", 20, 16, &["400x300", "--frames", "16"], true),
+        soak(
+            "text_churn",
+            100,
+            100,
+            &with_fonts(&["400x300", "--frames", "100", "--hz", "1000"]),
+            true,
+        ),
     ];
-    for (name, n, per_cycle, opts) in runs {
+    for Soak {
+        name,
+        cycles: n,
+        per_cycle,
+        opts,
+    } in runs
+    {
         let app = common::build_app(name);
         let n_str = n.to_string();
         let mut args: Vec<&std::ffi::OsStr> =
             vec!["app-cycle".as_ref(), app.as_os_str(), n_str.as_ref()];
-        args.extend(opts);
+        args.extend(opts.iter().map(std::ffi::OsStr::new));
         let r = report(&args);
         assert_eq!(r["frames"], u64::from(n) * per_cycle, "{name}: {r:?}");
         let growth = r["rss_end_kb"].saturating_sub(r["rss_tenth_kb"]);
@@ -134,6 +195,18 @@ fn app_cycles_stay_flat() {
         assert_eq!(r["persistent_handles"], 0, "{name}: {r:?}");
         // Every image freed with its isolate is gone from the device too.
         assert_eq!(r["gpu_images"], 0, "{name}: GPU images leaked: {r:?}");
+        // The atlas within its limit, and the placements beside it pruned
+        // as it evicts (glyphs.rs).
+        assert!(r["atlas_side"] <= 4096, "{name}: {r:?}");
+        assert!(
+            r["atlas_placements"] <= 2 * r["atlas_glyphs"] + 1024,
+            "{name}: placements outgrew the atlas: {r:?}"
+        );
+        // Static text: no atlas write on a frame that draws only glyphs
+        // already in it (brief M3 §15, atlas uploads).
+        if matches!(name, "text" | "counter") {
+            assert!(r["atlas_uploads"] <= u64::from(n), "{name}: {r:?}");
+        }
         println!("{name}: {r:?}");
     }
 }
@@ -208,15 +281,24 @@ fn valgrind_finds_no_errors_or_leaks() {
 
 /// App lifecycles under memcheck: ten cycles each of the apps whose peers
 /// differ (pictures, scenes and layers; paths; reply callbacks; images,
-/// codecs and the decode thread). A peer a
-/// finalizer misses, or a retained layer never freed, is named here.
+/// codecs and the decode thread; paragraphs and fonts; an animation's
+/// frames). A peer a finalizer misses, or a retained layer never freed, is
+/// named here.
 #[cfg(feature = "aot")]
 #[test]
 #[ignore = "soak lane: needs FLUTTER_ROOT and valgrind"]
 fn valgrind_finds_no_errors_or_leaks_in_app_cycles() {
     use std::process::Command;
 
-    for name in ["colored_box", "shapes", "material", "images"] {
+    let runs: [(&str, &[&str]); 6] = [
+        ("colored_box", &[]),
+        ("shapes", &[]),
+        ("material", &[]),
+        ("images", &[]),
+        ("text", &[]),
+        ("gif", &["--frames", "4"]),
+    ];
+    for (name, opts) in runs {
         let app = common::build_app(name);
         let log = common::out_dir().join(format!("valgrind-{name}.log"));
         let o = Command::new("valgrind")
@@ -230,6 +312,7 @@ fn valgrind_finds_no_errors_or_leaks_in_app_cycles() {
             .arg(format!("--log-file={}", log.display()))
             .arg(env!("CARGO_BIN_EXE_fl-dart"))
             .args(["app-cycle".as_ref(), app.as_os_str(), "10".as_ref()])
+            .args(opts)
             .output()
             .expect("valgrind must be on PATH for the soak lane");
         let log = std::fs::read_to_string(&log).unwrap_or_default();
@@ -243,8 +326,9 @@ fn valgrind_finds_no_errors_or_leaks_in_app_cycles() {
     }
 }
 
-/// The sanitizer lanes' app check: the M2 apps, JIT from kernel, through a
-/// few lifecycles each and a short ticker run, under ASan or TSan. The UI
+/// The sanitizer lanes' app check: the M2 and M3 apps, JIT from kernel,
+/// through a few lifecycles each and short ticker, gif and text_churn
+/// runs, under ASan or TSan. The UI
 /// side only: no `--png`, so no raster thread, whose Vulkan driver is not
 /// instrumented. That leaves dart:ui's natives, the peers and their
 /// finalizers, the frame loop and the notify callback that reaches it from
@@ -252,7 +336,14 @@ fn valgrind_finds_no_errors_or_leaks_in_app_cycles() {
 #[test]
 #[ignore = "sanitizer lanes: see .github/workflows/sanitize.yml"]
 fn apps_under_a_sanitizer() {
-    let runs: [(&str, &[&str]); 5] = [
+    let fonts = material_fonts();
+    let fonts: Vec<&str> = fonts.iter().map(String::as_str).collect();
+    let counter: Vec<&str> = ["2"].into_iter().chain(fonts.iter().copied()).collect();
+    let churn: Vec<&str> = ["2", "400x300", "--frames", "50", "--hz", "1000"]
+        .into_iter()
+        .chain(fonts.iter().copied())
+        .collect();
+    let runs: [(&str, &[&str]); 9] = [
         ("colored_box", &["3"]),
         ("shapes", &["3", "--frames", "2"]),
         ("material", &["3"]),
@@ -262,6 +353,12 @@ fn apps_under_a_sanitizer() {
             "ticker",
             &["2", "200x100", "--frames", "20", "--hz", "1000"],
         ),
+        // Paragraphs, fonts loaded from lists and from files.
+        ("text", &["2"]),
+        ("counter", &counter),
+        // An animation's frames, decoded in turn on the decode thread.
+        ("gif", &["2", "400x300", "--frames", "8"]),
+        ("text_churn", &churn),
     ];
     for (name, args) in runs {
         let app = common::build_app(name);

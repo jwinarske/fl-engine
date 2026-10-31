@@ -77,9 +77,11 @@ pub fn load_font(data: Vec<u8>, family: &str) -> bool {
 }
 
 /// Forgets the collection, for a new bundle: the next paragraph makes it
-/// again.
+/// again. The runs shaped in its faces go with it, as an engine's caches
+/// go with the engine.
 pub(crate) fn reset_fonts() {
     *FONTS.lock().unwrap_or_else(|e| e.into_inner()) = None;
+    fl_text::clear_shaped_runs();
 }
 
 /// The `ParagraphBuilder` peer: the builder and the paints its styles

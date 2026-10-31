@@ -248,6 +248,12 @@ pub struct Rastered {
     /// referenced, and their bytes.
     pub gpu_images: usize,
     pub gpu_bytes: u64,
+    /// The glyph atlas at the end: its side, glyphs, the placements kept
+    /// for them, and its writes to the device.
+    pub atlas_side: u32,
+    pub atlas_glyphs: usize,
+    pub atlas_placements: usize,
+    pub atlas_uploads: u64,
 }
 
 impl RasterThread {
@@ -427,6 +433,10 @@ fn raster_main(
     target.images.sweep(&mut target.ctx);
     r.gpu_images = target.images().len();
     r.gpu_bytes = target.images().bytes();
+    r.atlas_side = target.glyphs.atlas().size();
+    r.atlas_glyphs = target.glyphs.atlas().len();
+    r.atlas_placements = target.glyphs.placements();
+    r.atlas_uploads = target.glyphs.uploads();
     r
 }
 

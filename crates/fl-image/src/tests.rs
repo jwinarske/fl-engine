@@ -653,3 +653,36 @@ fn the_worker_gives_an_animations_frames_in_turn() {
         .collect();
     assert_eq!(got, [10, 20, 10]);
 }
+
+/// A reservation the allocator refuses is `OutOfMemory`, not an abort
+/// (§15): the size past any heap, and a size past `usize`.
+#[test]
+fn a_failed_reservation_is_out_of_memory() {
+    assert_eq!(buffer(usize::MAX), Err(ImageError::OutOfMemory));
+    assert_eq!(
+        buffer(isize::MAX as usize - 4),
+        Err(ImageError::OutOfMemory)
+    );
+}
+
+/// A PNG header read is held to 16 MiB of ancillary data (§15): a text
+/// chunk past it, read on the UI thread, is refused; one within it read.
+#[test]
+fn a_png_header_past_its_byte_limit_is_refused() {
+    let png_with_text = |len: usize| {
+        let mut bytes = Vec::new();
+        {
+            let mut e = png::Encoder::new(&mut bytes, 1, 1);
+            e.set_color(png::ColorType::Rgba);
+            e.add_text_chunk("Comment".into(), "x".repeat(len)).unwrap();
+            let mut w = e.write_header().unwrap();
+            w.write_image_data(&[0, 0, 0, 0]).unwrap();
+        }
+        bytes
+    };
+    assert!(header(&png_with_text(1 << 20)).is_ok());
+    assert!(matches!(
+        header(&png_with_text(HEADER_BYTES + (1 << 20))),
+        Err(ImageError::Decode(e)) if e.contains("limits are exceeded")
+    ));
+}

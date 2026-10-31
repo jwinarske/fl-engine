@@ -1,0 +1,8 @@
+name: text_churn
+description: fl-engine test program. Text that changes every frame, for the soak lane's glyph atlas (docs/m3-images-text.md §10, L5).
+publish_to: none
+environment:
+  sdk: ^3.13.0
+dependencies:
+  flutter:
+    sdk: flutter

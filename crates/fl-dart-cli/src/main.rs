@@ -178,7 +178,6 @@ fn run_app(path: &str, app: AppArgs) -> Result<(), Failure> {
 /// churns too; it is made once, as a device is.
 fn app_cycle(path: &str, n: u32, app: AppArgs) -> Result<(), Failure> {
     let program = load_app(path)?;
-    set_assets(path, &app)?;
     let vm = start_vm()?;
     let raster = raster_for(&app)?;
     // Sampled as `cycle` samples: after the first cycle, after a tenth,
@@ -186,6 +185,9 @@ fn app_cycle(path: &str, n: u32, app: AppArgs) -> Result<(), Failure> {
     let tenth = (n / 10).max(1);
     let (mut warm, mut mid, mut frames) = (None, None, 0u64);
     for i in 0..n {
+        // Each lifecycle an engine's: the bundle and fonts afresh, so the
+        // fonts an app loaded go with it, as with the engine.
+        set_assets(path, &app)?;
         frames += app_once(&vm, &program, path, &app, raster.as_ref(), false)?.rendered;
         if i == 0 {
             warm = Some(usage_now());
@@ -199,15 +201,19 @@ fn app_cycle(path: &str, n: u32, app: AppArgs) -> Result<(), Failure> {
     let mid = mid.unwrap_or(end);
     let gpu = finish_raster(raster, &app)?;
     println!(
-        "cycles={n} frames={frames} rss_warm_kb={} rss_tenth_kb={} rss_end_kb={} fds_warm={} fds_end={} persistent_handles={} gpu_images={} gpu_kb={}",
+        "cycles={n} frames={frames} rss_warm_kb={} rss_tenth_kb={} rss_end_kb={} fds_warm={} fds_end={} persistent_handles={} gpu_images={} gpu_kb={} atlas_side={} atlas_glyphs={} atlas_placements={} atlas_uploads={}",
         warm.0,
         mid.0,
         end.0,
         warm.1,
         end.1,
         fl_dart_vm::live_persistent_handles(),
-        gpu.0,
-        gpu.1 / 1024
+        gpu.gpu_images,
+        gpu.gpu_bytes / 1024,
+        gpu.atlas_side,
+        gpu.atlas_glyphs,
+        gpu.atlas_placements,
+        gpu.atlas_uploads,
     );
     Ok(())
 }
@@ -362,13 +368,14 @@ fn raster_for(app: &AppArgs) -> Result<Option<std::sync::Arc<fl_raster::RasterTh
 }
 
 /// Stops the raster thread and writes its last frame to `--png`. Its first
-/// failure is the run's. The images still on the device, and their bytes.
+/// failure is the run's. What it did: the images still on the device, and
+/// the glyph atlas.
 fn finish_raster(
     raster: Option<std::sync::Arc<fl_raster::RasterThread>>,
     app: &AppArgs,
-) -> Result<(usize, u64), Failure> {
+) -> Result<fl_raster::Rastered, Failure> {
     let Some(raster) = raster else {
-        return Ok((0, 0));
+        return Ok(fl_raster::Rastered::default());
     };
     let r = std::sync::Arc::try_unwrap(raster)
         .map_err(|_| Failure::Other("the raster thread is still shared".into()))?
@@ -380,7 +387,7 @@ fn finish_raster(
         fl_raster::write_png(png, r.width, r.height, pixels)
             .map_err(|e| Failure::Other(e.to_string()))?;
     }
-    Ok((r.gpu_images, r.gpu_bytes))
+    Ok(r)
 }
 
 /// `vsync: frames=… interval_us=…`: how many frames were begun at vsync, and

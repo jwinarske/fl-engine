@@ -71,6 +71,13 @@ struct Key {
 
 static CACHE: Mutex<Option<HashMap<Key, Arc<Shaped>>>> = Mutex::new(None);
 
+/// Forgets every shaped run, for when the faces they were shaped in go:
+/// a run is keyed by its face's id, and a face loaded again is a new id,
+/// so the old runs would only wait for the bound to clear them.
+pub fn clear_shaped_runs() {
+    *CACHE.lock().unwrap_or_else(|e| e.into_inner()) = None;
+}
+
 /// `text` (UTF-8) shaped in `tf` at `size`, right to left if `rtl`, with
 /// `features` (tag, value, and the byte range within `text`). Cached by
 /// all of those; a panic in the shaper is the text unshaped, so

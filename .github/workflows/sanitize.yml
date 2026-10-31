@@ -9,8 +9,9 @@
 # fl-dart-sys picks the archive from -Zsanitizer and refuses an uninstrumented
 # one.
 #
-# The M2 apps run here too, from kernel (`apps_under_a_sanitizer`): the UI
-# side only, with no raster thread, whose Vulkan driver is not instrumented.
+# The M2 and M3 apps run here too, from kernel (`apps_under_a_sanitizer`):
+# the UI side only, with no raster thread, whose Vulkan driver is not
+# instrumented. The ASan leg also runs the decoder and font fuzz targets.
 #
 # JIT only: a sanitized VM's AOT snapshot feature string names the sanitizer,
 # so AOT would need a matching gen_snapshot. AOT has valgrind (soak.yml).
@@ -106,6 +107,19 @@ jobs:
         run: >-
           ci/annotate-on-fail.sh cargo "+$NIGHTLY" test -Zbuild-std --target "$TARGET"
           -p fl-dart-vm --features jit --lib
+      # The fuzz targets (brief M3 §15): the decoders and font loading, pure
+      # Rust, given mutated files under ASan, where a memory error in a
+      # decoder or a font parser aborts the run.
+      - name: Fuzz
+        if: matrix.sanitizer == 'address'
+        env:
+          RUSTFLAGS: -Zsanitizer=address
+          FL_FUZZ_ITERS: "20000"
+        run: |
+          ci/annotate-on-fail.sh cargo "+$NIGHTLY" test -Zbuild-std --target "$TARGET" \
+            -p fl-image --test fuzz -- --ignored
+          ci/annotate-on-fail.sh cargo "+$NIGHTLY" test -Zbuild-std --target "$TARGET" \
+            -p fl-text --test fuzz -- --ignored
       - name: L2 suite
         env:
           RUSTFLAGS: -Zsanitizer=${{ matrix.sanitizer }}

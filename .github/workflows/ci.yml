@@ -44,7 +44,9 @@ jobs:
       - run: cargo test -p fl-dart-vm --features aot --lib --test compile_fail
       - run: cargo test -p fl-raster --features aot --test compile_fail
       - run: cargo test -p fl-dart-ffi --features aot --test compile_fail
-      - run: cargo test -p fl-text
+      - run: cargo test -p fl-text -p fl-image -p fl-assets
+      # The decoder fuzz target, a short run; the ASan lane runs it long.
+      - run: cargo test -p fl-image --test fuzz -- --ignored
       - run: RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
 
   l2:
@@ -188,6 +190,8 @@ jobs:
       - name: dart:ui and shell unit tests
         run: ci/annotate-on-fail.sh cargo test -p fl-dart-ffi -p fl-ui -p fl-raster -p fl-shell --features aot --lib
       # Layout and the glyph cache in Roboto, from the Flutter release's cache.
+      # The font fuzz target among them, a short run; the ASan lane runs it
+      # long.
       - name: Text tests
         run: |
           ci/annotate-on-fail.sh cargo test -p fl-text -- --ignored

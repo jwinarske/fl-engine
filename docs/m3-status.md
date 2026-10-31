@@ -192,3 +192,41 @@ Found on the way:
 * The stock engine fails a WebP animation frame with alpha after the first ("Could not getPixels for frame 1"); fl-image decodes it, its tests cover it, and the app's WebP is opaque
 * The framework gives no frames before `runApp` (`WidgetsBinding.framesEnabled`), so an animation is loaded after the first frame in any engine
 * A frame `main` asked for before the loop started was dropped: fl-ui's frame scheduler was set by the loop. It is set with the isolate's configuration now
+
+## Stage 7: lanes (2026-10-31)
+
+Done: churn and sanitizer lanes run the M3 programs; fuzz targets for the decoders and font loading; every limit in §15 crossed by a test (exit criterion 7, but for one below).
+
+    cargo test --release -p fl-dart-cli --test soak -- --ignored
+    FL_FUZZ_ITERS=20000 cargo test -p fl-image --test fuzz -- --ignored
+    FL_FUZZ_ITERS=5000 cargo test -p fl-text --test fuzz -- --ignored
+
+* Soak (`app_cycles_stay_flat`): text 300 cycles, counter 100, gif 20 of 16 frames, `text_churn` 100 of 100 frames (10,000 frames of text never the same), beside the M2 apps and images (2,700 decodes). RSS, descriptors, handles and GPU images held as before; the atlas within 4096, the placements beside it within twice its glyphs and 1,024; static text writes the atlas once a cycle, never on the frame after
+* `app-cycle` reports the atlas: `atlas_side`, `atlas_glyphs`, `atlas_placements`, `atlas_uploads`
+* `apps/text_churn`: each frame new words at a size unused for 64 frames, normal and italic, through the ticker
+* valgrind app cycles add text and gif; the sanitizer app runs add text, counter, gif and text_churn
+* Fuzz targets, pure Rust, no libFuzzer (no C++): fixtures and the apps' animations mutated (flips, extremes in size fields, cuts, splices, repeats) through every decode entry point; Roboto and MaterialIcons mutated through `loadFontFromList`'s path, a paragraph laid out, queried and painted. Deterministic. Short runs in ci, 20,000 inputs each under ASan. 200,000 decoder inputs, 2,000 fonts: no panic in fl-image or past fl-text
+* ci now runs fl-image's and fl-assets' own tests, which no lane ran
+
+Limits (§15) and the tests that cross them:
+
+* pixel limit, source and target: `a_header_over_the_pixel_limit_is_refused`; images app `bomb`
+* allocation refused: `a_failed_reservation_is_out_of_memory`
+* PNG header reads, 16 MiB: `a_png_header_past_its_byte_limit_is_refused`
+* frame count: `an_animation_over_the_frame_limit_is_refused`; each frame's size: `a_frame_over_the_pixel_limit_is_refused`; 100,000 frames: `a_hundred_thousand_tiny_frames_cost_one_frame`
+* decoder panics: `the_worker_answers_every_job_and_survives_a_bad_one`, the decoder fuzz target; font parsing and shaping panics: the font fuzz target
+* text length, 32 KiB: `long_text_splits_after_a_space`, `text_with_no_space_splits_on_a_character`; shaped-run cache, 4,096: `the_shaped_run_cache_is_bounded`
+* glyph size, 256 px: `a_glyph_past_the_atlas_is_its_outline`; atlas side, 4096: `a_frame_past_the_atlas_limit_draws_the_rest_as_outlines`; placements: the soak
+* asset keys, file kinds, 256 MiB: `keys_cannot_leave_the_bundle`, `only_regular_files_within_the_limit`; assets app
+* every request answered, results for a dead isolate dropped: `retired_jobs_are_dropped_unstarted`, the soak's handle count
+
+Not yet:
+
+* harfrust's operation limits: set on every shape from the text's length, as HarfBuzz's, and not switchable, so on; no font here crosses them. A crafted looping GSUB font would
+* The soak's time budget for changing text: frames and memory are held, time is not
+
+Found on the way:
+
+* Glyph placements were never pruned as the atlas evicted: text that kept changing grew them without bound. Pruned once they outnumber the atlas's glyphs twice over
+* `app-cycle` kept one font collection for every cycle, so fonts an app loaded piled up, about 2 MB a cycle for text; each lifecycle now sets its bundle and fonts afresh, as an engine's
+* The shaped-run cache outlived the faces it was keyed by, until its bound cleared it; it is cleared with the font collection

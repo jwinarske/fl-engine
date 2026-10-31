@@ -55,6 +55,8 @@ pub struct Glyphs {
     /// Glyphs that could not go in the atlas this frame, drawn as outlines.
     refused: std::collections::HashSet<GlyphKey>,
     scaler: RefCell<ScaleContext>,
+    /// Atlas writes to the device, for the soak lane.
+    uploads: u64,
     _raster_thread: PhantomData<*const ()>,
 }
 
@@ -66,6 +68,7 @@ impl Default for Glyphs {
             placed: HashMap::new(),
             refused: std::collections::HashSet::new(),
             scaler: RefCell::new(ScaleContext::new()),
+            uploads: 0,
             _raster_thread: PhantomData,
         }
     }
@@ -99,6 +102,17 @@ fn atlas_route(run: &GlyphRun, transform: Option<&emblema::Affine2>) -> bool {
 impl Glyphs {
     pub fn atlas(&self) -> &Atlas {
         &self.atlas
+    }
+
+    /// How many times the atlas has been written to the device.
+    pub fn uploads(&self) -> u64 {
+        self.uploads
+    }
+
+    /// Placements kept, those of glyphs evicted since included until the
+    /// next prune.
+    pub fn placements(&self) -> usize {
+        self.placed.len()
     }
 
     /// A frame begins: glyphs it does not use again may be evicted.
@@ -196,8 +210,16 @@ impl Glyphs {
         if stale || self.atlas.is_dirty() {
             if let Some((image, _)) = self.image.as_mut() {
                 ctx.write_image(image, self.atlas.texels())?;
+                self.uploads += 1;
             }
             self.atlas.mark_clean();
+        }
+        // The atlas evicts; the placements of what it evicted go too, once
+        // they outnumber the atlas's glyphs, so text that keeps changing
+        // keeps this bounded by the atlas.
+        if self.placed.len() > 2 * self.atlas.len() + 1024 {
+            let atlas = &self.atlas;
+            self.placed.retain(|k, _| atlas.get(*k).is_some());
         }
         Ok(())
     }
@@ -388,6 +410,28 @@ mod tests {
         assert!(g.atlas().is_empty());
         let path = g.outlines(&r, [0.0, 0.0]).unwrap();
         assert!(!path.verbs().is_empty());
+    }
+
+    /// The atlas's side limit, crossed (brief M3 §15, atlas full): one
+    /// frame of 1,200 distinct glyphs at 250 device pixels, more than a
+    /// 4096 atlas holds. It grows to its limit and no further; the glyphs
+    /// it refuses are drawn as outlines; none is lost.
+    #[test]
+    #[ignore = "app lane: needs FLUTTER_ROOT"]
+    fn a_frame_past_the_atlas_limit_draws_the_rest_as_outlines() {
+        let mut r = (*run("A", 250.0)).clone();
+        r.glyphs = (1..=1200).collect();
+        r.positions = (0..1200).map(|i| [i as f32 * 300.0, 0.0]).collect();
+        let r = Arc::new(r);
+        let mut g = Glyphs::default();
+        g.begin_frame();
+        g.prepare(scale(1.0), &r);
+        assert_eq!(g.atlas().size(), ATLAS_LIMIT);
+        assert!(!g.refused.is_empty() && !g.atlas().is_empty());
+        // A run with any glyph refused is drawn whole as outlines.
+        assert!(g.positioned(scale(1.0), &r, [0.0, 0.0]).is_none());
+        assert!(g.outlines(&r, [0.0, 0.0]).is_some());
+        assert!(g.placements() <= g.atlas().len());
     }
 
     #[test]

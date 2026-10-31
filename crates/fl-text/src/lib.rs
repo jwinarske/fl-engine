@@ -15,3 +15,4 @@ pub(crate) mod wrapper;
 pub use line::{LineMetricsInfo, PositionWithAffinity, RectHeightStyle, RectWidthStyle, TextBox};
 pub use paragraph::{Paragraph, ParagraphBuilder};
 pub use query::GlyphInfo;
+pub use shape::clear_shaped_runs;
