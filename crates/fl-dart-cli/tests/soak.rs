@@ -157,7 +157,7 @@ fn app_cycles_stay_flat() {
             &["200x100", "--frames", "100", "--hz", "1000"],
             true,
         ),
-        soak("images", 300, 2, &["800x600@2"], true),
+        soak("images", 300, 2, &["800x800@2"], true),
         soak("text", 300, 2, &["1600x1200@2"], true),
         soak("counter", 100, 2, &with_fonts(&["1200x900@3"]), true),
         soak("gif", 20, 16, &["400x300", "--frames", "16"], true),

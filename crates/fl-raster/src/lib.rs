@@ -686,12 +686,8 @@ fn draw_one(canvas: &mut Canvas, draw: &Draw, slots: &mut Slots) -> Result<(), R
             quality,
         } => {
             // emblema samples the nine linearly, with its own inset; the
-            // paint gives the blend and the edges, not an alpha.
-            if paint.color[3] < 1.0 {
-                return Err(RasterError::Unsupported(
-                    "drawImageNine with a translucent paint".into(),
-                ));
-            }
+            // paint's alpha fades each piece, as upstream's nine image
+            // rectangles with the one paint (jwinarske/emblema#231).
             let (slot, size) = slots.slot(image)?;
             let p = image_paint(paint, EPaint::image(slot, rect(*dst)), *quality)?;
             canvas.draw_image_nine(slot, size, rect(*center), rect(*dst), &p)?;
@@ -705,10 +701,19 @@ fn draw_one(canvas: &mut Canvas, draw: &Draw, slots: &mut Slots) -> Result<(), R
             paint,
             quality,
         } => {
-            // A sprite's color is multiplied in: modulate, and nothing else.
-            if colors.is_some() && *blend_mode != MODULATE {
+            // Each sprite blended with its color by the mode, the sprite the
+            // source (jwinarske/emblema#238); without colors the mode is
+            // unused, as dart:ui says. Upstream fades the blended result by
+            // the paint's alpha, where emblema's opacity fades the sprite
+            // before the blend: the same under modulate, not under the
+            // other modes, which a translucent paint is refused with.
+            let tint = match colors {
+                Some(_) => blend_of(*blend_mode)?,
+                None => emblema::BlendMode::Modulate,
+            };
+            if tint != emblema::BlendMode::Modulate && paint.color[3] < 1.0 {
                 return Err(RasterError::Unsupported(format!(
-                    "drawAtlas colors with blend mode {blend_mode} (only modulate, {MODULATE})"
+                    "drawAtlas colors with blend mode {blend_mode} and a translucent paint"
                 )));
             }
             let (slot, size) = slots.slot(image)?;
@@ -730,15 +735,13 @@ fn draw_one(canvas: &mut Canvas, draw: &Draw, slots: &mut Slots) -> Result<(), R
                 paint,
                 EPaint::image(slot, Rect::new(0.0, 0.0, 1.0, 1.0)),
                 *quality,
-            )?;
+            )?
+            .with_tint_blend(tint);
             canvas.draw_atlas(&sprites, size, &p)?;
         }
     }
     Ok(())
 }
-
-/// `BlendMode.modulate`.
-const MODULATE: i32 = 13;
 
 /// A dart:ui color, `0xAARRGGBB`, straight sRGB.
 fn argb(c: u32) -> Color {
@@ -777,9 +780,11 @@ fn image_paint(p: &Paint, base: EPaint, quality: i32) -> Result<EPaint, RasterEr
     if let Some(what) = unmapped(p) {
         return Err(RasterError::Unsupported(what));
     }
+    // The paint's alpha as its opacity, which survives the shader a
+    // nine-slice puts in place of this one.
     let paint = with_mask(base, p)
         .with_sampling(sampling_of(quality))
-        .with_image_alpha(p.color[3]);
+        .with_opacity(p.color[3]);
     Ok(paint
         .with_blend(blend_of(p.blend_mode)?)
         .with_anti_alias(p.anti_alias))

@@ -56,7 +56,7 @@ class Images extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            CustomPaint(size: const Size(400, 240), painter: _Cells(images)),
+            CustomPaint(size: const Size(400, 320), painter: _Cells(images)),
             // The framework's own path: AssetImage and the image cache.
             Padding(
               padding: const EdgeInsets.only(left: 5),
@@ -100,33 +100,7 @@ class _Cells extends CustomPainter {
       plain,
     );
     // 3: drawAtlas, both sprites turned, tinted by modulate.
-    final o = _at(3);
-    canvas.drawAtlas(
-      _img('atlas.png'),
-      [
-        RSTransform.fromComponents(
-          rotation: 0.3,
-          scale: 2,
-          anchorX: 8,
-          anchorY: 8,
-          translateX: o.dx + 22,
-          translateY: o.dy + 35,
-        ),
-        RSTransform.fromComponents(
-          rotation: -0.4,
-          scale: 2,
-          anchorX: 8,
-          anchorY: 8,
-          translateX: o.dx + 66,
-          translateY: o.dy + 35,
-        ),
-      ],
-      const [Rect.fromLTWH(0, 0, 16, 16), Rect.fromLTWH(16, 0, 16, 16)],
-      const [Color(0xFFE04020), Color(0xFF2060E0)],
-      BlendMode.modulate,
-      null,
-      plain,
-    );
+    atlas(canvas, 3, BlendMode.modulate, plain);
     // 4: a rect filled by an ImageShader, the stripes doubled and repeated.
     final c4 = _cell(4, 90, 70);
     final m = Float64List.fromList([2, 0, 0, 0, 0, 2, 0, 0, 0, 0, 1, 0, c4.left, c4.top, 0, 1]);
@@ -159,6 +133,51 @@ class _Cells extends CustomPainter {
     canvas.drawImageRect(_img('raw'), const Rect.fromLTWH(0, 0, 4, 4), _cell(10, 64, 64), plain);
     // 11: resized at decode, drawn at its decoded size.
     canvas.drawImage(_img('photo.jpg@16'), _at(11), plain);
+    // 12, 13: the sprites over their colors, srcOver and overlay, the
+    // sprite the source and its color the destination.
+    atlas(canvas, 12, BlendMode.srcOver, plain);
+    atlas(canvas, 13, BlendMode.overlay, plain);
+    // 14: modulate under a half-alpha paint.
+    atlas(canvas, 14, BlendMode.modulate, Paint()..color = const Color(0x80000000));
+    // 15: the nine-slice under a half-alpha paint.
+    canvas.drawImageNine(
+      _img('nine.png'),
+      const Rect.fromLTRB(6, 6, 18, 18),
+      _cell(15, 90, 70),
+      Paint()..color = const Color(0x80000000),
+    );
+  }
+
+  /// The two atlas sprites, turned, in cell `i`, their colors blended by
+  /// `mode`.
+  void atlas(Canvas canvas, int i, BlendMode mode, Paint paint) {
+    final o = _at(i);
+    canvas.drawAtlas(
+      _img('atlas.png'),
+      [
+        RSTransform.fromComponents(
+          rotation: 0.3,
+          scale: 2,
+          anchorX: 8,
+          anchorY: 8,
+          translateX: o.dx + 22,
+          translateY: o.dy + 35,
+        ),
+        RSTransform.fromComponents(
+          rotation: -0.4,
+          scale: 2,
+          anchorX: 8,
+          anchorY: 8,
+          translateX: o.dx + 66,
+          translateY: o.dy + 35,
+        ),
+      ],
+      const [Rect.fromLTWH(0, 0, 16, 16), Rect.fromLTWH(16, 0, 16, 16)],
+      const [Color(0xFFE04020), Color(0xFF2060E0)],
+      mode,
+      null,
+      paint,
+    );
   }
 
   @override

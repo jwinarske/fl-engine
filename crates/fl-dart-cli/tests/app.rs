@@ -359,7 +359,7 @@ fn counter_renders_without_a_dart_error() {
 #[test]
 #[ignore = "app lane: needs FLUTTER_ROOT and a Vulkan driver"]
 fn images_matches_its_golden() {
-    matches_golden("images");
+    matches_golden_at("images", (800, 800), 2);
 }
 
 /// What the images app prints: each source decoded to its size, a resize
@@ -370,7 +370,7 @@ fn images_matches_its_golden() {
 #[ignore = "app lane: needs FLUTTER_ROOT"]
 fn images_decode_and_refuse_what_they_should() {
     let app = build_app("images");
-    let o = common::fl_dart(&["run-app".as_ref(), app.as_os_str(), "800x600@2".as_ref()]);
+    let o = common::fl_dart(&["run-app".as_ref(), app.as_os_str(), "800x800@2".as_ref()]);
     assert!(o.status.success(), "{o:?}");
     let out = String::from_utf8_lossy(&o.stdout);
     let (log, frames) = out.split_once("frame 1:").unwrap_or((&out, ""));

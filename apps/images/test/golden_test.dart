@@ -9,8 +9,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:images/images.dart';
 
 void main() {
-  testWidgets('images at 800x600, DPR 2', (tester) async {
-    tester.view.physicalSize = const Size(800, 600);
+  testWidgets('images at 800x800, DPR 2', (tester) async {
+    tester.view.physicalSize = const Size(800, 800);
     tester.view.devicePixelRatio = 2;
     addTearDown(tester.view.reset);
     final images = (await tester.runAsync(() => decodeAll(rootBundle, (_) {})))!;

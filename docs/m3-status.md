@@ -247,3 +247,15 @@ Done: dart:ui's `Gradient`, every kind, tile mode and matrix, and an `ImageShade
 * emblema#237: a sweep's angle measured from the positive X axis in [0, 2pi), as upstream's `sweep_gradient_fill.frag`; a part-turn sweep starting past zero drew its end color before its start
 * `apps/gradients`: two and six stops, each tile mode, paint alpha, radial, conical with a focal point and a focal radius, whole and part sweeps with each tile mode, `GradientRotation`, a skewed linear, a turned radial and sweep, image shaders turned, mirrored and skewed, a gradient stroke and rounded rect
 * Golden: 5.017% differ, 0.028% by more than 32: the two dithers, and one-pixel lines where a sweep jumps. Tolerance 6.0 and 0.1
+
+## Follow-ups: atlas blend modes and translucent nine-slices (2026-10-31)
+
+Done: `drawAtlas` colors under any blend mode, and `drawImageNine` under a translucent paint, match flutter_tester's golden with Impeller.
+
+* emblema#238: a sprite's or a vertex's color is the destination of its blend and the paint's result the source, as dart:ui documents and upstream draws; emblema had them the other way round. Repinned to its merge
+* fl-raster: `drawAtlas`'s mode as `Paint::with_tint_blend`, modulate when there are no colors; `drawImageNine` faded by the paint's alpha (emblema's opacity, which outlives the shader a nine-slice replaces); an image draw's alpha is its paint's opacity
+* `apps/images`: the atlas under srcOver, overlay and a half-alpha paint, the nine-slice at half alpha; the view now 800x800 at DPR 2 for a fourth row. Golden 8.130% differ, 0.061% by more than 32, within 12.0 and 0.1
+
+Not yet:
+
+* A non-modulate atlas under a translucent paint is refused by name: upstream fades the blended result by the paint's alpha, emblema's opacity fades the sprite before the blend; the same under modulate only
