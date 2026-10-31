@@ -28,21 +28,57 @@ pub unsafe extern "C" fn fl_dart_utf8_len(s: *const c_char) -> i64 {
     unsafe { CStr::from_ptr(s) }.to_bytes().len() as i64
 }
 
+/// The posters [`fl_dart_post_from_thread`] started and nobody has joined.
+static POSTERS: std::sync::Mutex<Vec<std::thread::JoinHandle<()>>> =
+    std::sync::Mutex::new(Vec::new());
+
+/// Joins every poster [`fl_dart_post_from_thread`] started. The VM must
+/// see no thread call into it during or after `Dart_Cleanup`, and a poster
+/// is in `Dart_PostCObject` until it returns, after the message it posted
+/// has already been received: so the VM is not cleaned up while one may
+/// still be there. Before an isolate's VM goes, by [`Posters`].
+pub fn join_posters() {
+    let posters = std::mem::take(&mut *POSTERS.lock().unwrap_or_else(|e| e.into_inner()));
+    for p in posters {
+        let _ = p.join();
+    }
+}
+
+/// Joins the posters when dropped: declared after the `Vm` it guards, so it
+/// is dropped, and they joined, before the VM is cleaned up.
+pub struct Posters;
+
+impl Drop for Posters {
+    fn drop(&mut self) {
+        join_posters();
+    }
+}
+
 /// Rust→Dart from a thread the VM has never seen: posts `[greeting, n]` to
 /// `port` from a freshly spawned thread and returns at once. Dart awaits it
-/// on the ReceivePort whose `sendPort.nativePort` it passed in.
+/// on the ReceivePort whose `sendPort.nativePort` it passed in. The thread
+/// is kept, and joined before the VM is cleaned up ([`join_posters`]).
 #[no_mangle]
 pub extern "C" fn fl_dart_post_from_thread(port: i64, n: i64) -> bool {
     let port = NativePort::from_raw(port);
-    std::thread::Builder::new()
+    let spawned = std::thread::Builder::new()
         .name("fl-dart-poster".into())
         .spawn(move || {
             let msg = CObject::Array(vec![CObject::String("from rust".into()), CObject::Int(n)]);
             if port.post(&msg).is_err() {
                 eprintln!("fl-dart: port {} closed before the post", port.raw());
             }
-        })
-        .is_ok()
+        });
+    match spawned {
+        Ok(handle) => {
+            POSTERS
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .push(handle);
+            true
+        }
+        Err(_) => false,
+    }
 }
 
 /// Upper bound on `fl_dart_post_burst`'s threads: the export is reachable

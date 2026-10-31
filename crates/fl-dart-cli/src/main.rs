@@ -133,6 +133,8 @@ fn start_vm() -> Result<Vm, Failure> {
 fn run_kernel(path: &str, args: &[&str]) -> Result<(), Failure> {
     let dill = std::fs::read(path).map_err(|e| Failure::Other(format!("{path}: {e}")))?;
     let vm = start_vm()?;
+    // Dropped before `vm`: no poster is in the VM when it is cleaned up.
+    let _posters = ffi::Posters;
     let mut isolate = vm.isolate_from_kernel(&dill, config(path))?;
     run_main(&mut isolate, args)?;
     isolate.shutdown();
@@ -143,6 +145,8 @@ fn run_kernel(path: &str, args: &[&str]) -> Result<(), Failure> {
 fn run_aot(path: &str, args: &[&str]) -> Result<(), Failure> {
     let snapshot = std::sync::Arc::new(fl_dart_vm::AotSnapshot::open(path.as_ref())?);
     let vm = start_vm()?;
+    // Dropped before `vm`: no poster is in the VM when it is cleaned up.
+    let _posters = ffi::Posters;
     let mut isolate = vm.isolate_from_aot(&snapshot, config(path))?;
     run_main(&mut isolate, args)?;
     isolate.shutdown();
@@ -160,6 +164,8 @@ fn run_app(path: &str, app: AppArgs) -> Result<(), Failure> {
     set_assets(path, &app)?;
     fl_ui::set_style_report(app.styles);
     let vm = start_vm()?;
+    // Dropped before `vm`: no poster is in the VM when it is cleaned up.
+    let _posters = ffi::Posters;
     let raster = raster_for(&app)?;
     let run = app_once(&vm, &program, path, &app, raster.as_ref(), true)?;
     if let Some(line) = vsync_line(&run.report.frame_times_us) {
@@ -179,6 +185,8 @@ fn run_app(path: &str, app: AppArgs) -> Result<(), Failure> {
 fn app_cycle(path: &str, n: u32, app: AppArgs) -> Result<(), Failure> {
     let program = load_app(path)?;
     let vm = start_vm()?;
+    // Dropped before `vm`: no poster is in the VM when it is cleaned up.
+    let _posters = ffi::Posters;
     let raster = raster_for(&app)?;
     // Sampled as `cycle` samples: after the first cycle, after a tenth,
     // and at the end.
@@ -550,6 +558,8 @@ fn run_main(isolate: &mut fl_dart_vm::Isolate<'_>, args: &[&str]) -> Result<(), 
 /// or valgrind; a count that grows with `n` is the leak.
 fn cycle(path: &str, n: u32) -> Result<(), Failure> {
     let vm = start_vm()?;
+    // Dropped before `vm`: no poster is in the VM when it is cleaned up.
+    let _posters = ffi::Posters;
     #[cfg(feature = "jit")]
     let program = std::fs::read(path).map_err(|e| Failure::Other(format!("{path}: {e}")))?;
     #[cfg(feature = "aot")]
@@ -572,6 +582,8 @@ fn cycle(path: &str, n: u32) -> Result<(), Failure> {
         let mut isolate = vm.isolate_from_aot(&program, quiet.clone())?;
         run_main(&mut isolate, &[])?;
         isolate.shutdown();
+        // A cycle's posters go with it, so none accumulate over a run.
+        ffi::join_posters();
         if i == 0 {
             warm = Some(usage_now());
         }
