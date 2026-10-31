@@ -147,7 +147,7 @@ jobs:
       # golden is its numbers, test/metrics.txt.
       - name: Goldens
         run: |
-          for app in shapes material natives images shadows metrics text counter; do
+          for app in shapes material natives images shadows metrics text counter gif; do
             (cd "apps/$app" && "$FLUTTER_ROOT/bin/flutter" test --enable-impeller)
           done
       - name: Apps
@@ -155,8 +155,8 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: ci/annotate-on-fail.sh cargo test -p fl-dart-cli --test app -- --ignored
       # What the exit criteria look like, kept: each app's frame from the
-      # tests above with its golden and diff, and ticker's 30 frames. After
-      # the AOT run and before the JIT one, which writes the same files.
+      # tests above with its golden and diff, ticker's 30 frames and gif's 16.
+      # After the AOT run and before the JIT one, which writes the same files.
       # Untimed: the ticker test above is the one that checks vsync.
       - name: Frame captures
         if: always()
@@ -164,11 +164,12 @@ jobs:
           out=target/tmp/dart/captures
           mkdir -p "$out"
           cp target/tmp/dart/apps/*.png "$out/" || true
-          for app in shapes material natives images shadows text counter; do
+          for app in shapes material natives images shadows text counter gif; do
             cp "apps/$app/test/goldens/$app.png" "$out/$app-golden.png"
           done
           ./target/debug/fl-dart run-app target/tmp/dart/apps/ticker.so 200x100 \
             --frames 30 --frames-dir "$out/ticker" > "$out/ticker.txt"
+          cp -r target/tmp/dart/apps/gif-frames "$out/gif" || true
       - uses: actions/upload-artifact@v4
         if: always()
         with:

@@ -1,0 +1,9 @@
+# gif.png, rendered by the stock engine's flutter_tester with Impeller,
+# against fl-engine's frame through emblema, both at DPR 1. Percent of
+# pixels allowed to differ in any channel, and by more than 32.
+#
+# Every frame of each animation, four times its size, unfiltered: the
+# composing is exact, so the frames are. Measured 2026-10-31, lavapipe:
+# 0.000% differ.
+differ 0.0
+differ_over_32 0.0

@@ -42,9 +42,11 @@ pub const IMPLICIT_VIEW_ID: i64 = 0;
 /// The display the view is on.
 pub const DISPLAY_ID: i64 = 0;
 
-/// An isolate configuration with dart:ui's natives, its messages announced
-/// to `wake` for [`run`].
+/// An isolate configuration with dart:ui's natives, its messages, frame
+/// requests and decode replies announced to `wake` for [`run`], from
+/// `main` on.
 pub fn isolate_config(script_uri: &str, wake: &Wake) -> IsolateConfig {
+    frame_loop::connect(wake);
     IsolateConfig {
         script_uri: script_uri.to_owned(),
         natives: Some(fl_ui::resolve),

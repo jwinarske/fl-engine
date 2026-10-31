@@ -22,7 +22,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, Weak};
 
 use fl_dart_ffi::{args, guard, peer, sys};
-use fl_image::{Done, Job, Limits, Raw, Source, Worker};
+use fl_image::{Done, Frames, Job, Limits, Raw, Source, Worker};
 
 use crate::buffer::Buffer;
 use crate::platform::{queue_persistent, queue_reply, wake_for_replies, Persistent, ReplyArg};
@@ -102,6 +102,7 @@ pub fn clear_image_sink() {
 /// The pixel limit every decode is held to.
 static LIMITS: Mutex<Limits> = Mutex::new(Limits {
     max_pixels: fl_image::DEFAULT_MAX_PIXELS,
+    max_frames: fl_image::DEFAULT_MAX_FRAMES,
 });
 
 /// Sets the most pixels an image may have, decoded or as a decode target.
@@ -181,14 +182,15 @@ pub(crate) fn take_done() {
                 if let Some(sink) = SINK.lock().unwrap_or_else(|e| e.into_inner()).as_ref() {
                     sink(Arc::clone(&image));
                 }
-                State::Ready(image)
+                State::Ready(image, f.duration_ms)
             }
             Err(e) => State::Failed(e.to_string()),
         };
         for cb in p.callbacks {
             queue_persistent(cb, state.answer());
         }
-        if let Some(codec) = p.codec.upgrade() {
+        // A still's frame is kept for every call; an animation's is not.
+        if let Some(codec) = p.codec.upgrade().filter(|c| c.frames.is_none()) {
             *codec.state.lock().unwrap_or_else(|e| e.into_inner()) = state;
         }
     }
@@ -348,7 +350,8 @@ pub(crate) extern "C" fn descriptor_dispose(d: *mut c_void) {
 enum State {
     Idle,
     Decoding(u64),
-    Ready(Arc<ImageData>),
+    /// The frame and its duration.
+    Ready(Arc<ImageData>, u32),
     Failed(String),
 }
 
@@ -356,19 +359,26 @@ impl State {
     /// What a `getNextFrame` callback is called with in this state.
     fn answer(&self) -> ReplyArg {
         match self {
-            State::Ready(image) => ReplyArg::Frame(Arc::clone(image)),
+            State::Ready(image, ms) => ReplyArg::Frame(Arc::clone(image), *ms),
             State::Failed(e) => ReplyArg::FrameError(e.clone()),
             State::Idle | State::Decoding(_) => ReplyArg::FrameError("not decoded".into()),
         }
     }
 }
 
-/// A single-frame codec, as the engine's `SingleFrameCodec`: decoded once,
-/// on the first `getNextFrame`; the frame is kept and given to every call.
+/// A codec. A still, as the engine's `SingleFrameCodec`: decoded once, on
+/// the first `getNextFrame`; the frame is kept and given to every call.
+/// An animation, as its `MultiFrameCodec`: each call decodes the next
+/// frame on the worker, in turn, at the image's own size; nothing is kept
+/// on this side (brief M3 §15).
 struct CodecInner {
     bytes: Arc<[u8]>,
     source: Source,
     target: (u32, u32),
+    /// An animation's frames, shared with the worker's jobs.
+    frames: Option<Arc<Mutex<Frames>>>,
+    frame_count: u32,
+    repetition_count: i32,
     state: Mutex<State>,
 }
 
@@ -384,18 +394,23 @@ pub(crate) extern "C" fn descriptor_instantiate_codec(
 ) {
     guard((), || {
         // SAFETY: d is the receiver's native field.
-        let Some((bytes, source)) =
-            (unsafe { peer::with::<Descriptor, _>(d, |d| (Arc::clone(&d.bytes), d.source)) })
-        else {
+        let Some((bytes, source)) = (unsafe {
+            peer::with::<Descriptor, _>(d, |d| (Arc::clone(&d.bytes), d.source.clone()))
+        }) else {
             eprintln!("fl-ui: ImageDescriptor.instantiateCodec: not a live descriptor");
             return;
         };
-        let codec = Arc::new(CodecInner {
+        let mut codec = CodecInner {
             bytes,
             source,
             target: (target_width.max(0) as u32, target_height.max(0) as u32),
+            frames: None,
+            frame_count: 1,
+            repetition_count: 0,
             state: Mutex::new(State::Idle),
-        });
+        };
+        animate(&mut codec);
+        let codec = Arc::new(codec);
         // SAFETY: a Handle-parameter native; out_codec is live.
         if let Err(e) = unsafe { peer::attach(out_codec, codec, 0) } {
             eprintln!("fl-ui: ImageDescriptor.instantiateCodec: {e}");
@@ -403,14 +418,48 @@ pub(crate) extern "C" fn descriptor_instantiate_codec(
     });
 }
 
-/// `Int32 Function(Pointer<Void>)`, a leaf call: 1, until animation (stage 7).
-pub(crate) extern "C" fn codec_frame_count(_c: *mut c_void) -> i32 {
-    1
+/// Makes `codec` an animation's if its bytes are a GIF or WebP of more
+/// than one frame: frames counted, none decoded. An animation over the
+/// frame limit has no frames and answers every call with why, as the
+/// engine's codec does with none. Anything else stays a still, its errors
+/// its decode's.
+fn animate(codec: &mut CodecInner) {
+    let animated = matches!(
+        fl_image::format_of(&codec.bytes),
+        Some(fl_image::Format::Gif | fl_image::Format::Webp)
+    );
+    if !matches!(codec.source, Source::Encoded) || !animated {
+        return;
+    }
+    match Frames::new(Arc::clone(&codec.bytes), limits()) {
+        Ok(f) if f.frame_count() > 1 => {
+            codec.frame_count = f.frame_count();
+            codec.repetition_count = f.repetition_count();
+            codec.frames = Some(Arc::new(Mutex::new(f)));
+        }
+        Err(e @ fl_image::ImageError::TooManyFrames { .. }) => {
+            codec.frame_count = 0;
+            codec.state = Mutex::new(State::Failed(e.to_string()));
+        }
+        Ok(_) | Err(_) => {}
+    }
 }
 
-/// `Int32 Function(Pointer<Void>)`, a leaf call: 0, a still.
-pub(crate) extern "C" fn codec_repetition_count(_c: *mut c_void) -> i32 {
-    0
+/// `Int32 Function(Pointer<Void>)`, a leaf call.
+pub(crate) extern "C" fn codec_frame_count(c: *mut c_void) -> i32 {
+    // SAFETY: c is the receiver's native field.
+    guard(0, || {
+        unsafe { peer::with::<Arc<CodecInner>, _>(c, |c| c.frame_count) }
+            .map_or(0, |n| i32::try_from(n).unwrap_or(i32::MAX))
+    })
+}
+
+/// `Int32 Function(Pointer<Void>)`, a leaf call: -1 for forever.
+pub(crate) extern "C" fn codec_repetition_count(c: *mut c_void) -> i32 {
+    // SAFETY: c is the receiver's native field.
+    guard(0, || {
+        unsafe { peer::with::<Arc<CodecInner>, _>(c, |c| c.repetition_count) }.unwrap_or(0)
+    })
 }
 
 /// `Handle Function(Pointer<Void>, Handle callback)`. The callback is called
@@ -431,9 +480,13 @@ pub(crate) extern "C" fn codec_get_next_frame(
             let Some(codec) = peer::with::<Arc<CodecInner>, _>(c, |c| Arc::clone(c)) else {
                 return error("Codec has been disposed");
             };
+            if let Some(frames) = &codec.frames {
+                submit(&codec, Source::Next(Arc::clone(frames)), callback);
+                return null;
+            }
             let mut state = codec.state.lock().unwrap_or_else(|e| e.into_inner());
             match &*state {
-                State::Ready(_) | State::Failed(_) => queue_reply(callback, state.answer()),
+                State::Ready(..) | State::Failed(_) => queue_reply(callback, state.answer()),
                 State::Decoding(id) => {
                     if let Some(p) = PENDING
                         .lock()
@@ -445,46 +498,67 @@ pub(crate) extern "C" fn codec_get_next_frame(
                     }
                 }
                 State::Idle => {
-                    let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
-                    let job = Job {
-                        id,
-                        tag: GENERATION.load(Ordering::Acquire),
-                        bytes: Arc::clone(&codec.bytes),
-                        source: codec.source,
-                        target: Some(codec.target).filter(|(w, h)| *w > 0 && *h > 0),
-                        limits: limits(),
-                    };
-                    // Registered before the job can finish, so its result
-                    // always finds its callback.
-                    PENDING
-                        .lock()
-                        .unwrap_or_else(|e| e.into_inner())
-                        .get_or_insert_with(HashMap::new)
-                        .insert(
-                            id,
-                            Pending {
-                                callbacks: vec![Persistent::new(callback)],
-                                codec: Arc::downgrade(&codec),
-                            },
-                        );
-                    if worker().is_some_and(|w| w.submit(job)) {
+                    let source = codec.source.clone();
+                    if let Some(id) = submit(&codec, source, callback) {
                         *state = State::Decoding(id);
                     } else {
-                        let p = PENDING
-                            .lock()
-                            .unwrap_or_else(|e| e.into_inner())
-                            .as_mut()
-                            .and_then(|m| m.remove(&id));
-                        *state = State::Failed("the decode thread is not running".into());
-                        for cb in p.into_iter().flat_map(|p| p.callbacks) {
-                            queue_persistent(cb, state.answer());
-                        }
+                        *state = State::Failed(NOT_RUNNING.into());
                     }
                 }
             }
             null
         }
     })
+}
+
+const NOT_RUNNING: &str = "the decode thread is not running";
+
+/// Queues a decode of `codec`'s bytes as `source` says, `callback` waiting
+/// on it: its id, or `None`, the callback answered with why, if the
+/// worker is not running.
+///
+/// # Safety
+/// The isolate is current with an API scope open; `callback` is live.
+unsafe fn submit(
+    codec: &Arc<CodecInner>,
+    source: Source,
+    callback: sys::Dart_Handle,
+) -> Option<u64> {
+    let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
+    let job = Job {
+        id,
+        tag: GENERATION.load(Ordering::Acquire),
+        bytes: Arc::clone(&codec.bytes),
+        source,
+        target: Some(codec.target).filter(|(w, h)| *w > 0 && *h > 0),
+        limits: limits(),
+    };
+    // Registered before the job can finish, so its result always finds
+    // its callback.
+    PENDING
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .get_or_insert_with(HashMap::new)
+        .insert(
+            id,
+            Pending {
+                // SAFETY: per this function's contract.
+                callbacks: vec![unsafe { Persistent::new(callback) }],
+                codec: Arc::downgrade(codec),
+            },
+        );
+    if worker().is_some_and(|w| w.submit(job)) {
+        return Some(id);
+    }
+    let p = PENDING
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .as_mut()
+        .and_then(|m| m.remove(&id));
+    for cb in p.into_iter().flat_map(|p| p.callbacks) {
+        queue_persistent(cb, ReplyArg::FrameError(NOT_RUNNING.into()));
+    }
+    None
 }
 
 /// `Void Function(Pointer<Void>)`. A decode in flight still answers its

@@ -1,0 +1,21 @@
+dispose.gif: frames=5 repeat=2
+  0: 30x10 100ms
+  1: 30x10 200ms
+  2: 30x10 300ms
+  3: 30x10 400ms
+  4: 30x10 50ms
+  5: 30x10 100ms
+once.gif: frames=2 repeat=0
+  0: 20x10 70ms
+  1: 20x10 0ms
+  2: 20x10 70ms
+anim.webp: frames=3 repeat=2
+  0: 20x20 100ms
+  1: 20x20 200ms
+  2: 20x20 300ms
+  3: 20x20 100ms
+steps.gif: frames=3 repeat=-1
+  0: 40x40 100ms
+  1: 40x40 200ms
+  2: 40x40 150ms
+  3: 40x40 100ms

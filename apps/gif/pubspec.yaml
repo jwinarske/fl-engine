@@ -1,0 +1,14 @@
+name: gif
+description: fl-engine test program. Animated GIF and WebP frames through Codec.getNextFrame (docs/m3-images-text.md §8, exit criterion 4).
+publish_to: none
+environment:
+  sdk: ^3.13.0
+dependencies:
+  flutter:
+    sdk: flutter
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+flutter:
+  assets:
+    - assets/

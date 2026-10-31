@@ -108,16 +108,25 @@ pub fn run(
     report
 }
 
+/// Points fl-ui's frame requests and reply wakes at `wake`. Done when the
+/// isolate is configured ([`crate::isolate_config`]), before `main` runs: a
+/// frame `main` asks for before the loop starts is the loop's first, not
+/// lost, as the framework, having asked, does not ask again until it is
+/// begun.
+pub(crate) fn connect(wake: &Wake) {
+    let scheduler = wake.clone();
+    fl_ui::set_frame_scheduler(move || scheduler.request_frame());
+    let replies = wake.clone();
+    fl_ui::set_reply_waker(move || replies.reply_arrived());
+}
+
 fn run_steps(
     isolate: &mut IsolateScope<'_>,
     wake: &Wake,
     period: Duration,
     mut stop: impl FnMut() -> bool,
 ) -> Result<Report, DartError> {
-    let scheduler = wake.clone();
-    fl_ui::set_frame_scheduler(move || scheduler.request_frame());
-    let replies = wake.clone();
-    fl_ui::set_reply_waker(move || replies.reply_arrived());
+    connect(wake);
     let inner = &wake.inner;
     let clock = Clock::new(period);
     let mut last_tick = None;

@@ -168,3 +168,27 @@ Done: `flutter create`'s counter app, unmodified, matches flutter_tester's golde
 * The golden test sets the platform to Linux, as fl-engine reports it, so both use the same typography; DPR 3, flutter_tester's engine DPR, for the shadow; the DEBUG banner off, as the release build has none
 * `lib/` is the template's; `test/golden_test.dart` is added beside its `widget_test.dart`, and CI's goldens step runs both
 * Golden: 1.423% differ, 0.550% by more than 32, all at glyph edges (stage 5). Tolerance 2.0 and 0.8
+
+## Stage 7: animation (2026-10-31)
+
+Done: `gif` advances through its frames at their durations (exit criterion 4); every frame, each disposal applied, matches flutter_tester's.
+
+    tools/flutter-app/build.sh $FLUTTER_ROOT apps/gif out
+    fl-dart run-app out/gif.so 400x300 --frames 16 --frames-dir gif
+    dispose.gif: frames=5 repeat=2
+    frame 1: view 0 400x300 layers=1 pictures=1 draws=13
+
+* fl-image `Frames`: frame count and repetition count read without decoding (a GIF's frame headers, its pixel data skipped; a WebP's chunks); frames decoded one at a time on the worker (`Source::Next`), composed on the image's canvas after the previous frame's disposal, premultiplied. Held: the canvas, and for restore-to-previous, the canvas before
+* Disposal as Skia and `MultiFrameCodec`: background clears to transparent, the color unused; previous before any frame is transparent; after the last frame, the first on a clear canvas
+* Repetition count: GIF NETSCAPE n is n, 0 is forever (-1), none is 0; WebP loop n is n - 1, 0 is forever. Durations as the file says, 0 kept
+* WebP frames composed here, each frame's bitstream decoded by image-webp as an image of its own: image-webp's own blend copies no opaque pixel, rounding 255 to 254, where libwebp and Skia copy it
+* fl-ui `Codec`: more than one frame, `MultiFrameCodec`'s rules: each `getNextFrame` decodes the next, in turn, at the image's own size (target sizes are for stills, as the engine's); nothing kept on the UI side. `getNextFrame` answers with the frame's duration
+* Limits: frame count 1,048,576 (`Limits::max_frames`), refused as the codec's every answer; each frame's own size held to the pixel limit before it is decoded, a GIF's first frame decoded alone too; buffers `try_reserve`d; a worker panic mid-frame starts the animation over
+* `apps/gif`: hand-written GIFs (`tool/assets.py`) for every disposal, a loop count, none, a frame past the screen; an animated WebP; the steps animation through `Image.asset`. The report (`test/report.txt`) is the stock engine's, line for line; the frames are pixel-exact (tolerance 0)
+* `gif_advances_at_its_durations`: the steps change in order, each after its frame's duration, at most three vsync periods late, timed from the frames run-app renders
+
+Found on the way:
+
+* The stock engine fails a WebP animation frame with alpha after the first ("Could not getPixels for frame 1"); fl-image decodes it, its tests cover it, and the app's WebP is opaque
+* The framework gives no frames before `runApp` (`WidgetsBinding.framesEnabled`), so an animation is loaded after the first frame in any engine
+* A frame `main` asked for before the loop started was dropped: fl-ui's frame scheduler was set by the loop. It is set with the isolate's configuration now

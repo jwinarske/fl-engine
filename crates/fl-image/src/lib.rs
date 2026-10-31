@@ -8,13 +8,16 @@
 //! decoders are safe Rust; a panic in one is caught by the [`Worker`] and is
 //! that job's error.
 //!
-//! Formats: PNG, JPEG, GIF and WebP, one crate each (decision D3). The
-//! first frame only, until animation (stage 7).
+//! Formats: PNG, JPEG, GIF and WebP, one crate each (decision D3).
+//! [`decode`] gives an image's first frame; [`Frames`], an animation's
+//! frames one at a time.
 
 use std::io::Cursor;
 
+mod animation;
 mod worker;
 
+pub use animation::{Frames, DEFAULT_MAX_FRAMES};
 pub use worker::{Done, Job, Source, Worker};
 
 /// The default pixel limit: 64 Mpx, 256 MiB of RGBA8.
@@ -40,6 +43,9 @@ pub enum ImageError {
     Unknown,
     /// The header claims more pixels than the limit allows.
     TooLarge { width: u64, height: u64, limit: u64 },
+    /// An animation has more frames than the limit allows: counted up to
+    /// one past it.
+    TooManyFrames { frames: u32, limit: u32 },
     /// An allocation the decode needed failed.
     OutOfMemory,
     /// The decoder refused the data, or panicked on it.
@@ -58,6 +64,9 @@ impl std::fmt::Display for ImageError {
                 f,
                 "a {width}x{height} image is over the {limit}-pixel limit"
             ),
+            ImageError::TooManyFrames { limit, .. } => {
+                write!(f, "an animation over the {limit}-frame limit")
+            }
             ImageError::OutOfMemory => write!(f, "out of memory decoding the image"),
             ImageError::Decode(e) => write!(f, "{e}"),
         }
@@ -73,14 +82,18 @@ fn decode_err(what: &str, e: impl std::fmt::Display) -> ImageError {
 /// What may be decoded.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Limits {
-    /// The most pixels an image, or a size it is decoded to, may have.
+    /// The most pixels an image, a frame of one, or a size it is decoded
+    /// to, may have.
     pub max_pixels: u64,
+    /// The most frames an animation may have.
+    pub max_frames: u32,
 }
 
 impl Default for Limits {
     fn default() -> Self {
         Limits {
             max_pixels: DEFAULT_MAX_PIXELS,
+            max_frames: DEFAULT_MAX_FRAMES,
         }
     }
 }
@@ -410,6 +423,7 @@ fn gif_options(limits: &Limits) -> gif::DecodeOptions {
 
 /// The first frame on the logical screen: transparent where the frame does
 /// not cover it, as browsers and Skia draw it, the background color unused.
+/// The frame's own size is held to the limit too.
 fn decode_gif(bytes: &[u8], limits: &Limits) -> Result<Frame, ImageError> {
     let mut d = gif_options(limits)
         .read_info(Cursor::new(bytes))
@@ -417,32 +431,27 @@ fn decode_gif(bytes: &[u8], limits: &Limits) -> Result<Frame, ImageError> {
     let (w, h) = (u32::from(d.width()), u32::from(d.height()));
     let mut pixels = buffer(rgba_len(w, h)?)?;
     let f = d
-        .read_next_frame()
+        .next_frame_info()
         .map_err(|e| decode_err("gif", e))?
         .ok_or_else(|| decode_err("gif", "no frames"))?;
-    let (fl, ft, fw, fh) = (
+    let rect = [
         usize::from(f.left),
         usize::from(f.top),
         usize::from(f.width),
         usize::from(f.height),
-    );
-    let (sw, sh) = (w as usize, h as usize);
-    for y in 0..fh.min(sh.saturating_sub(ft)) {
-        let cols = fw.min(sw.saturating_sub(fl));
-        let src = f
-            .buffer
-            .get(y * fw * 4..(y * fw + cols) * 4)
-            .ok_or_else(|| decode_err("gif", "short frame"))?;
-        let at = ((ft + y) * sw + fl) * 4;
-        if let Some(dst) = pixels.get_mut(at..at + cols * 4) {
-            dst.copy_from_slice(src);
-        }
-    }
+    ];
+    let delay = f.delay;
+    let (fw, fh) = (u32::from(f.width), u32::from(f.height));
+    limits.check(fw, fh)?;
+    let mut px = buffer(rgba_len(fw, fh)?)?;
+    d.read_into_buffer(&mut px)
+        .map_err(|e| decode_err("gif", e))?;
+    animation::draw(&mut pixels, w as usize, h as usize, &px, rect);
     Ok(Frame {
         width: w,
         height: h,
         pixels,
-        duration_ms: u32::from(f.delay) * 10,
+        duration_ms: u32::from(delay) * 10,
     })
 }
 

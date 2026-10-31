@@ -150,8 +150,8 @@ pub(crate) enum ReplyArg {
     /// A new `ByteData`.
     Bytes(Vec<u8>),
     Int(i64),
-    /// `getNextFrame`'s three: a new `_Image`, a duration of 0 ms, and "".
-    Frame(Arc<ImageData>),
+    /// `getNextFrame`'s three: a new `_Image`, its duration in ms, and "".
+    Frame(Arc<ImageData>, u32),
     /// `getNextFrame`'s three on failure: null, 0, and why.
     FrameError(String),
 }
@@ -260,9 +260,12 @@ pub unsafe fn deliver_replies() -> Result<(), String> {
                 ReplyArg::Int(n) => Some(sys::Dart_NewInteger(*n)),
                 ReplyArg::Null => Some(args::null()),
                 ReplyArg::Void => Some(sys::Dart_TypeVoid()),
-                ReplyArg::Frame(image) => {
+                ReplyArg::Frame(image, ms) => {
                     match crate::image::new_image(image) {
-                        Ok(h) => args3[0] = h,
+                        Ok(h) => {
+                            args3[0] = h;
+                            args3[1] = sys::Dart_NewInteger(i64::from(*ms));
+                        }
                         Err(e) => args3[2] = error_string(&e),
                     }
                     None

@@ -478,7 +478,7 @@ const NOT_YET: &[(&str, &str)] = &[];
 #[test]
 #[ignore = "app lane: needs FLUTTER_ROOT"]
 fn every_native_is_called_by_an_app() {
-    let runs: [(&str, &[&str]); 12] = [
+    let runs: [(&str, &[&str]); 13] = [
         ("colored_box", &[]),
         ("shapes", &["--frames", "1"]),
         ("material", &[]),
@@ -491,6 +491,7 @@ fn every_native_is_called_by_an_app() {
         ("shadows", &["--frames", "1"]),
         ("metrics", &["--frames", "1"]),
         ("text", &["--frames", "1"]),
+        ("gif", &["--frames", "1"]),
     ];
     let mut called = std::collections::BTreeSet::new();
     for (name, opts) in runs {
@@ -633,6 +634,110 @@ fn matches_golden_with(name: &str, (w, h): (u32, u32), dpr: u32, extra: &[&std::
     assert!(pct(differ) <= limit("differ"), "{name}: {report}");
     assert!(pct(over_32) <= limit("differ_over_32"), "{name}: {report}");
     println!("{name}: {report}");
+}
+
+/// Animated GIF and WebP (exit criterion 4): each animation's frame and
+/// repetition counts and every frame's size and duration, the first again
+/// after the last, as the stock engine gives them (test/report.txt, from
+/// flutter_tester).
+#[test]
+#[ignore = "app lane: needs FLUTTER_ROOT"]
+fn gif_frames_match_the_stock_engine() {
+    let app = build_app("gif");
+    let o = common::fl_dart(&[
+        "run-app".as_ref(),
+        app.as_os_str(),
+        "400x300".as_ref(),
+        "--frames".as_ref(),
+        "1".as_ref(),
+    ]);
+    assert!(o.status.success(), "{o:?}");
+    let out = String::from_utf8_lossy(&o.stdout);
+    let report: String = out
+        .lines()
+        .take_while(|l| !l.starts_with("frame "))
+        .map(|l| format!("{l}\n"))
+        .collect();
+    let expected = std::fs::read_to_string(repo().join("apps/gif/test/report.txt")).unwrap();
+    assert_eq!(report, expected);
+}
+
+/// Every frame of each animation, each disposal applied, against the
+/// stock engine's.
+#[test]
+#[ignore = "app lane: needs FLUTTER_ROOT and a Vulkan driver"]
+fn gif_matches_its_golden() {
+    matches_golden_at("gif", (400, 300), 1);
+}
+
+/// The steps animation, red 100 ms, green 200, blue 150, as `Image.asset`
+/// shows it: loaded after the first frame, then the framework asks for a
+/// frame when the next is due, so the color changes in order, each after
+/// its frame's duration, to within a few vsync periods.
+#[test]
+#[ignore = "app lane: needs FLUTTER_ROOT and a Vulkan driver"]
+fn gif_advances_at_its_durations() {
+    let app = build_app("gif");
+    let dir = common::out_dir().join("apps/gif-frames");
+    let _ = std::fs::remove_dir_all(&dir);
+    let o = common::fl_dart(&[
+        "run-app".as_ref(),
+        app.as_os_str(),
+        "400x300".as_ref(),
+        "--frames".as_ref(),
+        "16".as_ref(),
+        "--frames-dir".as_ref(),
+        dir.as_os_str(),
+    ]);
+    assert!(o.status.success(), "{o:?}");
+    let out = String::from_utf8_lossy(&o.stdout);
+    let (_, vsync) = out.rsplit_once("vsync: ").unwrap_or((&out, ""));
+    let (n, gaps) = vsync
+        .trim()
+        .strip_prefix("frames=")
+        .and_then(|r| r.split_once(" interval_us="))
+        .unwrap_or_else(|| panic!("not a vsync line: {vsync:?}"));
+    // The warm-up frame, then 15 at vsync.
+    assert_eq!(n, "15", "{vsync}");
+    let gaps: Vec<i64> = gaps.split(',').map(|g| g.parse().unwrap()).collect();
+    // Each vsync frame's time from the first, and the steps' color in it.
+    let mut t = 0;
+    let mut seen: Vec<(i64, usize)> = Vec::new();
+    for i in 1..16 {
+        if i > 1 {
+            t += gaps[i - 2];
+        }
+        let px = read_png(&dir.join(format!("frame-{:04}.png", i + 1)), (400, 300));
+        let at = (30 * 400 + 360) * 4;
+        let step = match px[at..at + 4] {
+            // Not loaded yet: the first frame, and the next few.
+            [128, 128, 128, 255] if seen.is_empty() => continue,
+            [255, 0, 0, 255] => 0,
+            [0, 255, 0, 255] => 1,
+            [0, 0, 255, 255] => 2,
+            ref p => panic!("frame {}: the steps are {p:?}", i + 1),
+        };
+        if seen.last().is_none_or(|(_, s)| *s != step) {
+            seen.push((t, step));
+        }
+    }
+    // The first step is shown when the load completes, not at a frame's
+    // due time; the steps are timed from the first change on.
+    assert!(
+        seen.len() >= 5,
+        "too few steps in 16 frames: {seen:?} ({vsync})"
+    );
+    let durations_us = [100_000, 200_000, 150_000];
+    for pair in seen[1..].windows(2) {
+        let ((t0, a), (t1, b)) = (pair[0], pair[1]);
+        assert_eq!(b, (a + 1) % 3, "out of order: {seen:?}");
+        let (shown, due) = (t1 - t0, durations_us[a]);
+        // Never early; late by the vsync it waits for, and a little.
+        assert!(
+            shown >= due - 2_000 && shown <= due + 3 * PERIOD_US as i64 + 10_000,
+            "step {a} shown {shown} us, due {due}: {seen:?} ({vsync})"
+        );
+    }
 }
 
 /// The engine's frame sequence, from dart:ui with no framework: each frame

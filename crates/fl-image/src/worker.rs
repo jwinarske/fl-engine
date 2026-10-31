@@ -13,18 +13,21 @@
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{self, Sender};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 
-use crate::{decode, from_raw, Frame, ImageError, Limits, Raw};
+use crate::{decode, from_raw, Frame, Frames, ImageError, Limits, Raw};
 
 /// What a job's bytes are.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub enum Source {
     /// An encoded image, its format from its first bytes.
     Encoded,
     /// Pixels, as [`Raw`] lays them out.
     Raw(Raw),
+    /// An animation's next frame. The job's bytes, target and limits are
+    /// not used: the frames hold their own, and frames are not resized.
+    Next(Arc<Mutex<Frames>>),
 }
 
 /// One decode.
@@ -71,6 +74,16 @@ impl Worker {
                     let result = catch_unwind(AssertUnwindSafe(|| match &job.source {
                         Source::Encoded => decode(&job.bytes, job.target, &job.limits),
                         Source::Raw(raw) => from_raw(&job.bytes, raw, job.target, &job.limits),
+                        Source::Next(frames) => {
+                            let mut f = frames.lock().unwrap_or_else(|e| {
+                                // A panic mid-frame left the decoder there.
+                                frames.clear_poison();
+                                let mut f = e.into_inner();
+                                f.restart();
+                                f
+                            });
+                            f.next_frame()
+                        }
                     }))
                     .unwrap_or_else(|p| {
                         let why = p

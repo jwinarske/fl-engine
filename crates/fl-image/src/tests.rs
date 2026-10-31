@@ -228,9 +228,24 @@ fn a_header_over_the_pixel_limit_is_refused() {
     );
     // At the limit is allowed; one pixel over is not.
     let png = include_bytes!("../testdata/rgba.png");
-    assert!(decode(png, None, &Limits { max_pixels: 8 }).is_ok());
+    assert!(decode(
+        png,
+        None,
+        &Limits {
+            max_pixels: 8,
+            ..Limits::default()
+        }
+    )
+    .is_ok());
     assert!(matches!(
-        decode(png, None, &Limits { max_pixels: 7 }),
+        decode(
+            png,
+            None,
+            &Limits {
+                max_pixels: 7,
+                ..Limits::default()
+            }
+        ),
         Err(ImageError::TooLarge { .. })
     ));
     // A target size over the limit too.
@@ -365,7 +380,16 @@ fn raw_pixels_keep_their_bytes_by_row_and_swap_bgra() {
         &Limits::default()
     )
     .is_err());
-    assert!(from_raw(&bytes, &raw, None, &Limits { max_pixels: 1 }).is_err());
+    assert!(from_raw(
+        &bytes,
+        &raw,
+        None,
+        &Limits {
+            max_pixels: 1,
+            ..Limits::default()
+        }
+    )
+    .is_err());
     let huge = Raw {
         width: u32::MAX,
         height: u32::MAX,
@@ -373,4 +397,259 @@ fn raw_pixels_keep_their_bytes_by_row_and_swap_bgra() {
         bgra: false,
     };
     assert!(from_raw(&bytes, &huge, None, &Limits::default()).is_err());
+}
+
+/// Palette: 0 red, 1 green, 2 blue, 3 transparent.
+const PALETTE: [u8; 12] = [255, 0, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0];
+
+/// A GIF on a `w`x`h` screen: each frame its rect (left, top, width,
+/// height), one palette index filling it, its disposal and delay.
+fn animated_gif(
+    (w, h): (u16, u16),
+    repeat: Option<gif::Repeat>,
+    frames: &[([u16; 4], u8, gif::DisposalMethod, u16)],
+) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    {
+        let mut e = gif::Encoder::new(&mut bytes, w, h, &PALETTE).unwrap();
+        if let Some(r) = repeat {
+            e.set_repeat(r).unwrap();
+        }
+        for &([l, t, fw, fh], index, dispose, delay) in frames {
+            let n = usize::from(fw) * usize::from(fh);
+            let mut f = gif::Frame::from_indexed_pixels(fw, fh, vec![index; n], Some(3));
+            (f.left, f.top, f.dispose, f.delay) = (l, t, dispose, delay);
+            e.write_frame(&f).unwrap();
+        }
+    }
+    bytes
+}
+
+fn frames_of(bytes: Vec<u8>) -> Frames {
+    Frames::new(Arc::from(bytes), Limits::default()).unwrap()
+}
+
+/// Every pixel of a frame, as palette colors: R, G, B, or . transparent.
+fn colors(f: &Frame) -> String {
+    f.pixels
+        .chunks_exact(4)
+        .map(|p| match p {
+            [255, 0, 0, 255] => 'R',
+            [0, 255, 0, 255] => 'G',
+            [0, 0, 255, 255] => 'B',
+            [0, 0, 0, 0] => '.',
+            _ => '?',
+        })
+        .collect()
+}
+
+use gif::DisposalMethod::{Any, Background, Keep, Previous};
+use std::sync::Arc;
+
+#[test]
+fn a_gif_animation_counts_its_frames_and_loops() {
+    let one = [([0, 0, 1, 1], 0, Any, 1)];
+    let two = [one[0], one[0]];
+    for (repeat, want) in [
+        (None, 0),
+        (Some(gif::Repeat::Infinite), -1),
+        (Some(gif::Repeat::Finite(2)), 2),
+    ] {
+        let f = frames_of(animated_gif((1, 1), repeat, &two));
+        assert_eq!((f.frame_count(), f.repetition_count()), (2, want));
+    }
+    assert_eq!(frames_of(animated_gif((1, 1), None, &one)).frame_count(), 1);
+    let still = frames_of(include_bytes!("../testdata/rgba.png").to_vec());
+    assert_eq!((still.frame_count(), still.repetition_count()), (1, 0));
+}
+
+/// Each disposal method, on a 3x1 screen, as MultiFrameCodec composes
+/// them; then the first frame again, on a clear canvas.
+#[test]
+fn gif_frames_are_composed_after_each_disposal() {
+    let mut f = frames_of(animated_gif(
+        (3, 1),
+        None,
+        &[
+            ([0, 0, 1, 1], 0, Keep, 10),
+            ([1, 0, 1, 1], 1, Background, 20),
+            ([2, 0, 1, 1], 2, Previous, 30),
+            ([0, 0, 3, 1], 3, Any, 40),
+            ([1, 0, 1, 1], 2, Any, 5),
+        ],
+    ));
+    let mut seen = Vec::new();
+    for _ in 0..6 {
+        let frame = f.next_frame().unwrap();
+        seen.push((colors(&frame), frame.duration_ms));
+    }
+    let want = [
+        ("R..", 100),
+        // Keep: green on red.
+        ("RG.", 200),
+        // Background cleared green's square; blue drawn.
+        ("R.B", 300),
+        // Previous restored to before blue; the frame is all transparent.
+        ("R..", 400),
+        ("RB.", 50),
+        // The first frame again, on a clear canvas.
+        ("R..", 100),
+    ];
+    let want: Vec<(String, u32)> = want.iter().map(|(c, d)| ((*c).to_owned(), *d)).collect();
+    assert_eq!(seen, want);
+}
+
+/// Restoring to the previous frame before any: transparent, as Skia's
+/// required frame is none.
+#[test]
+fn a_first_frame_restoring_to_previous_restores_to_nothing() {
+    let mut f = frames_of(animated_gif(
+        (2, 1),
+        None,
+        &[([0, 0, 1, 1], 0, Previous, 1), ([1, 0, 1, 1], 1, Any, 1)],
+    ));
+    assert_eq!(colors(&f.next_frame().unwrap()), "R.");
+    assert_eq!(colors(&f.next_frame().unwrap()), ".G");
+}
+
+/// A frame past the screen is clipped to it, not an error.
+#[test]
+fn a_gif_frame_past_the_screen_is_clipped() {
+    let mut f = frames_of(animated_gif(
+        (2, 1),
+        None,
+        &[([1, 0, 3, 2], 0, Any, 1), ([0, 0, 1, 1], 1, Any, 1)],
+    ));
+    assert_eq!(colors(&f.next_frame().unwrap()), ".R");
+    assert_eq!(colors(&f.next_frame().unwrap()), "GR");
+}
+
+/// The frame limit, crossed: refused when counted, before any frame.
+#[test]
+fn an_animation_over_the_frame_limit_is_refused() {
+    let bytes: Arc<[u8]> = Arc::from(animated_gif((1, 1), None, &[([0, 0, 1, 1], 0, Any, 1); 5]));
+    let at = Limits {
+        max_frames: 5,
+        ..Limits::default()
+    };
+    assert_eq!(
+        Frames::new(Arc::clone(&bytes), at).unwrap().frame_count(),
+        5
+    );
+    let under = Limits {
+        max_frames: 4,
+        ..Limits::default()
+    };
+    assert!(matches!(
+        Frames::new(bytes, under),
+        Err(ImageError::TooManyFrames { limit: 4, .. })
+    ));
+}
+
+/// A frame's own size, crossed: a 1x1 screen with a 3x3 frame, under a
+/// 4-pixel limit, is that frame's error, and the next call starts over.
+#[test]
+fn a_frame_over_the_pixel_limit_is_refused() {
+    let bytes: Arc<[u8]> = Arc::from(animated_gif(
+        (1, 1),
+        None,
+        &[([0, 0, 1, 1], 0, Any, 1), ([0, 0, 3, 3], 1, Any, 1)],
+    ));
+    let limits = Limits {
+        max_pixels: 4,
+        ..Limits::default()
+    };
+    let mut f = Frames::new(bytes, limits).unwrap();
+    assert_eq!(colors(&f.next_frame().unwrap()), "R");
+    assert!(matches!(
+        f.next_frame(),
+        Err(ImageError::TooLarge { width: 3, .. })
+    ));
+    assert_eq!(colors(&f.next_frame().unwrap()), "R");
+    // The first frame decoded alone holds its frame to the limit too.
+    let big = animated_gif((1, 1), None, &[([0, 0, 3, 3], 1, Any, 1)]);
+    assert!(matches!(
+        decode(&big, None, &limits),
+        Err(ImageError::TooLarge { .. })
+    ));
+}
+
+/// 100,000 frames: counted, and decoded one at a time, each the size of
+/// the screen (§15).
+#[test]
+fn a_hundred_thousand_tiny_frames_cost_one_frame() {
+    let frames = vec![([0, 0, 1, 1], 1, Any, 1); 100_000];
+    let mut f = frames_of(animated_gif((1, 1), Some(gif::Repeat::Infinite), &frames));
+    assert_eq!(f.frame_count(), 100_000);
+    for _ in 0..1000 {
+        let frame = f.next_frame().unwrap();
+        assert_eq!(frame.pixels.len(), 4);
+    }
+}
+
+/// An animated WebP: frames composed as Skia composes them, the loop
+/// count n played n times. testdata/anim.webp is
+/// Pillow's: red, half-transparent green, blue; 100, 200, 300 ms; loop 3.
+#[test]
+fn an_animated_webp_gives_its_frames_and_loops() {
+    let mut f = frames_of(include_bytes!("../testdata/anim.webp").to_vec());
+    assert_eq!((f.frame_count(), f.repetition_count()), (3, 2));
+    let mut seen = Vec::new();
+    for _ in 0..4 {
+        let frame = f.next_frame().unwrap();
+        assert_eq!((frame.width, frame.height), (4, 4));
+        seen.push((pixel(&frame, 1, 1), frame.duration_ms));
+    }
+    // Blue is blended over green, opaque: copied, as Skia does, not
+    // rounded to 254 as image-webp's own blend would.
+    assert_eq!(
+        seen,
+        [
+            ([255, 0, 0, 255], 100),
+            ([0, 128, 0, 128], 200),
+            ([0, 0, 255, 255], 300),
+            ([255, 0, 0, 255], 100),
+        ]
+    );
+}
+
+/// A truncated animation: counted as far as it parses; a frame cut short
+/// is that frame's error, not a panic.
+#[test]
+fn a_truncated_animation_is_an_error_not_a_panic() {
+    let bytes = animated_gif((2, 2), None, &[([0, 0, 2, 2], 0, Any, 1); 3]);
+    for cut in 13..bytes.len() {
+        if let Ok(mut f) = Frames::new(Arc::from(&bytes[..cut]), Limits::default()) {
+            for _ in 0..4 {
+                let _ = f.next_frame();
+            }
+        }
+    }
+}
+
+/// The worker decodes an animation's frames in turn, the frames shared
+/// with the caller.
+#[test]
+fn the_worker_gives_an_animations_frames_in_turn() {
+    let frames = Arc::new(std::sync::Mutex::new(frames_of(animated_gif(
+        (1, 1),
+        None,
+        &[([0, 0, 1, 1], 0, Any, 1), ([0, 0, 1, 1], 1, Any, 2)],
+    ))));
+    let (tx, rx) = std::sync::mpsc::channel();
+    let w = Worker::spawn(move |d| tx.send(d).unwrap()).unwrap();
+    for id in 0..3 {
+        assert!(w.submit(Job {
+            id,
+            tag: 0,
+            bytes: Arc::from(&[][..]),
+            source: Source::Next(Arc::clone(&frames)),
+            target: None,
+            limits: Limits::default(),
+        }));
+    }
+    let got: Vec<u32> = (0..3)
+        .map(|_| rx.recv().unwrap().result.unwrap().duration_ms)
+        .collect();
+    assert_eq!(got, [10, 20, 10]);
 }
