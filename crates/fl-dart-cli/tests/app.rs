@@ -478,7 +478,7 @@ const NOT_YET: &[(&str, &str)] = &[];
 #[test]
 #[ignore = "app lane: needs FLUTTER_ROOT"]
 fn every_native_is_called_by_an_app() {
-    let runs: [(&str, &[&str]); 13] = [
+    let runs: [(&str, &[&str]); 14] = [
         ("colored_box", &[]),
         ("shapes", &["--frames", "1"]),
         ("material", &[]),
@@ -492,6 +492,7 @@ fn every_native_is_called_by_an_app() {
         ("metrics", &["--frames", "1"]),
         ("text", &["--frames", "1"]),
         ("gif", &["--frames", "1"]),
+        ("gradients", &["1600x1200@2", "--frames", "1"]),
     ];
     let mut called = std::collections::BTreeSet::new();
     for (name, opts) in runs {
@@ -640,6 +641,14 @@ fn compare_with_golden(name: &str, png: &std::path::Path, (w, h): (u32, u32)) {
     assert!(pct(differ) <= limit("differ"), "{name}: {report}");
     assert!(pct(over_32) <= limit("differ_over_32"), "{name}: {report}");
     println!("{name}: {report}");
+}
+
+/// dart:ui's gradients, every kind, tile mode and matrix, and image
+/// shaders by their matrix, against the stock engine's.
+#[test]
+#[ignore = "app lane: needs FLUTTER_ROOT and a Vulkan driver"]
+fn gradients_matches_its_golden() {
+    matches_golden_at("gradients", (1600, 1200), 2);
 }
 
 /// Animated GIF and WebP (exit criterion 4): each animation's frame and

@@ -17,6 +17,7 @@ use fl_dart_ffi::{lookup, Symbol};
 
 mod buffer;
 mod compositing;
+mod gradient;
 mod image;
 mod painting;
 mod path;
@@ -26,11 +27,12 @@ mod text;
 
 pub use buffer::{asset_bundle, set_asset_bundle};
 pub use compositing::{Clip, LayerOp, Scene};
+pub use gradient::{Gradient, GradientKind};
 pub use image::{
     awaiting_decodes, clear_image_sink, set_image_sink, set_max_image_pixels, ImageData,
     ImageShader,
 };
-pub use painting::{Cap, ClipOp, Draw, Join, Paint, Picture, Style};
+pub use painting::{Cap, ClipOp, Draw, Join, Paint, Picture, Shader, Style};
 pub use path::{Affine, FillType, Path, Point, RRect, Seg};
 pub use platform::{
     deliver_replies, discard_replies, has_pending_replies, set_device_pixel_ratio,
@@ -132,6 +134,11 @@ pub static NATIVES: &[Symbol] = &[
     fl_dart_ffi::symbol!("ImageShader::Create", 1, image::image_shader_create),
     fl_dart_ffi::symbol!("ImageShader::initWithImage", 6, image::image_shader_init),
     fl_dart_ffi::symbol!("ImageShader::dispose", 1, image::image_shader_dispose),
+    fl_dart_ffi::symbol!("Gradient::Create", 1, gradient::create),
+    fl_dart_ffi::symbol!("Gradient::initLinear", 6, gradient::init_linear),
+    fl_dart_ffi::symbol!("Gradient::initRadial", 8, gradient::init_radial),
+    fl_dart_ffi::symbol!("Gradient::initTwoPointConical", 11, gradient::init_conical),
+    fl_dart_ffi::symbol!("Gradient::initSweep", 9, gradient::init_sweep),
     fl_dart_ffi::symbol!("Canvas::drawImage", 7, painting::draw_image),
     fl_dart_ffi::symbol!("Canvas::drawImageRect", 13, painting::draw_image_rect),
     fl_dart_ffi::symbol!("Canvas::drawImageNine", 13, painting::draw_image_nine),

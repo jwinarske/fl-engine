@@ -10,6 +10,7 @@ use std::sync::{Arc, Mutex};
 
 use fl_dart_ffi::{args, guard, peer, sys};
 
+use crate::gradient::{gradient_of, Gradient};
 use crate::image::{image_of, image_shader_of, ImageData, ImageShader};
 use crate::path::{self, Path, RRect};
 
@@ -169,9 +170,9 @@ pub enum Join {
 
 /// A dart:ui `Paint`: its `ByteData`, 68 bytes in the layout
 /// painting.dart:1328-1365 declares, and its objects list. Of the objects,
-/// an `ImageShader` is decoded ([`Paint::shader`]); any other shader, and
-/// color and image filters, are not yet, and [`Paint::objects`] says one
-/// was set.
+/// an `ImageShader` or a `Gradient` is decoded ([`Paint::shader`]); any
+/// other shader, and color and image filters, are not yet, and
+/// [`Paint::objects`] says one was set.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Paint {
     /// Straight (not premultiplied) red, green, blue, alpha, 0 to 1, in
@@ -193,10 +194,17 @@ pub struct Paint {
     /// A blur mask filter: its `BlurStyle` index and sigma.
     pub mask_blur: Option<(i32, f32)>,
     pub invert_colors: bool,
-    /// A shader other than an image shader, a color filter or an image
-    /// filter is set.
+    /// A shader other than an image shader or a gradient, a color filter
+    /// or an image filter is set.
     pub objects: bool,
-    pub shader: Option<Arc<ImageShader>>,
+    pub shader: Option<Shader>,
+}
+
+/// A paint's shader, of the kinds fl-ui reads.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Shader {
+    Image(Arc<ImageShader>),
+    Gradient(Arc<Gradient>),
 }
 
 impl Default for Paint {
@@ -420,12 +428,12 @@ pub(crate) unsafe fn paint(objects: sys::Dart_Handle, data: sys::Dart_Handle) ->
 }
 
 /// A paint's objects list, `[shader, colorFilter, imageFilter]`
-/// (painting.dart `_kShaderIndex` and on): the image shader, if the shader
-/// is one, and whether anything else is set.
+/// (painting.dart `_kShaderIndex` and on): the shader, if it is an image
+/// shader or a gradient, and whether anything else is set.
 ///
 /// # Safety
 /// As [`fl_dart_ffi::args::bytes`].
-unsafe fn paint_objects(objects: sys::Dart_Handle) -> (Option<Arc<ImageShader>>, bool) {
+unsafe fn paint_objects(objects: sys::Dart_Handle) -> (Option<Shader>, bool) {
     // SAFETY: per this function's contract.
     unsafe {
         if !args::any_non_null(objects) {
@@ -442,9 +450,16 @@ unsafe fn paint_objects(objects: sys::Dart_Handle) -> (Option<Arc<ImageShader>>,
             if sys::Dart_IsError(o) || sys::Dart_IsNull(o) {
                 continue;
             }
-            match (i, image_shader_of(o)) {
-                (0, Some(s)) => shader = Some(s),
-                _ => other = true,
+            let read = (i == 0)
+                .then(|| {
+                    image_shader_of(o)
+                        .map(Shader::Image)
+                        .or_else(|| gradient_of(o).map(Shader::Gradient))
+                })
+                .flatten();
+            match read {
+                Some(s) => shader = Some(s),
+                None => other = true,
             }
         }
         (shader, other)

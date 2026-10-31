@@ -1,0 +1,11 @@
+name: gradients
+description: fl-engine test program. dart:ui's gradients, each kind, tile mode and matrix fl-engine maps (docs/m3-status.md).
+publish_to: none
+environment:
+  sdk: ^3.13.0
+dependencies:
+  flutter:
+    sdk: flutter
+dev_dependencies:
+  flutter_test:
+    sdk: flutter

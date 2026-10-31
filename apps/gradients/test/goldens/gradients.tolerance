@@ -1,0 +1,11 @@
+# gradients.png, rendered by the stock engine's flutter_tester with Impeller,
+# against fl-engine's frame through emblema, both at DPR 2. Percent of
+# pixels allowed to differ in any channel, and by more than 32.
+#
+# Every kind, tile mode and matrix agree. What differs is a level or two
+# across every gradient, where Impeller's dither and emblema's fall on
+# different pixels, and one-pixel lines where a sweep jumps, at its cut and
+# where repeated tiles meet, sampled a pixel apart. Measured 2026-10-31,
+# lavapipe: 5.017% differ, 0.028% by more than 32.
+differ 6.0
+differ_over_32 0.1

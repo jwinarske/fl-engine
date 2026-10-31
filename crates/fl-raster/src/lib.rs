@@ -25,10 +25,11 @@ use emblema::{
 };
 use fl_ui::{
     Cap, Clip, ClipOp, Draw, FillType, ImageData, ImageShader, Join, LayerOp, Paint, Picture,
-    RRect, Scene, Seg, Style,
+    RRect, Scene, Seg, Shader, Style,
 };
 
 mod glyphs;
+mod gradients;
 mod images;
 
 pub use glyphs::Glyphs;
@@ -171,7 +172,7 @@ fn images_in(picture: &Picture, out: &mut Vec<Arc<ImageData>>) {
             Draw::Picture(p) => images_in(p, out),
             _ => {}
         }
-        if let Some(shader) = paint_in(d).and_then(|p| p.shader.as_ref()) {
+        if let Some(Shader::Image(shader)) = paint_in(d).and_then(|p| p.shader.as_ref()) {
             out.push(Arc::clone(&shader.image));
         }
     }
@@ -784,35 +785,23 @@ fn image_paint(p: &Paint, base: EPaint, quality: i32) -> Result<EPaint, RasterEr
         .with_anti_alias(p.anti_alias))
 }
 
-/// An image shader's fill: the image placed by its matrix, which may scale
-/// and translate; a rotation, skew or perspective is not mapped yet, nor
-/// tile modes that differ between the axes.
+/// An image shader's fill: the image at its own size in its own space,
+/// placed by its matrix, emblema's shader transform; tile modes that
+/// differ between the axes are not mapped yet (jwinarske/emblema#230).
 fn shader_paint(
     s: &ImageShader,
     filter_quality: i32,
     slots: &mut Slots,
 ) -> Result<EPaint, RasterError> {
-    let m = &s.matrix;
-    let affine_only = m[1] == 0.0 && m[4] == 0.0 && m[3] == 0.0 && m[7] == 0.0 && m[15] == 1.0;
-    if !affine_only || m[0] <= 0.0 || m[5] <= 0.0 {
-        return Err(RasterError::Unsupported(
-            "an ImageShader matrix other than a scale and translation".into(),
-        ));
-    }
     if s.tile[0] != s.tile[1] {
         return Err(RasterError::Unsupported(
             "an ImageShader with a tile mode per axis".into(),
         ));
     }
     let (slot, size) = slots.slot(&s.image)?;
-    let (w, h) = (size.width as f64, size.height as f64);
-    let covers = Rect::new(
-        m[12] as f32,
-        m[13] as f32,
-        (m[12] + m[0] * w) as f32,
-        (m[13] + m[5] * h) as f32,
-    );
+    let covers = Rect::new(0.0, 0.0, size.width as f32, size.height as f32);
     Ok(EPaint::image(slot, covers)
+        .with_shader_transform(gradients::shader_transform_of(&s.matrix))
         .with_tile_mode(tile_of(s.tile[0])?)
         .with_sampling(sampling_of(s.quality.unwrap_or(filter_quality))))
 }
@@ -1085,7 +1074,8 @@ fn paint_of(p: &Paint, slots: &mut Slots) -> Result<EPaint, RasterError> {
     // A shader replaces the color, but for its alpha.
     let [r, g, b, a] = p.color;
     let base = match &p.shader {
-        Some(s) => shader_paint(s, p.filter_quality, slots)?.with_image_alpha(a),
+        Some(Shader::Image(s)) => shader_paint(s, p.filter_quality, slots)?.with_opacity(a),
+        Some(Shader::Gradient(g)) => gradients::gradient_paint(g, a)?,
         None => EPaint::fill(Color::srgb(r, g, b, a)),
     };
     let paint = match p.style {

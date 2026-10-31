@@ -148,7 +148,7 @@ Done: `text` matches flutter_tester's golden with Impeller within the recorded t
 Not yet:
 
 * Glyph edges: Impeller rasterizes through Skia with slight hinting, quarter-pixel subpixel positions and Skia's coverage; swash here, unhinted, on whole pixels. Small text is 5 to 9% heavier in ink; positions agree within a third of a pixel; outlines and icons agree
-* Gradient-filled text: dart:ui's `Gradient` natives are not in fl-ui; the text program has none
+* Gradient-filled text: dart:ui's `Gradient` natives are not in fl-ui; the text program has none (done since; see the gradients follow-up)
 * A frame needing more glyphs than the atlas's limit draws the rest as outlines rather than in a second pass
 * The first replay costs a second walk of the scene each frame
 
@@ -233,3 +233,17 @@ Found on the way:
 * The shaped-run cache outlived the faces it was keyed by, until its bound cleared it; it is cleared with the font collection
 * The system font scan was a collection's, so with each lifecycle's collection new, an app falling back rescanned and reread the system's fonts each cycle; it is the process's now, as Skia's font manager is
 * `app-cycle` sampled RSS while a frame was in flight, its pixels and the last frame's both held: images at 800x600 read a frame (1,875 kB) high or not, at random, and failed the soak once in ci. The raster thread drops the last frame's pixels before it marks a scene drawn, and samples wait for every scene drawn (`RasterThread::wait_drawn`)
+
+## Follow-ups: gradients and shader matrices (2026-10-31)
+
+Done: dart:ui's `Gradient`, every kind, tile mode and matrix, and an `ImageShader` by any matrix, match flutter_tester's golden with Impeller.
+
+    tools/flutter-app/build.sh $FLUTTER_ROOT apps/gradients out
+    fl-dart run-app out/gradients.so 1600x1200@2 --png gradients.png
+    frame 1: view 0 800x600 layers=1 pictures=1 draws=31
+
+* fl-ui: `Gradient::Create`, `initLinear`, `initRadial`, `initTwoPointConical`, `initSweep`; a paint's shader is an image shader or a gradient (`fl_ui::Shader`). Colors as `_encodeWideColorList` writes them; stops evenly spaced when not given, as Skia's. Arguments that do not decode keep no gradient, and a draw with it is refused by name
+* fl-raster: each kind to emblema's; the matrix as the shader's local transform (`Paint::with_shader_transform`, jwinarske/emblema#235); the paint's alpha as its opacity (`Paint::with_opacity`, #236). An `ImageShader` placed at its own size by its matrix: rotation, skew, mirror and perspective, where only scale and translation were. One tile mode for both axes still (#230)
+* emblema#237: a sweep's angle measured from the positive X axis in [0, 2pi), as upstream's `sweep_gradient_fill.frag`; a part-turn sweep starting past zero drew its end color before its start
+* `apps/gradients`: two and six stops, each tile mode, paint alpha, radial, conical with a focal point and a focal radius, whole and part sweeps with each tile mode, `GradientRotation`, a skewed linear, a turned radial and sweep, image shaders turned, mirrored and skewed, a gradient stroke and rounded rect
+* Golden: 5.017% differ, 0.028% by more than 32: the two dithers, and one-pixel lines where a sweep jumps. Tolerance 6.0 and 0.1
