@@ -333,6 +333,20 @@ impl RasterThread {
         }
     }
 
+    /// Waits until every scene submitted has been drawn: for the leak
+    /// harness, which samples memory then, not while a frame's pixels are
+    /// held twice.
+    pub fn wait_drawn(&self) {
+        let mut n = self.scenes.n.lock().unwrap_or_else(|e| e.into_inner());
+        while *n > 0 {
+            n = self
+                .scenes
+                .changed
+                .wait(n)
+                .unwrap_or_else(|e| e.into_inner());
+        }
+    }
+
     /// What uploads a decoded image ahead of the frame that draws it: for
     /// [`fl_ui::set_image_sink`]. Never waits.
     pub fn uploader(&self) -> impl Fn(Arc<ImageData>) + Send + 'static {
@@ -411,22 +425,28 @@ fn raster_main(
             Some(target.render(&scene))
         };
         drop(scene);
-        in_flight.done();
         let Some(drawn) = drawn else {
+            in_flight.done();
             continue;
         };
         match drawn {
             Ok(pixels) => {
                 r.frames += 1;
-                if let Some(dir) = capture {
+                // The frame before goes first: once a scene is done, one
+                // frame's pixels are held, what `wait_drawn` measures by.
+                r.last = Some(pixels);
+                in_flight.done();
+                if let (Some(dir), Some(pixels)) = (capture, r.last.as_ref()) {
                     let file = dir.join(format!("frame-{:04}.png", r.frames));
-                    if let Err(e) = write_png(&file, width, height, &pixels) {
+                    if let Err(e) = write_png(&file, width, height, pixels) {
                         r.error = Some(format!("frame {}: {e}", r.frames));
                     }
                 }
-                r.last = Some(pixels);
             }
-            Err(e) => r.error = Some(format!("frame {}: {e}", r.frames + 1)),
+            Err(e) => {
+                in_flight.done();
+                r.error = Some(format!("frame {}: {e}", r.frames + 1));
+            }
         }
     }
     // What is still referenced once the UI side is done: a leak shows here.

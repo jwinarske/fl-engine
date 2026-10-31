@@ -184,19 +184,27 @@ fn app_cycle(path: &str, n: u32, app: AppArgs) -> Result<(), Failure> {
     // and at the end.
     let tenth = (n / 10).max(1);
     let (mut warm, mut mid, mut frames) = (None, None, 0u64);
+    // Sampled with every frame drawn: one in flight holds its pixels and
+    // the last frame's, a whole frame more (1,875 kB at 800x600).
+    let usage = || {
+        if let Some(r) = raster.as_ref() {
+            r.wait_drawn();
+        }
+        usage_now()
+    };
     for i in 0..n {
         // Each lifecycle an engine's: the bundle and fonts afresh, so the
         // fonts an app loaded go with it, as with the engine.
         set_assets(path, &app)?;
         frames += app_once(&vm, &program, path, &app, raster.as_ref(), false)?.rendered;
         if i == 0 {
-            warm = Some(usage_now());
+            warm = Some(usage());
         }
         if i + 1 == tenth {
-            mid = Some(usage_now());
+            mid = Some(usage());
         }
     }
-    let end = usage_now();
+    let end = usage();
     let warm = warm.unwrap_or(end);
     let mid = mid.unwrap_or(end);
     let gpu = finish_raster(raster, &app)?;

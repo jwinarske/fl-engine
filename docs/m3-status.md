@@ -231,3 +231,5 @@ Found on the way:
 * Glyph placements were never pruned as the atlas evicted: text that kept changing grew them without bound. Pruned once they outnumber the atlas's glyphs twice over
 * `app-cycle` kept one font collection for every cycle, so fonts an app loaded piled up, about 2 MB a cycle for text; each lifecycle now sets its bundle and fonts afresh, as an engine's
 * The shaped-run cache outlived the faces it was keyed by, until its bound cleared it; it is cleared with the font collection
+* The system font scan was a collection's, so with each lifecycle's collection new, an app falling back rescanned and reread the system's fonts each cycle; it is the process's now, as Skia's font manager is
+* `app-cycle` sampled RSS while a frame was in flight, its pixels and the last frame's both held: images at 800x600 read a frame (1,875 kB) high or not, at random, and failed the soak once in ci. The raster thread drops the last frame's pixels before it marks a scene drawn, and samples wait for every scene drawn (`RasterThread::wait_drawn`)

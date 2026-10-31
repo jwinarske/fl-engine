@@ -215,7 +215,12 @@ type FallbackCache = HashMap<(char, FontStyle), Option<Arc<Face>>>;
 /// Matched faces by families and style.
 type FaceCache = HashMap<(Vec<String>, FontStyle), Vec<Arc<Face>>>;
 
-/// The system's fonts, scanned once.
+/// The system's fonts, scanned once a process and shared by every
+/// collection, as Skia's font manager is: a new collection, an engine's
+/// fonts loaded afresh, neither rescans them nor reads its faces again.
+static SYSTEM: OnceLock<System> = OnceLock::new();
+
+/// The system's fonts.
 struct System {
     db: fontdb::Database,
     /// Faces loaded from the database, by its id.
@@ -240,7 +245,6 @@ pub struct FontCollection {
     dynamic: Mutex<Vec<Arc<Face>>>,
     assets: Mutex<Vec<Arc<LazyFamily>>>,
     loader: Mutex<Option<AssetLoader>>,
-    system: OnceLock<System>,
     /// Whether to look in the system's fonts at all.
     use_system: bool,
     /// Matched faces by families and style: SkParagraph's face cache.
@@ -348,11 +352,11 @@ impl FontCollection {
         self.system_family(&key)
     }
 
-    fn system(&self) -> Option<&System> {
+    fn system(&self) -> Option<&'static System> {
         if !self.use_system {
             return None;
         }
-        Some(self.system.get_or_init(|| {
+        Some(SYSTEM.get_or_init(|| {
             let mut db = fontdb::Database::new();
             db.load_system_fonts();
             System {
