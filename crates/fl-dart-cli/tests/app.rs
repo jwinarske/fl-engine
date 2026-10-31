@@ -587,8 +587,14 @@ fn matches_golden_with(name: &str, (w, h): (u32, u32), dpr: u32, extra: &[&std::
     args.extend_from_slice(extra);
     let o = common::fl_dart(&args);
     assert!(o.status.success(), "{o:?}");
+    compare_with_golden(name, &png, (w, h));
+}
+
+/// `png`, a `w`x`h` frame of `apps/<name>`, against its golden and the
+/// tolerance beside it; the diff written beside `png`.
+fn compare_with_golden(name: &str, png: &std::path::Path, (w, h): (u32, u32)) {
     let goldens = repo().join(format!("apps/{name}/test/goldens"));
-    let ours = read_png(&png, (w, h));
+    let ours = read_png(png, (w, h));
     let theirs = read_png(&goldens.join(format!("{name}.png")), (w, h));
     let tolerance = std::fs::read_to_string(goldens.join(format!("{name}.tolerance"))).unwrap();
     let limit = |key: &str| -> f64 {
@@ -663,11 +669,36 @@ fn gif_frames_match_the_stock_engine() {
 }
 
 /// Every frame of each animation, each disposal applied, against the
-/// stock engine's.
+/// stock engine's, in the first frame the steps animation shows in: when
+/// `Image.asset` finishes loading depends on the machine, and its first
+/// frame, red for 100 ms, is the one both engines are held to.
 #[test]
 #[ignore = "app lane: needs FLUTTER_ROOT and a Vulkan driver"]
 fn gif_matches_its_golden() {
-    matches_golden_at("gif", (400, 300), 1);
+    let app = build_app("gif");
+    let dir = common::out_dir().join("apps/gif-first");
+    let _ = std::fs::remove_dir_all(&dir);
+    let o = common::fl_dart(&[
+        "run-app".as_ref(),
+        app.as_os_str(),
+        "400x300".as_ref(),
+        "--frames".as_ref(),
+        "8".as_ref(),
+        "--frames-dir".as_ref(),
+        dir.as_os_str(),
+    ]);
+    assert!(o.status.success(), "{o:?}");
+    let first = (1..=8)
+        .map(|i| dir.join(format!("frame-{i:04}.png")))
+        .find(|f| {
+            let px = read_png(f, (400, 300));
+            let at = (30 * 400 + 360) * 4;
+            px[at..at + 4] != [128, 128, 128, 255]
+        })
+        .unwrap_or_else(|| panic!("the steps never showed in 8 frames"));
+    let png = common::out_dir().join("apps/gif.png");
+    std::fs::copy(&first, &png).unwrap();
+    compare_with_golden("gif", &png, (400, 300));
 }
 
 /// The steps animation, red 100 ms, green 200, blue 150, as `Image.asset`

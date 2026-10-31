@@ -28,11 +28,22 @@ void main() {
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
     final frames = (await tester.runAsync(() => decodeFrames(rootBundle)))!;
-    // The first frame: the steps animation not yet loaded, as in any
-    // engine, the framework giving an animation's first frame at a frame
-    // callback.
+    // The first frame the steps animation shows in: its first, red. The
+    // framework gives it at a frame callback, so frames are pumped while
+    // the decode is waited on outside the fake zone; no fake time passes,
+    // so it stays the first. fl-engine's lane picks the same frame.
     await tester.pumpWidget(Sheet(frames: frames));
+    var loaded = false;
+    final stream = steps.resolve(ImageConfiguration.empty);
+    final listener = ImageStreamListener((_, _) => loaded = true);
+    stream.addListener(listener);
+    while (!loaded) {
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 10)));
+      await tester.pump();
+    }
     await expectLater(find.byType(Sheet), matchesGoldenFile('goldens/gif.png'));
+    // Without a listener the animation's timer for its next frame goes.
+    stream.removeListener(listener);
     await tester.pumpWidget(const SizedBox());
   });
 }

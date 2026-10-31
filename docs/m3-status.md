@@ -185,6 +185,7 @@ Done: `gif` advances through its frames at their durations (exit criterion 4); e
 * fl-ui `Codec`: more than one frame, `MultiFrameCodec`'s rules: each `getNextFrame` decodes the next, in turn, at the image's own size (target sizes are for stills, as the engine's); nothing kept on the UI side. `getNextFrame` answers with the frame's duration
 * Limits: frame count 1,048,576 (`Limits::max_frames`), refused as the codec's every answer; each frame's own size held to the pixel limit before it is decoded, a GIF's first frame decoded alone too; buffers `try_reserve`d; a worker panic mid-frame starts the animation over
 * `apps/gif`: hand-written GIFs (`tool/assets.py`) for every disposal, a loop count, none, a frame past the screen; an animated WebP; the steps animation through `Image.asset`. The report (`test/report.txt`) is the stock engine's, line for line; the frames are pixel-exact (tolerance 0)
+* The golden is the first frame the steps show in, their first, red for 100 ms: when `Image.asset` finishes loading depends on the machine (the warm-up frame on a fast one), so both engines are held to that frame
 * `gif_advances_at_its_durations`: the steps change in order, each after its frame's duration, at most three vsync periods late, timed from the frames run-app renders
 
 Found on the way:
