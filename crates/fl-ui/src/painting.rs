@@ -86,6 +86,15 @@ pub enum Draw {
         paint: Paint,
     },
     Picture(Arc<Picture>),
+    /// A paragraph's glyphs: `run` from `origin`, in `paint`'s color (and
+    /// its blur, for a text shadow). Drawn on the raster thread from the
+    /// glyph atlas; glyphs too large for it, or a paint with a shader, as
+    /// outlines.
+    Glyphs {
+        run: Arc<fl_text::paint::GlyphRun>,
+        origin: [f32; 2],
+        paint: Paint,
+    },
     /// `drawShadow`: the shadow `path` casts at `elevation` under the
     /// engine's one light, for a view at `dpr` (the engine takes view 0's).
     Shadow {
@@ -316,7 +325,7 @@ unsafe fn on<R>(canvas: *mut c_void, f: impl FnOnce(&mut Recording) -> R) -> Opt
 ///
 /// # Safety
 /// As [`on`].
-unsafe fn push(canvas: *mut c_void, d: Draw) {
+pub(crate) unsafe fn push(canvas: *mut c_void, d: Draw) {
     // SAFETY: per this function's contract.
     unsafe { on(canvas, |r| r.draws.push(d)) };
 }

@@ -150,6 +150,19 @@ pub(crate) struct Slots<'a> {
     gpu: &'a GpuImages,
     pub(crate) table: Vec<&'a Image>,
     index: HashMap<usize, u32>,
+    /// What glyph draws do this replay.
+    pub(crate) glyphs: GlyphPass<'a>,
+}
+
+/// A replay's glyphs: none (a frame with no text draws nothing for them),
+/// rasterized into the atlas, or drawn from it in its slot.
+pub(crate) enum GlyphPass<'a> {
+    None,
+    Prepare(&'a mut crate::glyphs::Glyphs),
+    Draw {
+        glyphs: &'a crate::glyphs::Glyphs,
+        slot: u32,
+    },
 }
 
 impl<'a> Slots<'a> {
@@ -158,7 +171,29 @@ impl<'a> Slots<'a> {
             gpu,
             table: Vec::new(),
             index: HashMap::new(),
+            glyphs: GlyphPass::None,
         }
+    }
+
+    /// For the replay that rasterizes the frame's glyphs.
+    pub(crate) fn preparing(
+        gpu: &'a GpuImages,
+        glyphs: &'a mut crate::glyphs::Glyphs,
+    ) -> Slots<'a> {
+        Slots {
+            glyphs: GlyphPass::Prepare(glyphs),
+            ..Slots::new(gpu)
+        }
+    }
+
+    /// For the replay that draws: the atlas, if uploaded, in slot 0.
+    pub(crate) fn drawing(gpu: &'a GpuImages, glyphs: &'a crate::glyphs::Glyphs) -> Slots<'a> {
+        let mut s = Slots::new(gpu);
+        if let Some(image) = glyphs.image() {
+            s.table.push(image);
+            s.glyphs = GlyphPass::Draw { glyphs, slot: 0 };
+        }
+        s
     }
 
     /// The slot `data` is drawn from this frame, and its size in texels.

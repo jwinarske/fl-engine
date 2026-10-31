@@ -105,7 +105,7 @@ pub(crate) struct ClipContext {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Adjustment {
+pub(crate) enum Adjustment {
     GlyphCluster,
     GraphemeGluster,
 }
@@ -546,7 +546,7 @@ fn shape_ellipsis(p: &Paragraph, li: usize, ellipsis: &str, ci: usize) -> Run {
 
 /// `measureTextInsideOneRun`.
 #[allow(clippy::too_many_arguments)]
-fn measure_text_inside_one_run(
+pub(crate) fn measure_text_inside_one_run(
     p: &Paragraph,
     line: &TextLine,
     mut text_range: Range,
@@ -672,7 +672,7 @@ fn measure_text_inside_one_run(
 /// `EMPTY_INDEX` for the ellipsis), its offset in the line and its text in
 /// the line; the visitor returns the run's width in the line and whether
 /// to go on.
-fn iterate_visual_runs(
+pub(crate) fn iterate_visual_runs(
     p: &Paragraph,
     line: &TextLine,
     including_ghosts: bool,

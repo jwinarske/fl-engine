@@ -573,6 +573,8 @@ pub struct Paragraph {
     old_width: f32,
     /// Code points no font had.
     pub(crate) unresolved: HashSet<char>,
+    /// Code points drawn in a system fallback face, and its family.
+    pub(crate) fell_back: Vec<(char, String)>,
 }
 
 /// Builds a [`Paragraph`]: `ParagraphBuilderImpl`.
@@ -735,6 +737,7 @@ impl Paragraph {
             has_whitespaces_inside: false,
             old_width: 0.0,
             unresolved: HashSet::new(),
+            fell_back: Vec::new(),
         }
     }
 
@@ -884,6 +887,7 @@ impl Paragraph {
             return false;
         }
         self.unresolved.clear();
+        self.fell_back.clear();
         let mut advance_x = 0.0f32;
         let mut bidi_index = 0;
         let placeholders = self.placeholders.clone();
@@ -1082,6 +1086,7 @@ impl Paragraph {
                 let before = resolved.len();
                 attempt(self, &face, &mut unresolved, &mut resolved, &mut first);
                 if resolved.len() > before {
+                    self.fell_back.push((c, face.family.clone()));
                     progressed = true;
                     break;
                 }
@@ -1420,6 +1425,10 @@ impl Paragraph {
             self.runs[ri].cluster_range = Range::new(run_start, self.clusters.len());
             self.max_intrinsic_width += self.runs[ri].advance()[0];
         }
+        // The empty cluster at the end, as `Cluster`'s constructor makes it:
+        // none of no code units is not whitespace, so it is a whitespace and
+        // an intra-word break, which is what lets a line's trailing-space
+        // trim step over it.
         self.cluster_of[n] = self.clusters.len();
         self.clusters.push(Cluster {
             run_index: EMPTY_INDEX,
@@ -1428,9 +1437,9 @@ impl Paragraph {
             end: 0,
             width: 0.0,
             half_letter_spacing: 0.0,
-            is_whitespace_break: false,
-            is_intra_word_break: false,
-            is_hard_break: false,
+            is_whitespace_break: true,
+            is_intra_word_break: true,
+            is_hard_break: self.has_flag(n, flag::HARD_LINE_BREAK_BEFORE),
             is_ideographic: false,
         });
     }

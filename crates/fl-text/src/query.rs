@@ -59,6 +59,12 @@ impl Paragraph {
         self.lines.len()
     }
 
+    /// The code points drawn in a system fallback face, and its family:
+    /// what a golden, which names every font it draws, must not have.
+    pub fn fallback_glyphs(&self) -> &[(char, String)] {
+        &self.fell_back
+    }
+
     /// The code points no font had, for the missing-glyph report.
     pub fn unresolved_glyphs(&self) -> usize {
         if self.text.is_empty() {

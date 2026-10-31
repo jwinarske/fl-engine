@@ -297,9 +297,9 @@ fn metrics_line_matches(a: &str, b: &str) -> bool {
 }
 
 /// M3 stage 1's bar: `flutter create`'s counter app, unmodified, renders
-/// with no Dart error, its text laid out and drawn as nothing (glyphs are
-/// stage 5). The scene: the background and the app bar, the body's clip, and
-/// the button's shadow (stage 3) and shape.
+/// with no Dart error. The scene: the background and the app bar with its
+/// title, the body's clip with the label and the count, and the button's
+/// shadow (stage 3), shape and icon (a MaterialIcons glyph, stage 5).
 #[test]
 #[ignore = "app lane: needs FLUTTER_ROOT"]
 fn counter_renders_without_a_dart_error() {
@@ -324,22 +324,26 @@ fn counter_renders_without_a_dart_error() {
         );
     }
     // Not a `\` continuation: that would drop the first line's indent.
-    let want = "frame 1: view 0 800x600 layers=3 pictures=3 draws=13
+    let want = "frame 1: view 0 800x600 layers=3 pictures=3 draws=17
   PushTransform
     PushOffset
       PushOffset
         AddPicture
           RRect
+          Glyphs
+          Glyphs
         AddPicture
           RRect
           Save
           ClipRect
+          Glyphs
           Restore
         AddPicture
           Save
           Transform
           Shadow
           Path
+          Glyphs
           Save
           Translate
           Restore
@@ -412,6 +416,33 @@ fn natives_matches_its_golden() {
     matches_golden("natives");
 }
 
+/// M3 stage 5's bar (exit criterion 2): text drawn every way a paragraph
+/// paints, against flutter_tester's golden with Impeller. Roboto and
+/// MaterialIcons from the Flutter cache in both engines.
+#[test]
+#[ignore = "app lane: needs FLUTTER_ROOT and a Vulkan driver"]
+fn text_matches_its_golden() {
+    matches_golden_at("text", (1600, 1200), 2);
+}
+
+/// A golden compares only fonts it names (brief M3 §15): no glyph of the
+/// text program comes from a system fallback face.
+#[test]
+#[ignore = "app lane: needs FLUTTER_ROOT"]
+fn text_draws_no_fallback_glyph() {
+    let app = build_app("text");
+    let o = common::fl_dart(&[
+        "run-app".as_ref(),
+        app.as_os_str(),
+        "1600x1200@2".as_ref(),
+        "--frames".as_ref(),
+        "1".as_ref(),
+    ]);
+    assert!(o.status.success(), "{o:?}");
+    let err = String::from_utf8_lossy(&o.stderr);
+    assert!(!err.contains("fallback font"), "{err}");
+}
+
 /// Natives no app reaches yet, and the M3 stage whose programs will.
 const NOT_YET: &[(&str, &str)] = &[];
 
@@ -422,7 +453,7 @@ const NOT_YET: &[(&str, &str)] = &[];
 #[test]
 #[ignore = "app lane: needs FLUTTER_ROOT"]
 fn every_native_is_called_by_an_app() {
-    let runs: [(&str, &[&str]); 11] = [
+    let runs: [(&str, &[&str]); 12] = [
         ("colored_box", &[]),
         ("shapes", &["--frames", "1"]),
         ("material", &[]),
@@ -434,6 +465,7 @@ fn every_native_is_called_by_an_app() {
         ("images", &[]),
         ("shadows", &["--frames", "1"]),
         ("metrics", &["--frames", "1"]),
+        ("text", &["--frames", "1"]),
     ];
     let mut called = std::collections::BTreeSet::new();
     for (name, opts) in runs {

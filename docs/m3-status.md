@@ -126,3 +126,32 @@ Found on the way:
 * A table directory with no tables parses as a font in read-fonts
 * `loadFontFromList` sends `fontsChange` on flutter/system; before the binding is up the message is dropped with a warning. `metrics` initializes the binding first
 * dart:ui encodes `TextStyle.textBaseline`; the engine reads it and drops it, and so does fl-text
+
+## Stage 5: glyphs (2026-10-31)
+
+Done: `text` matches flutter_tester's golden with Impeller within the recorded tolerance (exit criterion 2); the counter app draws its title, label, count and icon.
+
+    tools/flutter-app/build.sh $FLUTTER_ROOT apps/text out
+    fl-dart run-app out/text.so 1600x1200@2 --png text.png
+    frame 1: view 0 1600x1200 layers=1 pictures=1 draws=58
+
+* fl-text paints as `DisplayListParagraphPainter` records with Impeller (`paint.rs`): backgrounds as rects, shadows as blurred glyph runs, text as glyph runs, decorations as filled rects (solid, double), dashed stroked lines (dotted, dashed) and a stroked wave, inside saves, translations and clips. `TextLine::paint`, `iterateThroughSingleRunByStyles` and `Decorations` ported
+* fl-ui: `Paragraph::paint` records `Draw::Glyphs` and the rest as ordinary draws; a dashed line as `DashedLinePathSource` cuts it
+* fl-raster `Glyphs`: swash rasterizes at the device size; coverage into emblema's `Atlas` (512, growing to 4096); runs drawn with `draw_glyphs`. `!Send`, compile-fail case
+* A frame replays twice: the first rasterizes and inserts every glyph, the atlas uploads once, the second draws. The atlas may repack or grow on insert, and a run recorded before would read stale places
+* Outlines, drawn as a path, for a glyph past 256 device pixels (Skia's `kSkSideTooBigForAtlas`), a paint with a shader or a stroke (`ShouldRenderAsPath`), a transform with perspective, and a glyph the atlas refuses: text never goes missing
+* Fallback determinism: fl-ui says on stderr when a code point is drawn in a system fallback face; `text_draws_no_fallback_glyph` holds the golden program to none
+* swash 0.2.10 builds on 1.85, the floor
+* `apps/text`: sizes, weights, italic, color, letter and word spacing, alignment, rtl, ellipsis, wrapping, every decoration style, background, hard and blurred shadows, stroked text, three MaterialIcons glyphs, mixed spans, a 160 px pair past the atlas. 1600x1200 at DPR 2
+* Golden: 3.132% differ, 1.365% by more than 32, lavapipe. Tolerance 4.0 and 1.6
+
+Not yet:
+
+* Glyph edges: Impeller rasterizes through Skia with slight hinting, quarter-pixel subpixel positions and Skia's coverage; swash here, unhinted, on whole pixels. Small text is 5 to 9% heavier in ink; positions agree within a third of a pixel; outlines and icons agree
+* Gradient-filled text: dart:ui's `Gradient` natives are not in fl-ui; the text program has none
+* A frame needing more glyphs than the atlas's limit draws the rest as outlines rather than in a second pass
+* The first replay costs a second walk of the scene each frame
+
+Found on the way:
+
+* The empty cluster at the end of the text is a whitespace and an intra-word break, as `Cluster`'s constructor makes it (zero of zero code units); built otherwise, a one-word line kept it in its range and painted no glyphs

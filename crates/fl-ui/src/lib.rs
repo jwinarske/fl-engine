@@ -329,10 +329,6 @@ pub static STUBS: &[(&str, &str)] = &[
         "nothing: one view, no platform focus to move",
     ),
     (
-        "Paragraph::paint",
-        "nothing drawn: glyphs are M3 stage 5",
-    ),
-    (
         "Codec::frameCount",
         "1: an animation's first frame only (M3 stage 7)",
     ),

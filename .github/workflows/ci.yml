@@ -147,7 +147,7 @@ jobs:
       # golden is its numbers, test/metrics.txt.
       - name: Goldens
         run: |
-          for app in shapes material natives images shadows metrics; do
+          for app in shapes material natives images shadows metrics text; do
             (cd "apps/$app" && "$FLUTTER_ROOT/bin/flutter" test --enable-impeller)
           done
       - name: Apps
@@ -164,7 +164,7 @@ jobs:
           out=target/tmp/dart/captures
           mkdir -p "$out"
           cp target/tmp/dart/apps/*.png "$out/" || true
-          for app in shapes material natives images shadows; do
+          for app in shapes material natives images shadows text; do
             cp "apps/$app/test/goldens/$app.png" "$out/$app-golden.png"
           done
           ./target/debug/fl-dart run-app target/tmp/dart/apps/ticker.so 200x100 \
@@ -186,6 +186,8 @@ jobs:
         run: ci/annotate-on-fail.sh cargo test -p fl-dart-cli --no-default-features --features jit --test app -- --ignored
       - name: dart:ui and shell unit tests
         run: ci/annotate-on-fail.sh cargo test -p fl-dart-ffi -p fl-ui -p fl-raster -p fl-shell --features aot --lib
-      # Layout in Roboto, from the Flutter release's cache.
-      - name: Text layout tests
-        run: ci/annotate-on-fail.sh cargo test -p fl-text -- --ignored
+      # Layout and the glyph cache in Roboto, from the Flutter release's cache.
+      - name: Text tests
+        run: |
+          ci/annotate-on-fail.sh cargo test -p fl-text -- --ignored
+          ci/annotate-on-fail.sh cargo test -p fl-raster --features aot --lib -- --ignored

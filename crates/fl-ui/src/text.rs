@@ -14,8 +14,10 @@ use fl_text::font::FontCollection;
 use fl_text::style::{ParagraphArgs, ParagraphStyle, PlaceholderStyle, TextStyle, TextStyleArgs};
 use fl_text::{RectHeightStyle, RectWidthStyle, TextBox};
 
-use crate::painting::{paint, Paint};
+use crate::painting::{paint, Draw, Paint};
+use crate::path::Path;
 use crate::platform::{queue_reply, ReplyArg};
+use fl_text::paint::{PaintOp, PaintRef};
 
 static FONTS: Mutex<Option<Arc<FontCollection>>> = Mutex::new(None);
 
@@ -83,8 +85,7 @@ struct Builder {
 /// The `Paragraph` peer.
 struct Paragraph {
     paragraph: fl_text::Paragraph,
-    /// The paints the styles name, drawn in stage 5.
-    #[allow(dead_code)]
+    /// The paints the styles name, by index.
     paints: Vec<Paint>,
 }
 
@@ -371,7 +372,32 @@ getter!(
 
 /// `Void Function(Pointer<Void>, Double width)`, a leaf call.
 pub(crate) extern "C" fn layout(p: *mut c_void, width: f64) {
-    guard((), || with(p, (), |x| x.layout(width as f32)));
+    guard((), || {
+        with(p, (), |x| {
+            x.layout(width as f32);
+            report_fallback(x.fallback_glyphs());
+        })
+    });
+}
+
+/// Says once per code point, on stderr, that it was drawn in a system
+/// fallback face: pixels that depend on the machine's fonts. The text
+/// golden fails on the line (brief M3 §15, fallback determinism).
+fn report_fallback(glyphs: &[(char, String)]) {
+    static SAID: Mutex<Option<std::collections::HashSet<char>>> = Mutex::new(None);
+    if glyphs.is_empty() {
+        return;
+    }
+    let mut said = SAID.lock().unwrap_or_else(|e| e.into_inner());
+    let said = said.get_or_insert_with(Default::default);
+    for (c, family) in glyphs {
+        if said.insert(*c) {
+            eprintln!(
+                "fl-ui: text: U+{:04X} drawn in fallback font {family}",
+                u32::from(*c)
+            );
+        }
+    }
 }
 
 /// `Int32 Function(Pointer<Void>, Uint32 offset)`: the line, or -1.
@@ -578,8 +604,154 @@ pub(crate) extern "C" fn line_metrics_at(
 }
 
 /// `Void Function(Pointer<Void>, Pointer<Void> canvas, Double x, Double y)`:
-/// nothing drawn yet; glyphs are stage 5.
-pub(crate) extern "C" fn paint_paragraph(_p: *mut c_void, _canvas: *mut c_void, _x: f64, _y: f64) {}
+/// the paragraph's paint operations recorded on the canvas, as
+/// `DisplayListParagraphPainter` records them with Impeller.
+pub(crate) extern "C" fn paint_paragraph(p: *mut c_void, canvas: *mut c_void, x: f64, y: f64) {
+    guard((), || {
+        // SAFETY: p is the receiver's native field.
+        let got = unsafe {
+            peer::with::<Paragraph, _>(p, |q| {
+                (q.paragraph.paint_ops(x as f32, y as f32), q.paints.clone())
+            })
+        };
+        let Some((ops, paints)) = got else {
+            return;
+        };
+        for d in draws_of(ops, &paints) {
+            // SAFETY: canvas is the canvas argument's native field.
+            unsafe { crate::painting::push(canvas, d) };
+        }
+    });
+}
+
+/// A dart:ui color, `0xAARRGGBB`, as straight sRGB.
+fn rgba(c: u32) -> [f32; 4] {
+    let ch = |shift: u32| f32::from(((c >> shift) & 0xFF) as u8) / 255.0;
+    [ch(16), ch(8), ch(0), ch(24)]
+}
+
+fn solid(c: u32) -> Paint {
+    Paint {
+        color: rgba(c),
+        ..Paint::default()
+    }
+}
+
+/// `DisplayListParagraphPainter`'s decoration paint: antialiased, stroked
+/// `width` wide.
+fn stroke(c: u32, width: f32) -> Paint {
+    Paint {
+        style: crate::painting::Style::Stroke,
+        stroke_width: width,
+        ..solid(c)
+    }
+}
+
+/// The draws a paragraph's paint operations come to.
+fn draws_of(ops: Vec<PaintOp>, paints: &[Paint]) -> Vec<Draw> {
+    let named = |id: usize| paints.get(id).cloned().unwrap_or_default();
+    let mut out = Vec::with_capacity(ops.len());
+    for op in ops {
+        out.push(match op {
+            PaintOp::Save => Draw::Save,
+            PaintOp::Restore => Draw::Restore,
+            PaintOp::Translate([dx, dy]) => Draw::Translate(dx, dy),
+            PaintOp::ClipRect(ltrb) => Draw::ClipRect {
+                ltrb,
+                op: crate::painting::ClipOp::Intersect,
+                anti_alias: false,
+            },
+            PaintOp::Rect { rect, paint } => Draw::Rect {
+                ltrb: rect,
+                paint: named(paint),
+            },
+            PaintOp::Glyphs { run, origin, paint } => Draw::Glyphs {
+                run,
+                origin,
+                paint: match paint {
+                    PaintRef::Color(c) => solid(c),
+                    PaintRef::Id(id) => named(id),
+                },
+            },
+            PaintOp::Shadow {
+                run,
+                origin,
+                color,
+                blur_sigma,
+            } => Draw::Glyphs {
+                run,
+                origin,
+                paint: Paint {
+                    mask_blur: (blur_sigma > 0.0).then_some((0, blur_sigma)),
+                    ..solid(color)
+                },
+            },
+            PaintOp::FilledRect { rect, color } => Draw::Rect {
+                ltrb: rect,
+                paint: solid(color),
+            },
+            PaintOp::Line {
+                from,
+                to,
+                color,
+                width,
+                dash,
+            } => {
+                let mut path = Path::default();
+                dash_into(&mut path, from, to, dash);
+                Draw::Path {
+                    path: Arc::new(path),
+                    paint: stroke(color, width),
+                }
+            }
+            PaintOp::Wave {
+                start,
+                quads,
+                color,
+                width,
+            } => {
+                let mut path = Path::default();
+                path.move_to(start);
+                for (c, e) in quads {
+                    path.quad_to(c, e);
+                }
+                Draw::Path {
+                    path: Arc::new(path),
+                    paint: stroke(color, width),
+                }
+            }
+        });
+    }
+    out
+}
+
+/// `DashedLinePathSource`: `on` long dashes `off` apart from `from` to
+/// `to`, each its own contour; a line without a positive gap is solid.
+fn dash_into(path: &mut Path, from: [f32; 2], to: [f32; 2], dash: Option<[f32; 2]>) {
+    let (dx, dy) = (to[0] - from[0], to[1] - from[1]);
+    let length = (dx * dx + dy * dy).sqrt();
+    let at = |d: f32| [from[0] + dx / length * d, from[1] + dy / length * d];
+    match dash {
+        Some([on, off]) if length > 0.0 && on >= 0.0 && off > 0.0 => {
+            let mut consumed = 0.0f32;
+            while consumed < length {
+                path.move_to(at(consumed));
+                let end = consumed + on;
+                if end < length {
+                    path.line_to(at(end));
+                } else {
+                    path.line_to(to);
+                    break;
+                }
+                consumed = end + off;
+            }
+        }
+        _ => {
+            path.move_to(from);
+            path.line_to(to);
+        }
+    }
+}
 
 /// `Void Function(Pointer<Void>)`.
 pub(crate) extern "C" fn paragraph_dispose(p: *mut c_void) {

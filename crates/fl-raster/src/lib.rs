@@ -28,10 +28,12 @@ use fl_ui::{
     RRect, Scene, Seg, Style,
 };
 
+mod glyphs;
 mod images;
 
+pub use glyphs::Glyphs;
 pub use images::GpuImages;
-use images::Slots;
+use images::{GlyphPass, Slots};
 
 /// Why a frame was not drawn.
 #[derive(Debug)]
@@ -70,6 +72,7 @@ pub struct Offscreen {
     ctx: Context,
     surface: Option<Surface>,
     images: GpuImages,
+    glyphs: Glyphs,
     width: u32,
     height: u32,
     _raster_thread: PhantomData<*const ()>,
@@ -84,6 +87,7 @@ impl Offscreen {
             ctx,
             surface: Some(surface),
             images: GpuImages::default(),
+            glyphs: Glyphs::default(),
             width,
             height,
             _raster_thread: PhantomData,
@@ -110,9 +114,18 @@ impl Offscreen {
         for image in &found {
             self.images.upload(&mut self.ctx, image)?;
         }
+        // The first replay finds and rasterizes the frame's glyphs; the
+        // atlas goes up once; the second draws.
+        self.glyphs.begin_frame();
+        {
+            let mut canvas = Canvas::new(Extent2D::new(self.width, self.height));
+            let mut slots = Slots::preparing(&self.images, &mut self.glyphs);
+            replay(&mut canvas, scene, &mut slots)?;
+        }
+        self.glyphs.upload(&mut self.ctx)?;
         let mut canvas = Canvas::new(Extent2D::new(self.width, self.height));
         canvas.clear(Color::TRANSPARENT);
-        let mut slots = Slots::new(&self.images);
+        let mut slots = Slots::drawing(&self.images, &self.glyphs);
         replay(&mut canvas, scene, &mut slots)?;
         let recording = canvas.finish();
         let surface = self
@@ -140,6 +153,7 @@ impl Drop for Offscreen {
     /// their context.
     fn drop(&mut self) {
         self.images.clear(&mut self.ctx);
+        self.glyphs.clear(&mut self.ctx);
         if let Some(surface) = self.surface.take() {
             self.ctx.destroy_surface(surface);
         }
@@ -596,6 +610,7 @@ fn draw_one(canvas: &mut Canvas, draw: &Draw, slots: &mut Slots) -> Result<(), R
             }
         }
         Draw::Picture(p) => draw_picture(canvas, p, slots)?,
+        Draw::Glyphs { run, origin, paint } => draw_glyphs(canvas, run, *origin, paint, slots)?,
         Draw::Shadow {
             path,
             color,
@@ -818,6 +833,47 @@ fn path_of(p: &fl_ui::Path) -> emblema::Path {
         };
     }
     b.build()
+}
+
+/// A paragraph's glyph run: rasterized in the first replay, drawn from
+/// the atlas in the second, or drawn as outlines.
+fn draw_glyphs(
+    canvas: &mut Canvas,
+    run: &fl_text::paint::GlyphRun,
+    origin: [f32; 2],
+    paint: &Paint,
+    slots: &mut Slots,
+) -> Result<(), RasterError> {
+    let transform = canvas.transform();
+    let drawing = match &mut slots.glyphs {
+        GlyphPass::None => return Ok(()),
+        GlyphPass::Prepare(g) => {
+            g.prepare(transform, run);
+            return Ok(());
+        }
+        GlyphPass::Draw { glyphs, slot } => (*glyphs, *slot),
+    };
+    let (glyphs, slot) = drawing;
+    // A shader or a stroke needs the glyphs' shape, not their coverage,
+    // as `ShouldRenderAsPath` sends them to paths on Impeller.
+    let as_path = paint.shader.is_some() || paint.objects || paint.style == Style::Stroke;
+    let quads = if as_path {
+        None
+    } else {
+        glyphs.positioned(transform, run, origin)
+    };
+    let p = paint_of(paint, slots)?;
+    match quads {
+        Some(q) => {
+            canvas.draw_glyphs(&q, glyphs.atlas(), slot, &p)?;
+        }
+        None => {
+            if let Some(path) = glyphs.outlines(run, origin) {
+                canvas.draw_path(&path, &p)?;
+            }
+        }
+    }
+    Ok(())
 }
 
 /// A shadow's path, its shape recorded when it is one emblema blurs

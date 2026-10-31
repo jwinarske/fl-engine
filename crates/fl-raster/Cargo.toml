@@ -21,6 +21,9 @@ fl-ui = { workspace = true }
 # premultiplied (#234). Back to a registry version once one includes them.
 emblema = { git = "https://github.com/jwinarske/emblema", rev = "e4491796f684231026efb7f4bb7c4d8b930c5f66", default-features = false, features = ["vulkan"] }
 png = "0.18"
+# Glyph coverage (brief M3 D2), on skrifa, as emblema's own example names.
+swash = { version = "0.2", default-features = false, features = ["scale", "render", "std"] }
+fl-text = { workspace = true }
 
 [dev-dependencies]
 trybuild = { workspace = true }

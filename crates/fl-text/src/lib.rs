@@ -4,6 +4,7 @@
 
 pub mod font;
 pub(crate) mod line;
+pub mod paint;
 pub mod paragraph;
 mod query;
 pub(crate) mod shape;

@@ -33,10 +33,14 @@ pub(crate) struct FontMetrics {
     pub ascent: f32,
     pub descent: f32,
     pub leading: f32,
-    pub underline_position: f32,
-    pub underline_thickness: f32,
-    pub strikeout_position: f32,
-    pub strikeout_thickness: f32,
+    /// Below the baseline positive, and each only if the font states it,
+    /// as Skia's `k*IsValid` flags say.
+    pub underline_position: Option<f32>,
+    pub underline_thickness: Option<f32>,
+    /// Above the baseline negative.
+    pub strikeout_position: Option<f32>,
+    pub strikeout_thickness: Option<f32>,
+    pub x_height: f32,
 }
 
 /// 16.16 fixed point, SkShaper's `skhb_position`.
@@ -305,23 +309,21 @@ impl FontMetrics {
             })
             .unwrap_or((upem * 0.8, -upem * 0.2, 0.0));
         let style = tf.font.style_metrics();
-        let (up, ut) = style
+        let under = style
             .underline
-            .map(|d| (d.position.to_f32(), d.thickness.to_f32()))
-            .unwrap_or((-upem / 10.0, upem / 20.0));
-        let (sp, st) = style
+            .map(|d| (d.position.to_f32(), d.thickness.to_f32()));
+        let strike = style
             .strike_through
-            .map(|d| (d.position.to_f32(), d.thickness.to_f32()))
-            .unwrap_or((upem * 0.25, upem / 20.0));
+            .map(|d| (d.position.to_f32(), d.thickness.to_f32()));
         FontMetrics {
             ascent: -ascent * s,
             descent: -descent * s,
             leading: gap * s,
-            // Skia's are below the baseline positive.
-            underline_position: -up * s,
-            underline_thickness: ut * s,
-            strikeout_position: -sp * s,
-            strikeout_thickness: st * s,
+            underline_position: under.map(|(p, _)| -p * s),
+            underline_thickness: under.map(|(_, t)| t * s),
+            strikeout_position: strike.map(|(p, _)| -p * s),
+            strikeout_thickness: strike.map(|(_, t)| t * s),
+            x_height: m.x_height.map_or(0.0, |v| v.to_f32()) * s,
         }
     }
 }
