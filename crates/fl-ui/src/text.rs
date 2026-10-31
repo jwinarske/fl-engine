@@ -69,6 +69,13 @@ pub(crate) fn fonts() -> Arc<FontCollection> {
     c
 }
 
+/// Registers `data` as a font of `family`, as `loadFontFromList` does: for
+/// an embedder giving an app fonts it does not bundle, as a test harness
+/// gives flutter_tester the fonts a golden draws. False if it is no font.
+pub fn load_font(data: Vec<u8>, family: &str) -> bool {
+    fonts().add_font(data, family)
+}
+
 /// Forgets the collection, for a new bundle: the next paragraph makes it
 /// again.
 pub(crate) fn reset_fonts() {

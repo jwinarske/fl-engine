@@ -155,3 +155,16 @@ Not yet:
 Found on the way:
 
 * The empty cluster at the end of the text is a whitespace and an intra-word break, as `Cluster`'s constructor makes it (zero of zero code units); built otherwise, a one-word line kept it in its range and painted no glyphs
+
+## Stage 6: counter (2026-10-31)
+
+Done: `flutter create`'s counter app, unmodified, matches flutter_tester's golden with Impeller within the recorded tolerance (exit criterion 3): app bar title, body text, the count, and the button with its icon and shadow.
+
+    R=$FLUTTER_ROOT/bin/cache/artifacts/material_fonts
+    fl-dart run-app out/counter.so 1200x900@3 --font Roboto=$R/Roboto-Regular.ttf --font MaterialIcons=$R/MaterialIcons-Regular.otf --png counter.png
+    frame 1: view 0 1200x900 layers=3 pictures=3 draws=17
+
+* The app ships no Roboto, and flutter_tester draws text in its test font unless a test loads one. Both engines are given the same files: the golden test with `FontLoader`, fl-engine with `run-app --font FAMILY=PATH` (`fl_ui::load_font`, as `loadFontFromList`)
+* The golden test sets the platform to Linux, as fl-engine reports it, so both use the same typography; DPR 3, flutter_tester's engine DPR, for the shadow; the DEBUG banner off, as the release build has none
+* `lib/` is the template's; `test/golden_test.dart` is added beside its `widget_test.dart`, and CI's goldens step runs both
+* Golden: 1.423% differ, 0.550% by more than 32, all at glyph edges (stage 5). Tolerance 2.0 and 0.8

@@ -1,0 +1,10 @@
+# counter.png, rendered by the stock engine's flutter_tester with Impeller,
+# against fl-engine's frame through emblema, both at DPR 3 with Roboto and
+# MaterialIcons from the Flutter cache. Percent of pixels allowed to differ
+# in any channel, and by more than 32.
+#
+# Over 32 only at glyph edges: Skia's slight hinting and subpixel positions
+# against swash unhinted on whole pixels (text.tolerance). Measured
+# 2026-10-31, lavapipe: 1.423% differ, 0.550% by more than 32.
+differ 2.0
+differ_over_32 0.8

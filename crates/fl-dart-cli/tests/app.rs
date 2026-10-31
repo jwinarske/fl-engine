@@ -416,6 +416,31 @@ fn natives_matches_its_golden() {
     matches_golden("natives");
 }
 
+/// M3's headline (exit criterion 3): `flutter create`'s counter app,
+/// unmodified, against flutter_tester's golden with Impeller. The app ships
+/// no Roboto; both engines are given it and MaterialIcons from the Flutter
+/// cache, the golden test by `FontLoader`, fl-engine by `--font`. DPR 3,
+/// flutter_tester's engine DPR, for the button's shadow.
+#[test]
+#[ignore = "app lane: needs FLUTTER_ROOT and a Vulkan driver"]
+fn counter_matches_its_golden() {
+    let root = std::env::var("FLUTTER_ROOT").unwrap();
+    let fonts = format!("{root}/bin/cache/artifacts/material_fonts");
+    let roboto = format!("Roboto={fonts}/Roboto-Regular.ttf");
+    let icons = format!("MaterialIcons={fonts}/MaterialIcons-Regular.otf");
+    matches_golden_with(
+        "counter",
+        (1200, 900),
+        3,
+        &[
+            "--font".as_ref(),
+            roboto.as_ref(),
+            "--font".as_ref(),
+            icons.as_ref(),
+        ],
+    );
+}
+
 /// M3 stage 5's bar (exit criterion 2): text drawn every way a paragraph
 /// paints, against flutter_tester's golden with Impeller. Roboto and
 /// MaterialIcons from the Flutter cache in both engines.
@@ -539,12 +564,17 @@ fn matches_golden(name: &str) {
 /// As [`matches_golden`], at another size and DPR: an app that draws
 /// shadows renders at DPR 3, flutter_tester's engine DPR, so the shadow and
 /// the view agree in both engines.
-fn matches_golden_at(name: &str, (w, h): (u32, u32), dpr: u32) {
+fn matches_golden_at(name: &str, size: (u32, u32), dpr: u32) {
+    matches_golden_with(name, size, dpr, &[]);
+}
+
+/// As [`matches_golden_at`], with more `run-app` options.
+fn matches_golden_with(name: &str, (w, h): (u32, u32), dpr: u32, extra: &[&std::ffi::OsStr]) {
     let app = build_app(name);
     let view = format!("{w}x{h}@{dpr}");
     let png = common::out_dir().join(format!("apps/{name}.png"));
     let _ = std::fs::remove_file(&png);
-    let o = common::fl_dart(&[
+    let mut args: Vec<&std::ffi::OsStr> = vec![
         "run-app".as_ref(),
         app.as_os_str(),
         view.as_ref(),
@@ -552,7 +582,9 @@ fn matches_golden_at(name: &str, (w, h): (u32, u32), dpr: u32) {
         png.as_os_str(),
         "--frames".as_ref(),
         "1".as_ref(),
-    ]);
+    ];
+    args.extend_from_slice(extra);
+    let o = common::fl_dart(&args);
     assert!(o.status.success(), "{o:?}");
     let goldens = repo().join(format!("apps/{name}/test/goldens"));
     let ours = read_png(&png, (w, h));

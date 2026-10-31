@@ -3,7 +3,7 @@
 //! ```text
 //! fl-dart run hello.dill [args...]       # JIT, dev hosts (--features jit)
 //! fl-dart run-aot hello.aot [args...]    # precompiled runtime, every target
-//! fl-dart run-app libapp.so [WxH[@dpr]] [--assets DIR] [--png out.png] [--frames-dir DIR] [--ops] [--natives] [--styles] [--frames N] [--hz H]
+//! fl-dart run-app libapp.so [WxH[@dpr]] [--assets DIR] [--png out.png] [--frames-dir DIR] [--ops] [--natives] [--styles] [--font FAMILY=PATH]... [--frames N] [--hz H]
 //!                                       # a Flutter app, through dart:ui (M2);
 //!                                       # JIT takes the app's kernel instead
 //! fl-dart app-cycle libapp.so <n> [run-app options]
@@ -87,7 +87,7 @@ fn usage() -> ExitCode {
         "libapp.so"
     };
     eprintln!(
-        "       fl-dart run-app <{app}> [WxH[@dpr]] [--assets DIR] [--png out.png] [--frames-dir DIR] [--ops] [--natives] [--styles] [--frames N] [--hz H]\n       fl-dart app-cycle <{app}> <n> [run-app options]"
+        "       fl-dart run-app <{app}> [WxH[@dpr]] [--assets DIR] [--png out.png] [--frames-dir DIR] [--ops] [--natives] [--styles] [--font FAMILY=PATH]... [--frames N] [--hz H]\n       fl-dart app-cycle <{app}> <n> [run-app options]"
     );
     ExitCode::from(64)
 }
@@ -234,6 +234,17 @@ fn set_assets(path: &str, app: &AppArgs) -> Result<(), Failure> {
         None => None,
     };
     fl_ui::set_asset_bundle(bundle);
+    // After the bundle, which starts the font collection afresh.
+    for (family, file) in &app.fonts {
+        let data = std::fs::read(file)
+            .map_err(|e| Failure::Other(format!("--font {}: {e}", file.display())))?;
+        if !fl_ui::load_font(data, family) {
+            return Err(Failure::Other(format!(
+                "--font {}: not a font",
+                file.display()
+            )));
+        }
+    }
     Ok(())
 }
 
@@ -455,17 +466,19 @@ struct AppArgs {
     ops: bool,
     natives: bool,
     styles: bool,
+    fonts: Vec<(String, std::path::PathBuf)>,
     frames: Option<u64>,
 }
 
-/// `[WxH[@dpr]] [--assets DIR] [--png out.png] [--frames-dir DIR] [--ops] [--natives] [--styles] [--frames N] [--hz H]`,
+/// `[WxH[@dpr]] [--assets DIR] [--png out.png] [--frames-dir DIR] [--ops] [--natives] [--styles] [--font FAMILY=PATH]... [--frames N] [--hz H]`,
 /// in any order; no size is the default view. Sizes are physical pixels.
 /// `--assets` names the app's asset bundle; without it, `<app>.assets` beside
 /// the program is used if it is there, as `tools/flutter-app/build.sh` puts
 /// it. `--frames-dir` writes every frame there, `frame-NNNN.png`, as `--png`
 /// writes the last. `--ops` prints each frame's [`outline`]; `--natives`, at the end, every
 /// dart:ui native the app called; `--styles`, each paragraph and text
-/// style as fl-text decoded it; `--frames` stops after N frames rendered;
+/// style as fl-text decoded it; `--font` registers a font file under a
+/// family before the app starts, as a test harness loads one; `--frames` stops after N frames rendered;
 /// `--hz` sets the vsync rate (60 by default).
 fn app_args(args: &[&str]) -> Option<AppArgs> {
     let mut app = AppArgs::default();
@@ -478,6 +491,11 @@ fn app_args(args: &[&str]) -> Option<AppArgs> {
             "--ops" => app.ops = true,
             "--natives" => app.natives = true,
             "--styles" => app.styles = true,
+            "--font" => {
+                let (family, file) = it.next()?.split_once('=')?;
+                app.fonts
+                    .push((family.to_owned(), std::path::PathBuf::from(file)));
+            }
             "--frames" => app.frames = Some(it.next()?.parse().ok().filter(|n| *n > 0)?),
             "--hz" => app.view.refresh_rate = it.next()?.parse().ok().filter(|v: &f64| *v > 0.0)?,
             _ => {

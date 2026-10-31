@@ -36,7 +36,7 @@ pub use platform::{
     deliver_replies, discard_replies, has_pending_replies, set_device_pixel_ratio,
     set_frame_scheduler, set_frame_sink, set_reply_waker, Frame,
 };
-pub use text::set_style_report;
+pub use text::{load_font, set_style_report};
 
 /// Every dart:ui native this crate implements.
 pub static NATIVES: &[Symbol] = &[

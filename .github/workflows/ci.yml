@@ -147,7 +147,7 @@ jobs:
       # golden is its numbers, test/metrics.txt.
       - name: Goldens
         run: |
-          for app in shapes material natives images shadows metrics text; do
+          for app in shapes material natives images shadows metrics text counter; do
             (cd "apps/$app" && "$FLUTTER_ROOT/bin/flutter" test --enable-impeller)
           done
       - name: Apps
@@ -164,7 +164,7 @@ jobs:
           out=target/tmp/dart/captures
           mkdir -p "$out"
           cp target/tmp/dart/apps/*.png "$out/" || true
-          for app in shapes material natives images shadows text; do
+          for app in shapes material natives images shadows text counter; do
             cp "apps/$app/test/goldens/$app.png" "$out/$app-golden.png"
           done
           ./target/debug/fl-dart run-app target/tmp/dart/apps/ticker.so 200x100 \
