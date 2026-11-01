@@ -210,6 +210,12 @@ impl Glyphs {
         self.overflow_used
     }
 
+    /// Overflow pages alive, used or not: each holds its texels and a
+    /// device image until a frame that needs fewer frees it.
+    pub fn overflow_alive(&self) -> usize {
+        self.overflow.len()
+    }
+
     /// The page `key` is on this frame: 0 the cache, then the overflow
     /// pages in order.
     fn page_of(&self, key: GlyphKey) -> Option<usize> {

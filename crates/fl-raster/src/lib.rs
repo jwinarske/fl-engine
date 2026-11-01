@@ -216,11 +216,22 @@ enum Work {
     Upload(Arc<ImageData>),
 }
 
-/// Scenes submitted and not yet drawn.
+/// Scenes submitted and not yet drawn, and the glyph atlas as the last
+/// one left it.
 #[derive(Default)]
 struct InFlight {
     n: Mutex<usize>,
     changed: Condvar,
+    atlas: Mutex<AtlasCounts>,
+}
+
+/// The glyph atlas's counters as of the last frame drawn: its repacks,
+/// which are how it evicts, its growths, and the overflow pages alive.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct AtlasCounts {
+    pub compactions: u64,
+    pub growths: u64,
+    pub overflow_pages: usize,
 }
 
 impl InFlight {
@@ -348,6 +359,12 @@ impl RasterThread {
         }
     }
 
+    /// The glyph atlas's counters as of the last frame drawn; after
+    /// [`RasterThread::wait_drawn`], as of every frame submitted.
+    pub fn atlas_counts(&self) -> AtlasCounts {
+        *self.scenes.atlas.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
     /// What uploads a decoded image ahead of the frame that draws it: for
     /// [`fl_ui::set_image_sink`]. Never waits.
     pub fn uploader(&self) -> impl Fn(Arc<ImageData>) + Send + 'static {
@@ -436,6 +453,13 @@ fn raster_main(
                 // The frame before goes first: once a scene is done, one
                 // frame's pixels are held, what `wait_drawn` measures by.
                 r.last = Some(pixels);
+                // Before the scene counts as drawn, so a sample after
+                // `wait_drawn` sees this frame's.
+                *in_flight.atlas.lock().unwrap_or_else(|e| e.into_inner()) = AtlasCounts {
+                    compactions: target.glyphs.atlas().compactions(),
+                    growths: target.glyphs.atlas().growths(),
+                    overflow_pages: target.glyphs.overflow_alive(),
+                };
                 in_flight.done();
                 if let (Some(dir), Some(pixels)) = (capture, r.last.as_ref()) {
                     let file = dir.join(format!("frame-{:04}.png", r.frames));

@@ -196,6 +196,7 @@ fn app_cycle(path: &str, n: u32, app: AppArgs) -> Result<(), Failure> {
     let mut kinds = Vec::with_capacity(10);
     let mut threads = Vec::with_capacity(10);
     let mut faces = Vec::with_capacity(10);
+    let mut atlas = Vec::with_capacity(10);
     // Sampled with every frame drawn: one in flight holds its pixels and
     // the last frame's, a whole frame more (1,875 kB at 800x600).
     let usage = || {
@@ -220,6 +221,12 @@ fn app_cycle(path: &str, n: u32, app: AppArgs) -> Result<(), Failure> {
             kinds.push(rss_by_kind());
             threads.push(thread_count());
             faces.push(fl_ui::live_faces() as u64);
+            atlas.push(
+                raster
+                    .as_ref()
+                    .map(|r| r.atlas_counts())
+                    .unwrap_or_default(),
+            );
         }
     }
     let end = usage();
@@ -227,7 +234,7 @@ fn app_cycle(path: &str, n: u32, app: AppArgs) -> Result<(), Failure> {
     let mid = mid.unwrap_or(end);
     let gpu = finish_raster(raster, &app)?;
     println!(
-        "cycles={n} frames={frames} rss_warm_kb={} rss_tenth_kb={} rss_end_kb={} rss_tenths_kb={} {} threads_tenths={} faces_tenths={} fds_warm={} fds_end={} persistent_handles={} gpu_images={} gpu_kb={} atlas_side={} atlas_glyphs={} atlas_placements={} atlas_uploads={}",
+        "cycles={n} frames={frames} rss_warm_kb={} rss_tenth_kb={} rss_end_kb={} rss_tenths_kb={} {} threads_tenths={} faces_tenths={} {} fds_warm={} fds_end={} persistent_handles={} gpu_images={} gpu_kb={} atlas_side={} atlas_glyphs={} atlas_placements={} atlas_uploads={}",
         warm.0,
         mid.0,
         end.0,
@@ -235,6 +242,7 @@ fn app_cycle(path: &str, n: u32, app: AppArgs) -> Result<(), Failure> {
         kinds_report(&kinds),
         joined(&threads),
         joined(&faces),
+        atlas_report(&atlas),
         warm.1,
         end.1,
         fl_dart_vm::live_persistent_handles(),
@@ -709,6 +717,21 @@ fn thread_count() -> u64 {
                 .and_then(|v| v.trim().parse().ok())
         })
         .unwrap_or(0)
+}
+
+/// `atlas_compactions_tenths`, `atlas_growths_tenths` and
+/// `atlas_overflow_tenths`, from the raster thread's counters at each
+/// sample: whether a step in a soak lands with the atlas's first repack,
+/// which is how it evicts.
+fn atlas_report(samples: &[fl_raster::AtlasCounts]) -> String {
+    let series =
+        |f: fn(&fl_raster::AtlasCounts) -> u64| joined(&samples.iter().map(f).collect::<Vec<_>>());
+    format!(
+        "atlas_compactions_tenths={} atlas_growths_tenths={} atlas_overflow_tenths={}",
+        series(|a| a.compactions),
+        series(|a| a.growths),
+        series(|a| a.overflow_pages as u64),
+    )
 }
 
 /// One `rss_<kind>_tenths_kb=a,b,c` per kind, from samples of
