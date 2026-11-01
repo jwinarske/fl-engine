@@ -652,14 +652,16 @@ fn ends_a_tenth(i: u32, n: u32) -> bool {
 }
 
 /// Which kind of mapping RSS is in, from `/proc/self/smaps`: the malloc
-/// heap, anonymous mappings (the Dart VM's heap among them), `memfd`
-/// mappings (a software Vulkan driver's device memory) and mapped files.
-const RSS_KINDS: [&str; 4] = ["heap", "anon", "memfd", "file"];
+/// heap, anonymous mappings, the Dart VM's own (`dart-heap`, `dart-code`,
+/// `dart-zone`, named by the VM on Linux 5.17 and later; counted as
+/// anonymous on an older kernel), `memfd` mappings (a software Vulkan
+/// driver's device memory) and mapped files.
+const RSS_KINDS: [&str; 5] = ["heap", "anon", "dart", "memfd", "file"];
 
 /// RSS in kB by [`RSS_KINDS`], for telling which one a step in a soak is
 /// in; zeros where procfs cannot be read.
-fn rss_by_kind() -> [u64; 4] {
-    let mut kb = [0u64; 4];
+fn rss_by_kind() -> [u64; 5] {
+    let mut kb = [0u64; 5];
     let Ok(smaps) = std::fs::read_to_string("/proc/self/smaps") else {
         return kb;
     };
@@ -683,10 +685,12 @@ fn rss_by_kind() -> [u64; 4] {
         let name = fields.nth(4).unwrap_or("");
         kind = if name == "[heap]" {
             0
-        } else if name.starts_with("/memfd:") {
+        } else if name.starts_with("[anon:dart-") {
             2
-        } else if name.starts_with('/') {
+        } else if name.starts_with("/memfd:") {
             3
+        } else if name.starts_with('/') {
+            4
         } else {
             1
         };
@@ -709,7 +713,7 @@ fn thread_count() -> u64 {
 
 /// One `rss_<kind>_tenths_kb=a,b,c` per kind, from samples of
 /// [`rss_by_kind`].
-fn kinds_report(samples: &[[u64; 4]]) -> String {
+fn kinds_report(samples: &[[u64; 5]]) -> String {
     RSS_KINDS
         .iter()
         .enumerate()
