@@ -193,6 +193,7 @@ fn app_cycle(path: &str, n: u32, app: AppArgs) -> Result<(), Failure> {
     let tenth = (n / 10).max(1);
     let (mut warm, mut mid, mut frames) = (None, None, 0u64);
     let mut tenths = Vec::with_capacity(10);
+    let mut kinds = Vec::with_capacity(10);
     // Sampled with every frame drawn: one in flight holds its pixels and
     // the last frame's, a whole frame more (1,875 kB at 800x600).
     let usage = || {
@@ -214,6 +215,7 @@ fn app_cycle(path: &str, n: u32, app: AppArgs) -> Result<(), Failure> {
         }
         if ends_a_tenth(i, n) {
             tenths.push(usage().0);
+            kinds.push(rss_by_kind());
         }
     }
     let end = usage();
@@ -221,11 +223,12 @@ fn app_cycle(path: &str, n: u32, app: AppArgs) -> Result<(), Failure> {
     let mid = mid.unwrap_or(end);
     let gpu = finish_raster(raster, &app)?;
     println!(
-        "cycles={n} frames={frames} rss_warm_kb={} rss_tenth_kb={} rss_end_kb={} rss_tenths_kb={} fds_warm={} fds_end={} persistent_handles={} gpu_images={} gpu_kb={} atlas_side={} atlas_glyphs={} atlas_placements={} atlas_uploads={}",
+        "cycles={n} frames={frames} rss_warm_kb={} rss_tenth_kb={} rss_end_kb={} rss_tenths_kb={} {} fds_warm={} fds_end={} persistent_handles={} gpu_images={} gpu_kb={} atlas_side={} atlas_glyphs={} atlas_placements={} atlas_uploads={}",
         warm.0,
         mid.0,
         end.0,
         joined(&tenths),
+        kinds_report(&kinds),
         warm.1,
         end.1,
         fl_dart_vm::live_persistent_handles(),
@@ -582,6 +585,7 @@ fn cycle(path: &str, n: u32) -> Result<(), Failure> {
     let tenth = (n / 10).max(1);
     let (mut warm, mut mid) = (None, None);
     let mut tenths = Vec::with_capacity(10);
+    let mut kinds = Vec::with_capacity(10);
     for i in 0..n {
         #[cfg(feature = "jit")]
         let mut isolate = vm.isolate_from_kernel(&program, quiet.clone())?;
@@ -599,17 +603,19 @@ fn cycle(path: &str, n: u32) -> Result<(), Failure> {
         }
         if ends_a_tenth(i, n) {
             tenths.push(usage_now().0);
+            kinds.push(rss_by_kind());
         }
     }
     let end = usage_now();
     let warm = warm.unwrap_or(end);
     let mid = mid.unwrap_or(end);
     println!(
-        "cycles={n} rss_warm_kb={} rss_tenth_kb={} rss_end_kb={} rss_tenths_kb={} fds_warm={} fds_end={} persistent_handles={}",
+        "cycles={n} rss_warm_kb={} rss_tenth_kb={} rss_end_kb={} rss_tenths_kb={} {} fds_warm={} fds_end={} persistent_handles={}",
         warm.0,
         mid.0,
         end.0,
         joined(&tenths),
+        kinds_report(&kinds),
         warm.1,
         end.1,
         fl_dart_vm::live_persistent_handles()
@@ -623,6 +629,63 @@ fn cycle(path: &str, n: u32) -> Result<(), Failure> {
 fn ends_a_tenth(i: u32, n: u32) -> bool {
     let (c, n) = (u64::from(i) + 1, u64::from(n));
     (1..=10).any(|k| (k * n / 10).max(1) == c)
+}
+
+/// Which kind of mapping RSS is in, from `/proc/self/smaps`: the malloc
+/// heap, anonymous mappings (the Dart VM's heap among them), `memfd`
+/// mappings (a software Vulkan driver's device memory) and mapped files.
+const RSS_KINDS: [&str; 4] = ["heap", "anon", "memfd", "file"];
+
+/// RSS in kB by [`RSS_KINDS`], for telling which one a step in a soak is
+/// in; zeros where procfs cannot be read.
+fn rss_by_kind() -> [u64; 4] {
+    let mut kb = [0u64; 4];
+    let Ok(smaps) = std::fs::read_to_string("/proc/self/smaps") else {
+        return kb;
+    };
+    let mut kind = 1usize;
+    for line in smaps.lines() {
+        if let Some(rest) = line.strip_prefix("Rss:") {
+            kb[kind] += rest
+                .split_whitespace()
+                .next()
+                .and_then(|v| v.parse::<u64>().ok())
+                .unwrap_or(0);
+            continue;
+        }
+        // A mapping's header: an address range, then perms, offset,
+        // device, inode and an optional name.
+        let mut fields = line.split_whitespace();
+        let Some(range) = fields.next() else { continue };
+        if !range.contains('-') || !range.bytes().all(|b| b.is_ascii_hexdigit() || b == b'-') {
+            continue;
+        }
+        let name = fields.nth(4).unwrap_or("");
+        kind = if name == "[heap]" {
+            0
+        } else if name.starts_with("/memfd:") {
+            2
+        } else if name.starts_with('/') {
+            3
+        } else {
+            1
+        };
+    }
+    kb
+}
+
+/// One `rss_<kind>_tenths_kb=a,b,c` per kind, from samples of
+/// [`rss_by_kind`].
+fn kinds_report(samples: &[[u64; 4]]) -> String {
+    RSS_KINDS
+        .iter()
+        .enumerate()
+        .map(|(i, kind)| {
+            let v: Vec<u64> = samples.iter().map(|s| s[i]).collect();
+            format!("rss_{kind}_tenths_kb={}", joined(&v))
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// `v` as `a,b,c`, one report value.
