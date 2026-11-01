@@ -7,6 +7,12 @@
 //! or grow while glyphs go in, and a run recorded before that would read
 //! the old places.
 //!
+//! The atlas is the cache, kept from frame to frame. A frame that needs
+//! more glyphs than it holds at its limit puts the rest on overflow pages,
+//! atlases of that frame only, each drawn from its own image: the frame is
+//! drawn in more than one pass, not dropped. Only past the last page is a
+//! run drawn as its outline.
+//!
 //! Glyphs too large for the atlas, and text whose paint has a shader or a
 //! stroke, are drawn as their outlines, as Impeller draws them as paths.
 //! emblema has no subpixel positioning, so a glyph is placed on a whole
@@ -36,6 +42,54 @@ pub(crate) const MAX_ATLAS_GLYPH: f32 = 256.0;
 const ATLAS_START: u32 = 512;
 const ATLAS_LIMIT: u32 = 4096;
 
+/// Overflow pages a frame may use beside the cache: with it, four 4096
+/// atlases, 64 MiB of coverage at their largest, freed with the frame
+/// that needed them.
+const MAX_OVERFLOW: usize = 3;
+
+/// An atlas and its device image.
+struct Page {
+    atlas: Atlas,
+    image: Option<(Image, u32)>,
+}
+
+impl Page {
+    fn new() -> Page {
+        Page {
+            atlas: Atlas::with_limit(ATLAS_START, ATLAS_LIMIT),
+            image: None,
+        }
+    }
+
+    /// Puts the atlas on the device if anything went in; whether it wrote.
+    fn upload(&mut self, ctx: &mut Context) -> Result<bool, RasterError> {
+        let size = self.atlas.size();
+        let stale = self.image.as_ref().is_none_or(|(_, s)| *s != size);
+        if stale {
+            if let Some((old, _)) = self.image.take() {
+                ctx.destroy_image(old);
+            }
+            let image = ctx.create_image(Extent2D::new(size, size), PixelFormat::R8Unorm)?;
+            self.image = Some((image, size));
+        }
+        let mut wrote = false;
+        if stale || self.atlas.is_dirty() {
+            if let Some((image, _)) = self.image.as_mut() {
+                ctx.write_image(image, self.atlas.texels())?;
+                wrote = true;
+            }
+            self.atlas.mark_clean();
+        }
+        Ok(wrote)
+    }
+
+    fn clear(&mut self, ctx: &mut Context) {
+        if let Some((image, _)) = self.image.take() {
+            ctx.destroy_image(image);
+        }
+    }
+}
+
 /// Where a rasterized glyph's coverage sits relative to its origin, in
 /// device pixels: left, top (up positive) and its size.
 #[derive(Debug, Clone, Copy)]
@@ -46,13 +100,17 @@ struct Placement {
     height: u32,
 }
 
-/// The glyph cache: the atlas, its device image, and each glyph's place.
-/// `!Send`: it belongs to the raster thread, as the GPU image cache does.
+/// The glyph cache: the atlas, its device image, this frame's overflow
+/// pages, and each glyph's place. `!Send`: it belongs to the raster thread,
+/// as the GPU image cache does.
 pub struct Glyphs {
-    atlas: Atlas,
-    image: Option<(Image, u32)>,
+    cache: Page,
+    /// This frame's pages past the cache, in the order they filled.
+    overflow: Vec<Page>,
+    /// How many of `overflow` this frame uses; the rest are freed at upload.
+    overflow_used: usize,
     placed: HashMap<GlyphKey, Placement>,
-    /// Glyphs that could not go in the atlas this frame, drawn as outlines.
+    /// Glyphs no page had room for this frame, drawn as outlines.
     refused: std::collections::HashSet<GlyphKey>,
     scaler: RefCell<ScaleContext>,
     /// Atlas writes to the device, for the soak lane.
@@ -63,8 +121,9 @@ pub struct Glyphs {
 impl Default for Glyphs {
     fn default() -> Self {
         Glyphs {
-            atlas: Atlas::with_limit(ATLAS_START, ATLAS_LIMIT),
-            image: None,
+            cache: Page::new(),
+            overflow: Vec::new(),
+            overflow_used: 0,
             placed: HashMap::new(),
             refused: std::collections::HashSet::new(),
             scaler: RefCell::new(ScaleContext::new()),
@@ -100,8 +159,46 @@ fn atlas_route(run: &GlyphRun, transform: Option<&emblema::Affine2>) -> bool {
 }
 
 impl Glyphs {
+    /// The cache's atlas.
     pub fn atlas(&self) -> &Atlas {
-        &self.atlas
+        &self.cache.atlas
+    }
+
+    /// Overflow pages the last frame used.
+    pub fn overflow_pages(&self) -> usize {
+        self.overflow_used
+    }
+
+    /// The page `key` is on this frame: 0 the cache, then the overflow
+    /// pages in order.
+    fn page_of(&self, key: GlyphKey) -> Option<usize> {
+        if self.cache.atlas.get(key).is_some() {
+            return Some(0);
+        }
+        self.overflow[..self.overflow_used]
+            .iter()
+            .position(|p| p.atlas.get(key).is_some())
+            .map(|i| i + 1)
+    }
+
+    /// Page `i`'s atlas and device image.
+    fn page(&self, i: usize) -> Option<&Page> {
+        match i {
+            0 => Some(&self.cache),
+            _ => self.overflow.get(i - 1).filter(|_| i <= self.overflow_used),
+        }
+    }
+
+    /// The pages' device images, the cache first: slot `i` is page `i`.
+    pub(crate) fn images(&self) -> Vec<&Image> {
+        (0..=self.overflow_used)
+            .map_while(|i| self.page(i)?.image.as_ref().map(|(img, _)| img))
+            .collect()
+    }
+
+    /// Page `i`'s atlas, for drawing from.
+    pub(crate) fn page_atlas(&self, i: usize) -> Option<&Atlas> {
+        self.page(i).map(|p| &p.atlas)
     }
 
     /// How many times the atlas has been written to the device.
@@ -117,8 +214,43 @@ impl Glyphs {
 
     /// A frame begins: glyphs it does not use again may be evicted.
     pub(crate) fn begin_frame(&mut self) {
-        self.atlas.begin_frame();
+        self.cache.atlas.begin_frame();
+        // Last frame's overflow is not kept: the cache is what persists.
+        // Their device images are, until upload knows whether this frame
+        // needs as many.
+        for page in &mut self.overflow {
+            page.atlas = Atlas::with_limit(ATLAS_START, ATLAS_LIMIT);
+        }
+        self.overflow_used = 0;
         self.refused.clear();
+    }
+
+    /// Puts `coverage` on the first page with room, opening an overflow
+    /// page if none has; false past the last. The pages apart from `self`,
+    /// as the scaler is borrowed beside them.
+    fn insert(
+        cache: &mut Page,
+        overflow: &mut Vec<Page>,
+        used: &mut usize,
+        key: GlyphKey,
+        coverage: &Coverage,
+    ) -> bool {
+        if cache.atlas.insert(key, coverage).is_ok() {
+            return true;
+        }
+        for page in &mut overflow[..*used] {
+            if page.atlas.insert(key, coverage).is_ok() {
+                return true;
+            }
+        }
+        if *used == MAX_OVERFLOW {
+            return false;
+        }
+        if *used == overflow.len() {
+            overflow.push(Page::new());
+        }
+        *used += 1;
+        overflow[*used - 1].atlas.insert(key, coverage).is_ok()
     }
 
     /// Rasterizes and inserts what `run` needs drawn under `transform`.
@@ -150,9 +282,9 @@ impl Glyphs {
                 glyph,
                 size: px as u16,
             };
-            if self.atlas.get(key).is_some() {
+            if self.cache.atlas.get(key).is_some() {
                 // Asked for again this frame, which keeps it from eviction.
-                let _ = self.atlas.insert(
+                let _ = self.cache.atlas.insert(
                     key,
                     &Coverage {
                         width: 0,
@@ -160,6 +292,10 @@ impl Glyphs {
                         texels: Vec::new(),
                     },
                 );
+                continue;
+            }
+            if self.page_of(key).is_some() || self.refused.contains(&key) {
+                // On an overflow page already, or refused, this frame.
                 continue;
             }
             let Some(img) = Render::new(&[Source::Outline])
@@ -175,75 +311,73 @@ impl Glyphs {
                 height: p.height,
                 texels: img.data,
             };
-            match self.atlas.insert(key, &coverage) {
-                Ok(_) => {
-                    self.placed.insert(
-                        key,
-                        Placement {
-                            left: p.left,
-                            top: p.top,
-                            width: p.width,
-                            height: p.height,
-                        },
-                    );
-                }
-                // Full past its limit, or larger than it: this glyph is
-                // drawn as its outline this frame; text never goes missing.
-                Err(_) => {
-                    self.refused.insert(key);
-                }
+            if Self::insert(
+                &mut self.cache,
+                &mut self.overflow,
+                &mut self.overflow_used,
+                key,
+                &coverage,
+            ) {
+                self.placed.insert(
+                    key,
+                    Placement {
+                        left: p.left,
+                        top: p.top,
+                        width: p.width,
+                        height: p.height,
+                    },
+                );
+            } else {
+                // Past the last page: this glyph's run is drawn as its
+                // outline this frame; text never goes missing.
+                self.refused.insert(key);
             }
         }
     }
 
-    /// Puts the atlas on the device if anything went in: once a frame.
+    /// Puts the cache and this frame's overflow pages on the device, each
+    /// written if anything went in: once a frame. Overflow pages this frame
+    /// did not need are freed.
     pub(crate) fn upload(&mut self, ctx: &mut Context) -> Result<(), RasterError> {
-        let size = self.atlas.size();
-        let stale = self.image.as_ref().is_none_or(|(_, s)| *s != size);
-        if stale {
-            if let Some((old, _)) = self.image.take() {
-                ctx.destroy_image(old);
-            }
-            let image = ctx.create_image(Extent2D::new(size, size), PixelFormat::R8Unorm)?;
-            self.image = Some((image, size));
+        self.uploads += u64::from(self.cache.upload(ctx)?);
+        for page in &mut self.overflow[..self.overflow_used] {
+            self.uploads += u64::from(page.upload(ctx)?);
         }
-        if stale || self.atlas.is_dirty() {
-            if let Some((image, _)) = self.image.as_mut() {
-                ctx.write_image(image, self.atlas.texels())?;
-                self.uploads += 1;
-            }
-            self.atlas.mark_clean();
+        for mut page in self.overflow.drain(self.overflow_used..) {
+            page.clear(ctx);
         }
         // The atlas evicts; the placements of what it evicted go too, once
-        // they outnumber the atlas's glyphs, so text that keeps changing
-        // keeps this bounded by the atlas.
-        if self.placed.len() > 2 * self.atlas.len() + 1024 {
-            let atlas = &self.atlas;
-            self.placed.retain(|k, _| atlas.get(*k).is_some());
+        // they outnumber the glyphs on the pages, so text that keeps
+        // changing keeps this bounded by them.
+        let on_pages: usize =
+            self.cache.atlas.len() + self.overflow.iter().map(|p| p.atlas.len()).sum::<usize>();
+        if self.placed.len() > 2 * on_pages + 1024 {
+            let (cache, overflow) = (&self.cache, &self.overflow);
+            self.placed.retain(|k, _| {
+                cache.atlas.get(*k).is_some() || overflow.iter().any(|p| p.atlas.get(*k).is_some())
+            });
         }
         Ok(())
     }
 
-    /// The atlas's device image, once uploaded.
-    pub(crate) fn image(&self) -> Option<&Image> {
-        self.image.as_ref().map(|(i, _)| i)
-    }
-
-    /// Frees the device image; before the context goes.
+    /// Frees the device images; before the context goes.
     pub(crate) fn clear(&mut self, ctx: &mut Context) {
-        if let Some((image, _)) = self.image.take() {
-            ctx.destroy_image(image);
+        self.cache.clear(ctx);
+        for mut page in self.overflow.drain(..) {
+            page.clear(ctx);
         }
+        self.overflow_used = 0;
     }
 
     /// The run's glyphs as atlas quads, in the canvas's space, each on a
-    /// whole device pixel; `None` if the run is drawn as outlines.
+    /// whole device pixel, by the page each is on; `None` if the run is
+    /// drawn as outlines.
     pub(crate) fn positioned(
         &self,
         transform: emblema::Transform2D,
         run: &GlyphRun,
         origin: [f32; 2],
-    ) -> Option<Vec<PositionedGlyph>> {
+    ) -> Option<Vec<(usize, Vec<PositionedGlyph>)>> {
         let m = transform.to_affine();
         if !atlas_route(run, m.as_ref()) {
             return None;
@@ -253,7 +387,7 @@ impl Glyphs {
         let px = device_size(run, &m).round().max(1.0);
         let font = font_key(run);
         let (sx, sy) = (m.matrix2.x_axis.length(), m.matrix2.y_axis.length());
-        let mut out = Vec::with_capacity(run.glyphs.len());
+        let mut out: Vec<(usize, Vec<PositionedGlyph>)> = Vec::new();
         for (glyph, pos) in run.glyphs.iter().zip(&run.positions) {
             let key = GlyphKey {
                 font,
@@ -264,19 +398,25 @@ impl Glyphs {
                 return None;
             }
             let pl = self.placed.get(&key)?;
-            self.atlas.get(key)?;
+            let page = self.page_of(key)?;
             if pl.width == 0 || pl.height == 0 {
                 continue;
             }
             let at = m.transform_point2(Vec2::new(origin[0] + pos[0], origin[1] + pos[1]));
             let tl = Vec2::new(at.x.round() + pl.left as f32, at.y.round() - pl.top as f32);
             let user = inv.transform_point2(tl);
-            out.push(PositionedGlyph {
+            let quad = PositionedGlyph {
                 key,
                 position: [user.x, user.y],
                 size: [pl.width as f32 / sx, pl.height as f32 / sy],
-            });
+            };
+            match out.iter_mut().find(|(p, _)| *p == page) {
+                Some((_, quads)) => quads.push(quad),
+                None => out.push((page, vec![quad])),
+            }
         }
+        // The cache's glyphs first; most runs are on it alone.
+        out.sort_by_key(|(p, _)| *p);
         Some(out)
     }
 
@@ -382,9 +522,12 @@ mod tests {
         let mut g = Glyphs::default();
         g.begin_frame();
         g.prepare(scale(2.0), &r);
-        let q = g.positioned(scale(2.0), &r, [10.3, 20.7]).unwrap();
+        let pages = g.positioned(scale(2.0), &r, [10.3, 20.7]).unwrap();
+        assert_eq!(pages.len(), 1, "two glyphs, on the cache alone");
+        let (page, q) = &pages[0];
+        assert_eq!(*page, 0);
         assert_eq!(q.len(), 2);
-        for p in &q {
+        for p in q {
             assert_eq!(p.key.size, 28);
             // Whole device pixels: the canvas position times the scale.
             for v in p.position {
@@ -412,26 +555,136 @@ mod tests {
         assert!(!path.verbs().is_empty());
     }
 
+    /// `n` distinct glyphs of Roboto at 250 device pixels, one run.
+    fn large_glyphs(n: u16) -> Arc<GlyphRun> {
+        let mut r = (*run("A", 250.0)).clone();
+        r.glyphs = (1..=n).collect();
+        r.positions = (0..n).map(|i| [f32::from(i) * 300.0, 0.0]).collect();
+        Arc::new(r)
+    }
+
     /// The atlas's side limit, crossed (brief M3 §15, atlas full): one
-    /// frame of 1,200 distinct glyphs at 250 device pixels, more than a
-    /// 4096 atlas holds. It grows to its limit and no further; the glyphs
-    /// it refuses are drawn as outlines; none is lost.
+    /// frame of 1,000 distinct glyphs at 250 device pixels, more than a
+    /// 4096 atlas holds. The cache grows to its limit and no further; the rest
+    /// go on an overflow page, and the run is drawn from both, every
+    /// glyph from an atlas. The next frame keeps the cache alone.
     #[test]
     #[ignore = "app lane: needs FLUTTER_ROOT"]
-    fn a_frame_past_the_atlas_limit_draws_the_rest_as_outlines() {
-        let mut r = (*run("A", 250.0)).clone();
-        r.glyphs = (1..=1200).collect();
-        r.positions = (0..1200).map(|i| [i as f32 * 300.0, 0.0]).collect();
-        let r = Arc::new(r);
+    fn a_frame_past_the_atlas_limit_is_drawn_from_overflow_pages() {
+        let r = large_glyphs(1000);
         let mut g = Glyphs::default();
         g.begin_frame();
         g.prepare(scale(1.0), &r);
         assert_eq!(g.atlas().size(), ATLAS_LIMIT);
-        assert!(!g.refused.is_empty() && !g.atlas().is_empty());
-        // A run with any glyph refused is drawn whole as outlines.
-        assert!(g.positioned(scale(1.0), &r, [0.0, 0.0]).is_none());
+        assert!(g.refused.is_empty(), "{} refused", g.refused.len());
+        assert!(g.overflow_pages() >= 1);
+        let pages = g.positioned(scale(1.0), &r, [0.0, 0.0]).unwrap();
+        assert!(
+            pages.len() >= 2 && pages[0].0 == 0,
+            "{:?}",
+            pages.iter().map(|p| p.0).collect::<Vec<_>>()
+        );
+        let drawn: usize = pages.iter().map(|(_, q)| q.len()).sum();
+        let blank = r
+            .glyphs
+            .iter()
+            .filter(|gl| {
+                g.placed
+                    .iter()
+                    .any(|(k, p)| k.glyph == **gl && (p.width == 0 || p.height == 0))
+            })
+            .count();
+        assert_eq!(drawn + blank, r.glyphs.len(), "a glyph went missing");
+        assert!(
+            g.placements()
+                <= g.atlas().len()
+                    + g.overflow.iter().map(|p| p.atlas.len()).sum::<usize>()
+                    + blank
+        );
+
+        g.begin_frame();
+        assert_eq!(g.overflow_pages(), 0, "the overflow outlived its frame");
+        let small = run("Hi", 14.0);
+        g.prepare(scale(1.0), &small);
+        assert_eq!(g.overflow_pages(), 0);
+    }
+
+    /// Past the last overflow page, a run with a glyph no page could take
+    /// is drawn whole as outlines: text never goes missing. The same 1,250
+    /// glyphs at three sizes, three keys each, more than four pages hold.
+    #[test]
+    #[ignore = "app lane: needs FLUTTER_ROOT"]
+    fn a_frame_past_every_page_draws_the_rest_as_outlines() {
+        let r = large_glyphs(1250);
+        let mut g = Glyphs::default();
+        g.begin_frame();
+        let scales = [1.0, 0.98, 0.96];
+        for s in scales {
+            g.prepare(scale(s), &r);
+        }
+        assert_eq!(g.overflow_pages(), MAX_OVERFLOW);
+        assert!(!g.refused.is_empty());
+        let last = scale(scales[2]);
+        assert!(g.positioned(last, &r, [0.0, 0.0]).is_none());
         assert!(g.outlines(&r, [0.0, 0.0]).is_some());
-        assert!(g.placements() <= g.atlas().len());
+        // The first size went in whole, and is drawn from the pages.
+        assert!(g.positioned(scale(scales[0]), &r, [0.0, 0.0]).is_some());
+    }
+
+    /// A frame of `run` from the origin in opaque black on transparent, as
+    /// the raster thread draws it; with the glyph cache it ended with.
+    fn frame(run: Arc<GlyphRun>) -> (Vec<u8>, crate::Offscreen) {
+        use fl_ui::{Draw, LayerOp, Paint, Picture, Scene};
+        let picture = Picture {
+            draws: vec![Draw::Glyphs {
+                run,
+                origin: [0.0, 0.0],
+                paint: Paint::default(),
+            }],
+        };
+        let scene = Scene {
+            ops: vec![LayerOp::AddPicture {
+                dx: 0.0,
+                dy: 0.0,
+                picture: Arc::new(picture),
+            }],
+        };
+        let mut target = crate::Offscreen::new(300, 300).unwrap();
+        let pixels = target.render(&scene).unwrap();
+        (pixels, target)
+    }
+
+    /// The second pass on the device: a glyph the cache had no room for is
+    /// drawn from its overflow page, its own image in its own slot, exactly
+    /// as the same glyph drawn alone from the cache. The other 999 are
+    /// placed far outside the target; they only fill the cache.
+    #[test]
+    #[ignore = "app lane: needs FLUTTER_ROOT and a Vulkan driver"]
+    fn a_glyph_on_an_overflow_page_draws_as_it_does_from_the_cache() {
+        let mut crowd = (*large_glyphs(1000)).clone();
+        let last = crowd.glyphs.len() - 1;
+        for p in &mut crowd.positions[..last] {
+            *p = [-100_000.0, 0.0];
+        }
+        crowd.positions[last] = [20.0, 260.0];
+        let mut alone = crowd.clone();
+        alone.glyphs = vec![crowd.glyphs[last]];
+        alone.positions = vec![[20.0, 260.0]];
+
+        let (crowded, target) = frame(Arc::new(crowd.clone()));
+        let key = GlyphKey {
+            font: font_key(&crowd),
+            glyph: crowd.glyphs[last],
+            size: 250,
+        };
+        assert!(
+            target.glyphs.page_of(key).is_some_and(|p| p > 0),
+            "the glyph is not on an overflow page"
+        );
+        let (reference, target) = frame(Arc::new(alone));
+        assert_eq!(target.glyphs.page_of(key), Some(0));
+        assert!(reference.chunks(4).any(|p| p[3] > 0), "nothing drawn");
+        assert!(crowded == reference, "the overflow page drew differently");
     }
 
     #[test]

@@ -863,9 +863,9 @@ fn draw_glyphs(
             g.prepare(transform, run);
             return Ok(());
         }
-        GlyphPass::Draw { glyphs, slot } => (*glyphs, *slot),
+        GlyphPass::Draw { glyphs, first } => (*glyphs, *first),
     };
-    let (glyphs, slot) = drawing;
+    let (glyphs, first) = drawing;
     // A shader or a stroke needs the glyphs' shape, not their coverage,
     // as `ShouldRenderAsPath` sends them to paths on Impeller.
     let as_path = paint.shader.is_some() || paint.objects || paint.style == Style::Stroke;
@@ -876,8 +876,17 @@ fn draw_glyphs(
     };
     let p = paint_of(paint, slots)?;
     match quads {
-        Some(q) => {
-            canvas.draw_glyphs(&q, glyphs.atlas(), slot, &p)?;
+        // A pass a page: the glyphs on the cache, then those this frame put
+        // on overflow pages. One color over the run, so under srcOver the
+        // order between pages changes nothing where glyphs overlap; only a
+        // frame past the cache's limit is drawn so.
+        Some(pages) => {
+            for (page, quads) in pages {
+                let (Some(atlas), Ok(i)) = (glyphs.page_atlas(page), u32::try_from(page)) else {
+                    continue;
+                };
+                canvas.draw_glyphs(&quads, atlas, first + i, &p)?;
+            }
         }
         None => {
             if let Some(path) = glyphs.outlines(run, origin) {

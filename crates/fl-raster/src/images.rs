@@ -155,13 +155,14 @@ pub(crate) struct Slots<'a> {
 }
 
 /// A replay's glyphs: none (a frame with no text draws nothing for them),
-/// rasterized into the atlas, or drawn from it in its slot.
+/// rasterized into the atlas, or drawn from its pages, page `i` in slot
+/// `first + i`.
 pub(crate) enum GlyphPass<'a> {
     None,
     Prepare(&'a mut crate::glyphs::Glyphs),
     Draw {
         glyphs: &'a crate::glyphs::Glyphs,
-        slot: u32,
+        first: u32,
     },
 }
 
@@ -186,12 +187,14 @@ impl<'a> Slots<'a> {
         }
     }
 
-    /// For the replay that draws: the atlas, if uploaded, in slot 0.
+    /// For the replay that draws: the atlas's pages, if uploaded, from slot
+    /// 0, the cache first.
     pub(crate) fn drawing(gpu: &'a GpuImages, glyphs: &'a crate::glyphs::Glyphs) -> Slots<'a> {
         let mut s = Slots::new(gpu);
-        if let Some(image) = glyphs.image() {
-            s.table.push(image);
-            s.glyphs = GlyphPass::Draw { glyphs, slot: 0 };
+        let pages = glyphs.images();
+        if !pages.is_empty() {
+            s.table.extend(pages);
+            s.glyphs = GlyphPass::Draw { glyphs, first: 0 };
         }
         s
     }

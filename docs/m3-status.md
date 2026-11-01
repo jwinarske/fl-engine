@@ -149,7 +149,7 @@ Not yet:
 
 * Glyph edges: Impeller rasterizes through Skia with slight hinting, quarter-pixel subpixel positions and Skia's coverage; swash here, unhinted, on whole pixels. Small text is 5 to 9% heavier in ink; positions agree within a third of a pixel; outlines and icons agree
 * Gradient-filled text: dart:ui's `Gradient` natives are not in fl-ui; the text program has none (done since; see the gradients follow-up)
-* A frame needing more glyphs than the atlas's limit draws the rest as outlines rather than in a second pass
+* A frame needing more glyphs than the atlas's limit draws the rest as outlines rather than in a second pass; since 2026-11-01, from overflow pages (below)
 * The first replay costs a second walk of the scene each frame
 
 Found on the way:
@@ -217,7 +217,7 @@ Limits (§15) and the tests that cross them:
 * frame count: `an_animation_over_the_frame_limit_is_refused`; each frame's size: `a_frame_over_the_pixel_limit_is_refused`; 100,000 frames: `a_hundred_thousand_tiny_frames_cost_one_frame`
 * decoder panics: `the_worker_answers_every_job_and_survives_a_bad_one`, the decoder fuzz target; font parsing and shaping panics: the font fuzz target
 * text length, 32 KiB: `long_text_splits_after_a_space`, `text_with_no_space_splits_on_a_character`; shaped-run cache, 4,096: `the_shaped_run_cache_is_bounded`
-* glyph size, 256 px: `a_glyph_past_the_atlas_is_its_outline`; atlas side, 4096: `a_frame_past_the_atlas_limit_draws_the_rest_as_outlines`; placements: the soak
+* glyph size, 256 px: `a_glyph_past_the_atlas_is_its_outline`; atlas side, 4096: `a_frame_past_the_atlas_limit_is_drawn_from_overflow_pages`; overflow pages, three: `a_frame_past_every_page_draws_the_rest_as_outlines`; placements: the soak
 * asset keys, file kinds, 256 MiB: `keys_cannot_leave_the_bundle`, `only_regular_files_within_the_limit`; assets app
 * every request answered, results for a dead isolate dropped: `retired_jobs_are_dropped_unstarted`, the soak's handle count
 
@@ -270,3 +270,10 @@ Not yet, then: a non-modulate atlas under a translucent paint, refused by name. 
 * emblema#240: a mesh or atlas with colors of its own fades what its tint blend produced by the paint's opacity, after the blend, as upstream's `AtlasContents`; emblema faded the sprite first, the same under modulate only. Repinned to its merge
 * fl-raster: the refusal of a non-modulate atlas under a translucent paint is gone
 * `apps/images`: cell 14 is srcOver under a half-alpha paint, where it was modulate. Golden 7.136% differ, 0.061% by more than 32; cell 14 differs in 29 pixels, the opaque atlas cells in 141
+
+## Follow-ups: the atlas's second pass (2026-11-01)
+
+* A frame needing more glyphs than the atlas holds at its limit puts the rest on overflow pages, atlases of that frame only, up to three beside the cache (64 MiB of coverage at most), each drawn from its own image slot: a run is drawn a pass a page
+* Overflow pages are not kept: the next frame starts from the cache alone, and pages it does not need are freed at upload
+* Past the last page a run is still its outline: text never goes missing
+* Tests: 1,000 glyphs at 250 device pixels fill the cache to 4096 and go on from an overflow page, none lost; 1,250 at three sizes pass every page and draw outlines; on the device, a glyph from an overflow page draws exactly as from the cache, and fails drawn from the wrong slot
