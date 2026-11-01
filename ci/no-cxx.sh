@@ -4,7 +4,7 @@
 # no-cxx job); installs only what a Rust build needs, the C linker driver
 # rustc calls, and proves the C++ compilers are absent before building.
 #
-#   ci/no-cxx.sh        # GITHUB_TOKEN for the fetch
+#   ci/no-cxx.sh        # GITHUB_TOKEN, if set, is used for the fetch
 #
 # libstdc++6 itself is in every Ubuntu base (apt links it); that is a runtime
 # library, not a toolchain, and the binary is checked not to need it.
