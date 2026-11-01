@@ -8,7 +8,8 @@
 # blend. Over 32: the checker at none, whose 17.5-pixel texels put square
 # edges on pixel centers, and the photo crop's nearest texels. The atlas
 # under srcOver, overlay and a translucent paint, and the translucent
-# nine-slice, agree. Measured 2026-10-31, lavapipe, at 800x800: 8.130%
-# differ, 0.061% by more than 32.
+# nine-slice, agree, and the stripes repeated across and decaled down.
+# Measured 2026-11-01, lavapipe, at 800x800: 7.133% differ, 0.061% by
+# more than 32.
 differ 12.0
 differ_over_32 0.1

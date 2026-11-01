@@ -101,12 +101,13 @@ class _Cells extends CustomPainter {
     );
     // 3: drawAtlas, both sprites turned, tinted by modulate.
     atlas(canvas, 3, BlendMode.modulate, plain);
-    // 4: a rect filled by an ImageShader, the stripes doubled and repeated.
+    // 4: a rect filled by an ImageShader, the stripes doubled, repeated
+    // across and decaled down: one band of them.
     final c4 = _cell(4, 90, 70);
     final m = Float64List.fromList([2, 0, 0, 0, 0, 2, 0, 0, 0, 0, 1, 0, c4.left, c4.top, 0, 1]);
     canvas.drawRect(
       c4,
-      Paint()..shader = ImageShader(_img('stripes.webp'), TileMode.repeated, TileMode.repeated, m),
+      Paint()..shader = ImageShader(_img('stripes.webp'), TileMode.repeated, TileMode.decal, m),
     );
     // 5 to 8: the checker magnified at each FilterQuality.
     for (final (i, q) in [

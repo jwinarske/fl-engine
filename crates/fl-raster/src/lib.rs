@@ -791,23 +791,18 @@ fn image_paint(p: &Paint, base: EPaint, quality: i32) -> Result<EPaint, RasterEr
 }
 
 /// An image shader's fill: the image at its own size in its own space,
-/// placed by its matrix, emblema's shader transform; tile modes that
-/// differ between the axes are not mapped yet (jwinarske/emblema#230).
+/// placed by its matrix, emblema's shader transform, each axis tiled by
+/// its own mode.
 fn shader_paint(
     s: &ImageShader,
     filter_quality: i32,
     slots: &mut Slots,
 ) -> Result<EPaint, RasterError> {
-    if s.tile[0] != s.tile[1] {
-        return Err(RasterError::Unsupported(
-            "an ImageShader with a tile mode per axis".into(),
-        ));
-    }
     let (slot, size) = slots.slot(&s.image)?;
     let covers = Rect::new(0.0, 0.0, size.width as f32, size.height as f32);
     Ok(EPaint::image(slot, covers)
         .with_shader_transform(gradients::shader_transform_of(&s.matrix))
-        .with_tile_mode(tile_of(s.tile[0])?)
+        .with_tile_modes(tile_of(s.tile[0])?, tile_of(s.tile[1])?)
         .with_sampling(sampling_of(s.quality.unwrap_or(filter_quality))))
 }
 

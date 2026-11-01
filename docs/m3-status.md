@@ -244,7 +244,7 @@ Done: dart:ui's `Gradient`, every kind, tile mode and matrix, and an `ImageShade
     frame 1: view 0 800x600 layers=1 pictures=1 draws=31
 
 * fl-ui: `Gradient::Create`, `initLinear`, `initRadial`, `initTwoPointConical`, `initSweep`; a paint's shader is an image shader or a gradient (`fl_ui::Shader`). Colors as `_encodeWideColorList` writes them; stops evenly spaced when not given, as Skia's. Arguments that do not decode keep no gradient, and a draw with it is refused by name
-* fl-raster: each kind to emblema's; the matrix as the shader's local transform (`Paint::with_shader_transform`, jwinarske/emblema#235); the paint's alpha as its opacity (`Paint::with_opacity`, #236). An `ImageShader` placed at its own size by its matrix: rotation, skew, mirror and perspective, where only scale and translation were. One tile mode for both axes still (#230)
+* fl-raster: each kind to emblema's; the matrix as the shader's local transform (`Paint::with_shader_transform`, jwinarske/emblema#235); the paint's alpha as its opacity (`Paint::with_opacity`, #236). An `ImageShader` placed at its own size by its matrix: rotation, skew, mirror and perspective, where only scale and translation were. One tile mode for both axes then; per axis since #239
 * emblema#237: a sweep's angle measured from the positive X axis in [0, 2pi), as upstream's `sweep_gradient_fill.frag`; a part-turn sweep starting past zero drew its end color before its start
 * `apps/gradients`: two and six stops, each tile mode, paint alpha, radial, conical with a focal point and a focal radius, whole and part sweeps with each tile mode, `GradientRotation`, a skewed linear, a turned radial and sweep, image shaders turned, mirrored and skewed, a gradient stroke and rounded rect
 * Golden: 5.017% differ, 0.028% by more than 32: the two dithers, and one-pixel lines where a sweep jumps. Tolerance 6.0 and 0.1
@@ -260,3 +260,9 @@ Done: `drawAtlas` colors under any blend mode, and `drawImageNine` under a trans
 Not yet:
 
 * A non-modulate atlas under a translucent paint is refused by name: upstream fades the blended result by the paint's alpha, emblema's opacity fades the sprite before the blend; the same under modulate only
+
+## Follow-ups: an image shader's tile mode per axis (2026-11-01)
+
+* emblema#239: `Shader::Image` takes a tile mode per axis, `Paint::with_tile_modes(x, y)`, each axis folded and decaled by its own, as upstream's tiled texture contents (#230). Repinned to its merge
+* fl-raster: `ImageShader`'s `tmx` and `tmy` to it; the refusal of differing modes is gone
+* `apps/images`: cell 4's stripes repeated across and decaled down, one band. Golden 7.133% differ, 0.061% by more than 32
