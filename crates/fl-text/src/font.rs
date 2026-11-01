@@ -27,6 +27,21 @@ pub struct Face {
     pub(crate) index: u32,
 }
 
+/// Faces alive in the process, for the soak's report.
+static LIVE_FACES: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+/// How many faces are alive in the process: each holds its font's bytes,
+/// so a face kept past its collection keeps a whole font resident.
+pub fn live_faces() -> usize {
+    LIVE_FACES.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+impl Drop for Face {
+    fn drop(&mut self) {
+        LIVE_FACES.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
+    }
+}
+
 impl std::fmt::Debug for Face {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "Face({} #{} {:?})", self.family, self.id, self.style)
@@ -69,6 +84,9 @@ impl Face {
         } else {
             family.to_owned()
         };
+        // Counted as made, here where nothing after can fail, and uncounted
+        // in Drop.
+        LIVE_FACES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         Some(Arc::new(Face {
             id: NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
             family,

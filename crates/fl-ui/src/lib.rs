@@ -27,6 +27,7 @@ mod text;
 
 pub use buffer::{asset_bundle, set_asset_bundle};
 pub use compositing::{Clip, LayerOp, Scene};
+pub use fl_text::font::live_faces;
 pub use gradient::{Gradient, GradientKind};
 pub use image::{
     awaiting_decodes, clear_image_sink, set_image_sink, set_max_image_pixels, ImageData,
