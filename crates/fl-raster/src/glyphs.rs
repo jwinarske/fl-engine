@@ -15,8 +15,12 @@
 //!
 //! Glyphs too large for the atlas, and text whose paint has a shader or a
 //! stroke, are drawn as their outlines, as Impeller draws them as paths.
-//! emblema has no subpixel positioning, so a glyph is placed on a whole
-//! device pixel: a recorded difference from Impeller's.
+//!
+//! As Impeller's: hinted (skrifa, through swash; Skia's is slight), and
+//! on a quarter pixel across, the pen's fraction biased by an eighth
+//! (`ComputeFractionalPosition`), each quarter its own glyph in the atlas;
+//! down, on a whole pixel. Text under a rotation or a skew is on whole
+//! pixels, as Impeller's subpixel axis is the device's x.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -98,6 +102,38 @@ struct Placement {
     top: i32,
     width: u32,
     height: u32,
+}
+
+/// Impeller's `ComputeFractionalPosition`: the quarter pixel a device x
+/// is drawn at, biased by an eighth, 0 to 3.
+fn quarter(x: f32) -> u8 {
+    let f = (x + 0.125) - (x + 0.125).floor();
+    ((f * 4.0) as u8).min(3)
+}
+
+/// Whether `m` keeps the device's x axis, so a glyph can sit on a quarter
+/// of it: a scale and a translation, no rotation or skew.
+fn subpixel_axis(m: &emblema::Affine2) -> bool {
+    m.matrix2.x_axis.y == 0.0 && m.matrix2.y_axis.x == 0.0
+}
+
+/// The quarter pen `x` is drawn at under `m`, whole pixels off the axis.
+fn quarter_of(m: &emblema::Affine2, x: f32) -> u8 {
+    if subpixel_axis(m) {
+        quarter(x)
+    } else {
+        0
+    }
+}
+
+/// The device x a glyph's raster is placed from: the pen's whole pixel,
+/// its quarter in the raster.
+fn base_x(m: &emblema::Affine2, x: f32) -> f32 {
+    if subpixel_axis(m) {
+        (x + 0.125).floor()
+    } else {
+        x.round()
+    }
 }
 
 /// The glyph cache: the atlas, its device image, this frame's overflow
@@ -254,7 +290,12 @@ impl Glyphs {
     }
 
     /// Rasterizes and inserts what `run` needs drawn under `transform`.
-    pub(crate) fn prepare(&mut self, transform: emblema::Transform2D, run: &GlyphRun) {
+    pub(crate) fn prepare(
+        &mut self,
+        transform: emblema::Transform2D,
+        run: &GlyphRun,
+        origin: [f32; 2],
+    ) {
         let m = transform.to_affine();
         if !atlas_route(run, m.as_ref()) {
             return;
@@ -273,15 +314,13 @@ impl Glyphs {
         let mut scaler = ctx
             .builder(fref)
             .size(px)
-            .hint(false)
+            .hint(true)
             .variations(vars.iter())
             .build();
-        for &glyph in &run.glyphs {
-            let key = GlyphKey {
-                font,
-                glyph,
-                size: px as u16,
-            };
+        for (&glyph, pos) in run.glyphs.iter().zip(&run.positions) {
+            let at = m.transform_point2(Vec2::new(origin[0] + pos[0], origin[1] + pos[1]));
+            let q = quarter_of(&m, at.x);
+            let key = GlyphKey::new(font, glyph, px as u16).at_subpixel(q);
             if self.cache.atlas.get(key).is_some() {
                 // Asked for again this frame, which keeps it from eviction.
                 let _ = self.cache.atlas.insert(
@@ -300,6 +339,7 @@ impl Glyphs {
             }
             let Some(img) = Render::new(&[Source::Outline])
                 .format(Format::Alpha)
+                .offset(swash::zeno::Vector::new(f32::from(q) / 4.0, 0.0))
                 .render(&mut scaler, glyph)
             else {
                 self.refused.insert(key);
@@ -389,11 +429,9 @@ impl Glyphs {
         let (sx, sy) = (m.matrix2.x_axis.length(), m.matrix2.y_axis.length());
         let mut out: Vec<(usize, Vec<PositionedGlyph>)> = Vec::new();
         for (glyph, pos) in run.glyphs.iter().zip(&run.positions) {
-            let key = GlyphKey {
-                font,
-                glyph: *glyph,
-                size: px as u16,
-            };
+            let at = m.transform_point2(Vec2::new(origin[0] + pos[0], origin[1] + pos[1]));
+            let q = quarter_of(&m, at.x);
+            let key = GlyphKey::new(font, *glyph, px as u16).at_subpixel(q);
             if self.refused.contains(&key) {
                 return None;
             }
@@ -402,8 +440,10 @@ impl Glyphs {
             if pl.width == 0 || pl.height == 0 {
                 continue;
             }
-            let at = m.transform_point2(Vec2::new(origin[0] + pos[0], origin[1] + pos[1]));
-            let tl = Vec2::new(at.x.round() + pl.left as f32, at.y.round() - pl.top as f32);
+            let tl = Vec2::new(
+                base_x(&m, at.x) + pl.left as f32,
+                at.y.round() - pl.top as f32,
+            );
             let user = inv.transform_point2(tl);
             let quad = PositionedGlyph {
                 key,
@@ -517,19 +557,22 @@ mod tests {
 
     #[test]
     #[ignore = "app lane: needs FLUTTER_ROOT"]
-    fn glyphs_are_rasterized_at_the_device_size_on_whole_pixels() {
+    fn glyphs_are_rasterized_at_the_device_size_on_quarter_pixels() {
         let r = run("Hi", 14.0);
         let mut g = Glyphs::default();
         g.begin_frame();
-        g.prepare(scale(2.0), &r);
+        g.prepare(scale(2.0), &r, [10.3, 20.7]);
         let pages = g.positioned(scale(2.0), &r, [10.3, 20.7]).unwrap();
         assert_eq!(pages.len(), 1, "two glyphs, on the cache alone");
         let (page, q) = &pages[0];
         assert_eq!(*page, 0);
         assert_eq!(q.len(), 2);
-        for p in q {
+        for (p, pos) in q.iter().zip(&r.positions) {
             assert_eq!(p.key.size, 28);
-            // Whole device pixels: the canvas position times the scale.
+            // Keyed by the quarter its pen is at, the quarter in the raster.
+            assert_eq!(p.key.subpixel, quarter((10.3 + pos[0]) * 2.0));
+            // The quad on whole device pixels: the canvas position times the
+            // scale.
             for v in p.position {
                 assert!(
                     (v * 2.0 - (v * 2.0).round()).abs() < 1e-3,
@@ -541,6 +584,31 @@ mod tests {
         assert!(g.atlas().is_dirty());
     }
 
+    /// Impeller's quarters: the pen's fraction plus an eighth, so a pen an
+    /// eighth short of a pixel is on the next one, at quarter zero.
+    #[test]
+    fn a_pen_is_drawn_at_its_quarter_biased_by_an_eighth() {
+        for (x, q, base) in [
+            (10.0, 0, 10.0),
+            (10.124, 0, 10.0),
+            (10.125, 1, 10.0),
+            (10.374, 1, 10.0),
+            (10.375, 2, 10.0),
+            (10.625, 3, 10.0),
+            (10.874, 3, 10.0),
+            (10.875, 0, 11.0),
+            (-0.5, 2, -1.0),
+        ] {
+            let m = emblema::Affine2::IDENTITY;
+            assert_eq!(quarter_of(&m, x), q, "{x}");
+            assert_eq!(base_x(&m, x), base, "{x}");
+        }
+        // Rotated, the device's x is not the text's: whole pixels.
+        let turned = emblema::Affine2::from_angle(0.5);
+        assert_eq!(quarter_of(&turned, 10.4), 0);
+        assert_eq!(base_x(&turned, 10.4), 10.0);
+    }
+
     #[test]
     #[ignore = "app lane: needs FLUTTER_ROOT"]
     fn a_glyph_past_the_atlas_is_its_outline() {
@@ -548,7 +616,7 @@ mod tests {
         let mut g = Glyphs::default();
         g.begin_frame();
         // 400 device pixels: past MAX_ATLAS_GLYPH.
-        g.prepare(scale(2.0), &r);
+        g.prepare(scale(2.0), &r, [0.0, 0.0]);
         assert!(g.positioned(scale(2.0), &r, [0.0, 0.0]).is_none());
         assert!(g.atlas().is_empty());
         let path = g.outlines(&r, [0.0, 0.0]).unwrap();
@@ -574,7 +642,7 @@ mod tests {
         let r = large_glyphs(1000);
         let mut g = Glyphs::default();
         g.begin_frame();
-        g.prepare(scale(1.0), &r);
+        g.prepare(scale(1.0), &r, [0.0, 0.0]);
         assert_eq!(g.atlas().size(), ATLAS_LIMIT);
         assert!(g.refused.is_empty(), "{} refused", g.refused.len());
         assert!(g.overflow_pages() >= 1);
@@ -605,7 +673,7 @@ mod tests {
         g.begin_frame();
         assert_eq!(g.overflow_pages(), 0, "the overflow outlived its frame");
         let small = run("Hi", 14.0);
-        g.prepare(scale(1.0), &small);
+        g.prepare(scale(1.0), &small, [0.0, 0.0]);
         assert_eq!(g.overflow_pages(), 0);
     }
 
@@ -620,7 +688,7 @@ mod tests {
         g.begin_frame();
         let scales = [1.0, 0.98, 0.96];
         for s in scales {
-            g.prepare(scale(s), &r);
+            g.prepare(scale(s), &r, [0.0, 0.0]);
         }
         assert_eq!(g.overflow_pages(), MAX_OVERFLOW);
         assert!(!g.refused.is_empty());
@@ -672,11 +740,8 @@ mod tests {
         alone.positions = vec![[20.0, 260.0]];
 
         let (crowded, target) = frame(Arc::new(crowd.clone()));
-        let key = GlyphKey {
-            font: font_key(&crowd),
-            glyph: crowd.glyphs[last],
-            size: 250,
-        };
+        // At x 20, a whole pixel: quarter zero.
+        let key = GlyphKey::new(font_key(&crowd), crowd.glyphs[last], 250);
         assert!(
             target.glyphs.page_of(key).is_some_and(|p| p > 0),
             "the glyph is not on an overflow page"

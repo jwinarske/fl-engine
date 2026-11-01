@@ -3,12 +3,11 @@
 # pixels allowed to differ in any channel, and by more than 32.
 #
 # Layout matches (the metrics program holds it to the stock engine's
-# numbers); glyph edges do not. Impeller rasterizes its atlas through Skia
-# with slight hinting, a quarter-pixel subpixel position and Skia's own
-# coverage, where fl-engine rasterizes with swash, unhinted, on whole
-# pixels: small text comes out 5 to 9 percent heavier in ink, and up to a
-# third of a pixel off. Outlines (the 160 px glyphs, past the atlas) and
-# the icons agree. Measured 2026-10-31, lavapipe: 3.132% differ, 1.365%
-# by more than 32.
-differ 4.0
-differ_over_32 1.6
+# numbers). Glyphs are placed as Impeller places them, on a quarter pixel
+# across, hinted; what is left is the rasterizer: Skia's slight hinting
+# and coverage against skrifa's hinting and swash's, about 3 percent more
+# ink. Outlines (the 160 px glyphs, past the atlas) and the icons agree.
+# Measured 2026-11-01, lavapipe: 2.722% differ, 0.389% by more than 32;
+# unhinted on whole pixels it was 3.132% and 1.365%.
+differ 3.5
+differ_over_32 0.6

@@ -147,7 +147,7 @@ Done: `text` matches flutter_tester's golden with Impeller within the recorded t
 
 Not yet:
 
-* Glyph edges: Impeller rasterizes through Skia with slight hinting, quarter-pixel subpixel positions and Skia's coverage; swash here, unhinted, on whole pixels. Small text is 5 to 9% heavier in ink; positions agree within a third of a pixel; outlines and icons agree
+* Glyph edges: Impeller rasterizes through Skia with slight hinting, quarter-pixel subpixel positions and Skia's coverage; swash here, unhinted, on whole pixels. Small text is 5 to 9% heavier in ink; positions agree within a third of a pixel; outlines and icons agree; since 2026-11-01 hinted and on quarter pixels (below)
 * Gradient-filled text: dart:ui's `Gradient` natives are not in fl-ui; the text program has none (done since; see the gradients follow-up)
 * A frame needing more glyphs than the atlas's limit draws the rest as outlines rather than in a second pass; since 2026-11-01, from overflow pages (below)
 * The first replay costs a second walk of the scene each frame
@@ -277,3 +277,13 @@ Not yet, then: a non-modulate atlas under a translucent paint, refused by name. 
 * Overflow pages are not kept: the next frame starts from the cache alone, and pages it does not need are freed at upload
 * Past the last page a run is still its outline: text never goes missing
 * Tests: 1,000 glyphs at 250 device pixels fill the cache to 4096 and go on from an overflow page, none lost; 1,250 at three sizes pass every page and draw outlines; on the device, a glyph from an overflow page draws exactly as from the cache, and fails drawn from the wrong slot
+
+## Follow-ups: glyph hinting and subpixel positions (2026-11-01)
+
+* Hinted: skrifa's hinting through swash, where Skia's is slight
+* Across, on a quarter pixel: the device pen's fraction biased by an eighth, as Impeller's `ComputeFractionalPosition`; the raster is drawn at the quarter and the quad from the pen's whole pixel. Down, on a whole pixel
+* Each quarter its own glyph in the atlas, by emblema#241's `GlyphKey::subpixel`. Repinned to its merge
+* Text under a rotation or a skew stays on whole pixels: Impeller's subpixel axis is the device's x
+* Tried and not kept, each worse against the golden: Impeller's own placement by Skia's glyph bounds (left edge on the quarter, top on a whole pixel), with and without its cell rounding; hinting alone gives 2.987% and 1.135%, the quarters the rest
+* text golden 3.132% differ, 1.365% by more than 32, to 2.722% and 0.389%; counter 1.423% and 0.550% to 1.259% and 0.175%. Tolerances tightened to 3.5 and 0.6, 1.7 and 0.3
+* What is left is the rasterizers: Skia's coverage and slight hinting against swash's and skrifa's, about 3% more ink

@@ -860,7 +860,7 @@ fn draw_glyphs(
     let drawing = match &mut slots.glyphs {
         GlyphPass::None => return Ok(()),
         GlyphPass::Prepare(g) => {
-            g.prepare(transform, run);
+            g.prepare(transform, run, origin);
             return Ok(());
         }
         GlyphPass::Draw { glyphs, first } => (*glyphs, *first),
