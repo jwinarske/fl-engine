@@ -101,6 +101,17 @@ impl Vm {
         // SAFETY: returns a static string; callable once the VM is initialized.
         unsafe { crate::error::cstr(sys::Dart_VersionString()) }
     }
+
+    /// `Dart_NotifyLowMemory`: frees what the VM keeps for reuse, its cache
+    /// of unused heap pages and of zone segments, as the engine does on a
+    /// low-memory warning (`Shell::NotifyLowMemoryWarning`). The 512 kB pages
+    /// of an isolate that shut down stay cached, resident, up to one new
+    /// space's worth, until this or an idle notification with time to spare.
+    pub fn notify_low_memory(&self) {
+        // SAFETY: needs only an initialized VM, which `self` is; it enters
+        // no isolate and takes the caches' own locks.
+        unsafe { sys::Dart_NotifyLowMemory() }
+    }
 }
 
 impl Drop for Vm {

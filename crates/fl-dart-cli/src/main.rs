@@ -590,6 +590,17 @@ fn cycle(path: &str, n: u32) -> Result<(), Failure> {
     let mut tenths = Vec::with_capacity(10);
     let mut kinds = Vec::with_capacity(10);
     let mut threads = Vec::with_capacity(10);
+    // Sampled with the VM's page cache emptied. It keeps the 512 kB
+    // pages of an isolate that shut down for the next, up to one new
+    // space's worth for the process's life, and fills to the most any
+    // cycle gave back: burst's racing posters reached that at cycle 850
+    // of 1,000 once, a 512 kB step, and every sample held about 17 MB
+    // of it. In an app the frame loop's idle notifications empty it, as
+    // the engine's; a cycle here ends before one would.
+    let sample = || {
+        vm.notify_low_memory();
+        usage_now()
+    };
     for i in 0..n {
         #[cfg(feature = "jit")]
         let mut isolate = vm.isolate_from_kernel(&program, quiet.clone())?;
@@ -600,18 +611,18 @@ fn cycle(path: &str, n: u32) -> Result<(), Failure> {
         // A cycle's posters go with it, so none accumulate over a run.
         ffi::join_posters();
         if i == 0 {
-            warm = Some(usage_now());
+            warm = Some(sample());
         }
         if i + 1 == tenth {
-            mid = Some(usage_now());
+            mid = Some(sample());
         }
         if ends_a_tenth(i, n) {
-            tenths.push(usage_now().0);
+            tenths.push(sample().0);
             kinds.push(rss_by_kind());
             threads.push(thread_count());
         }
     }
-    let end = usage_now();
+    let end = sample();
     let warm = warm.unwrap_or(end);
     let mid = mid.unwrap_or(end);
     println!(

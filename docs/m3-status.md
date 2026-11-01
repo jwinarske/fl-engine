@@ -236,6 +236,7 @@ Found on the way:
 * `cycle` and `app-cycle` report `rss_tenths_kb`, RSS at the end of each tenth; a failing soak shows whether growth is a step or a slope. text at 1600x1200@2 grew 1,608 to 1,696 kB in the soak lane on d38550b, 44110bf and da90abb, its tenth below its warm sample; locally 300 cycles are flat to the kB
 * The reports also give each tenth's RSS by mapping kind (`rss_<kind>_tenths_kb`: heap, anon, memfd, file) and thread count (`threads_tenths`). text's step was anonymous memory, threads flat at 14
 * Gone with idle notifications (4433d22): the VM was never told it was idle, so never collected between frames or emptied its page cache. Flat to the kB in the soak lane since. Emptying the caches before each sample (`Dart_NotifyLowMemory`) did not remove it, and is not done
+* `cycle` samples with the VM's page cache emptied (`Vm::notify_low_memory`, `Dart_NotifyLowMemory`). The cache keeps the 512 kB pages of shut-down isolates for the process's life, up to one new space's worth, and fills to the most any cycle gave back; burst under JIT reached that at cycle 850 of 1,000 once, a 512 kB step past the limit, and every sample held about 17 MB of it. `app-cycle` does not: its frame loop's idle notifications empty the cache, as the engine's
 
 ## Follow-ups: gradients and shader matrices (2026-10-31)
 
