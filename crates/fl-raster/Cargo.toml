@@ -22,9 +22,10 @@ fl-ui = { workspace = true }
 # opacity on every shader (#236), a sweep's angle measured as upstream's
 # (#237), a tint blended in dart:ui's order (#238), an image's tile mode
 # per axis (#239), an atlas faded after its blend (#240), a glyph key's
-# subpixel bucket (#241) and a blurred convex path's shadow mesh (#242).
-# Back to a registry version once one includes them.
-emblema = { git = "https://github.com/jwinarske/emblema", rev = "9e25c5a79758466e4d79787c23aa9bf6438db340", default-features = false, features = ["vulkan"] }
+# subpixel bucket (#241), a blurred convex path's shadow mesh (#242) and an
+# atlas resident from the start (#243). Back to a registry version once one
+# includes them.
+emblema = { git = "https://github.com/jwinarske/emblema", rev = "f6b9224e52a57fd67ffd1795090c32bdcf47a656", default-features = false, features = ["vulkan"] }
 png = "0.18"
 # Glyph coverage (brief M3 D2), on skrifa, as emblema's own example names.
 swash = { version = "0.2", default-features = false, features = ["scale", "render", "std"] }

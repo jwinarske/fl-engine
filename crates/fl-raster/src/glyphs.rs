@@ -42,8 +42,13 @@ use crate::RasterError;
 /// it a glyph is its outline (Skia's `kSkSideTooBigForAtlas`).
 pub(crate) const MAX_ATLAS_GLYPH: f32 = 256.0;
 
-/// The atlas's first side, and the largest it grows to.
-const ATLAS_START: u32 = 512;
+/// The atlas's first side, and the largest it grows to. With a glyph keyed
+/// by its quarter pixel, a frame of full-screen text at DPR 2 no longer fits
+/// 512 and the atlas doubled partway through a run; 1024 holds it. Impeller
+/// starts larger still, 4096 by 1024 (`ComputeNextAtlasSize`); every texel
+/// here is resident from the start (emblema#243), so a larger start would
+/// cost its memory from the first frame for text that rarely needs it.
+const ATLAS_START: u32 = 1024;
 const ATLAS_LIMIT: u32 = 4096;
 
 /// Overflow pages a frame may use beside the cache: with it, four 4096

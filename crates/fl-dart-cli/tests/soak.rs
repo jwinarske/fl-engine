@@ -160,7 +160,10 @@ fn soak(name: &'static str, cycles: u32, per_cycle: u64, opts: &[&str], draw: bo
 /// * images decodes and uploads its nine images each cycle, 2,700 decodes
 ///   and disposes, and draws them twice
 /// * text and counter: static text, its glyphs written to the device once
-///   a cycle (each cycle's fonts are new), none on the frame after
+///   a cycle (each cycle's fonts are new), none on the frame after. Each
+///   cycle's glyphs are new to the atlas, so it fills over the first thirty
+///   or so before it evicts; 300 cycles put the tenth past that, as the
+///   warm-up it is
 /// * gif: 16 frames a cycle of four animations decoded frame by frame
 /// * text_churn: 100 frames a cycle of text never the same, 10,000 in all;
 ///   the atlas evicts, stays within its limit, and so do the placements
@@ -187,7 +190,7 @@ fn app_cycles_stay_flat() {
         ),
         soak("images", 300, 2, &["800x800@2"], true),
         soak("text", 300, 2, &["1600x1200@2"], true),
-        soak("counter", 100, 2, &with_fonts(&["1200x900@3"]), true),
+        soak("counter", 300, 2, &with_fonts(&["1200x900@3"]), true),
         soak("gif", 20, 16, &["400x300", "--frames", "16"], true),
         soak(
             "text_churn",

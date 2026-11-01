@@ -293,3 +293,10 @@ Not yet, then: a non-modulate atlas under a translucent paint, refused by name. 
 * emblema#242: a mask-blurred convex fill with no analytic shape, an oval that is not a circle, a rounded rect with unequal corners or any convex outline, is a shadow mesh, as Impeller's `AttemptDrawBlurredPathSource`; `drawShadow` reaches it through the mask blur. Concave paths and the other blur styles keep the blurred layer. Repinned to its merge
 * shadows golden: around the oval, 19.70% of pixels differ through the layer, 4.29% as the mesh; the frame 6.290% to 5.091%, 0.002% by more than 32. Tolerance tightened to 6.0
 * No fl-engine code: fl-raster already hands emblema the path and the blur
+
+## Follow-ups: the atlas's size after quarter pixels (2026-11-01)
+
+* With each quarter its own glyph, a frame of the text app at 1600x1200, DPR 2, no longer fits a 512 atlas: it doubled partway through the soak, +1,740 kB in one step, and failed it on 7eceb43
+* The atlas starts at 1024. Started there, the counter app still crept 720 kB as glyphs landed on pages the allocator had only promised; emblema#243 writes every texel when the atlas is made; repinned to its merge. Measured: counter +448 kB, text +260 kB, text_churn flat; at 2048, counter crept 4.1 MB
+* Each cycle's fonts are new, so counter's glyphs fill the atlas over the first thirty cycles or so before it evicts: warm-up the soak's tenth fell inside at 100 cycles, +448 to 848 kB with the load. counter now runs 300 cycles, as text does; massif shows the heap flat throughout. Two soak runs: counter +248 and +276 kB, text +192 and +132 kB, text_churn flat
+* Open: text has stepped about 1.6 MB between its first two tenths under load, on d38550b, 44110bf and da90abb in CI and once locally, with the atlas not growing; not yet explained
