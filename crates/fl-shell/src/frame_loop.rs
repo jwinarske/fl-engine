@@ -15,11 +15,30 @@
 //!
 //! Vsync here is a fixed-interval clock: ticks `period` apart from the loop's
 //! start. On KMS the flip event will take its place (stage 6).
+//!
+//! The VM is told when the loop expects to be idle, as `Animator` tells it:
+//! when a frame is asked for, until the last frame's deadline; and when a
+//! frame ends with none asked for, 51 ms on, if none has been asked for
+//! since, for 100 ms. Not with less than a millisecond left, as
+//! `RuntimeController::NotifyIdle`. The VM collects garbage then, and
+//! empties its cache of heap pages. dart:ui's latency performance mode,
+//! which skips them upstream, is not implemented here.
 
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
 use fl_dart_vm::{DartError, HandleScope, IsolateScope, MessageNotify};
+
+/// `Animator`'s `kNotifyIdleTaskWaitTime`: a tad more than three frames at
+/// 60 Hz with none asked for before the loop counts itself idle.
+const IDLE_AFTER: Duration = Duration::from_millis(51);
+
+/// How long an idle period after the last frame is reported to last.
+const IDLE_FOR: Duration = Duration::from_millis(100);
+
+/// `RuntimeController::NotifyIdle`: less than this before the deadline and
+/// the VM is not told.
+const IDLE_AT_LEAST: Duration = Duration::from_millis(1);
 
 /// What the loop waits for: messages for the isolate, from any thread, and
 /// frame requests. Cloning shares it.
@@ -131,6 +150,13 @@ fn run_steps(
     let clock = Clock::new(period);
     let mut last_tick = None;
     let mut report = Report::default();
+    // `Animator`'s state for idle notifications: the last frame's deadline,
+    // its tick plus a period, once one has been drawn; whether the frame
+    // asked for has had its notification; and when the loop counts itself
+    // idle, after a frame ended with none asked for.
+    let mut deadline: Option<Instant> = None;
+    let mut awaited = false;
+    let mut idle_check: Option<Instant> = None;
     while !stop() {
         // Replies are queued by natives on this thread, during the step
         // before, so there is nothing to wait for: they go first.
@@ -149,6 +175,12 @@ fn run_steps(
                 let Some(asked) = p.frame else {
                     break Step::Idle;
                 };
+                // `AwaitVSync`: once a frame has been drawn, asking for the
+                // next tells the VM it is idle until the last one's deadline.
+                if let (Some(d), false) = (deadline, awaited) {
+                    awaited = true;
+                    break Step::NotifyIdle(d);
+                }
                 let due = clock.tick_at_or_after(asked, last_tick);
                 let now = Instant::now();
                 if now >= due {
@@ -177,7 +209,16 @@ fn run_steps(
                 report.frame_times_us.push(us);
                 let n = report.frame_times_us.len() as i64;
                 isolate.with(|s| frame(s, us, n))?;
+                deadline = Some(tick + clock.period);
+                awaited = false;
+                // `EndFrame`: none asked for, so the loop may be idle soon.
+                idle_check = inner
+                    .lock()
+                    .frame
+                    .is_none()
+                    .then(|| Instant::now() + IDLE_AFTER);
             }
+            Step::NotifyIdle(until) => notify_idle(isolate, until),
             Step::Idle => {
                 let live = isolate.with(|s| s.has_live_ports());
                 let p = inner.lock();
@@ -189,7 +230,28 @@ fn run_steps(
                     // decode is to answer.
                     break;
                 }
-                drop(inner.changed.wait(p).unwrap_or_else(|e| e.into_inner()));
+                match idle_check {
+                    Some(at) if Instant::now() >= at => {
+                        // Still none asked for, and the last frame's
+                        // deadline is past: idle for a while.
+                        drop(p);
+                        idle_check = None;
+                        let now = Instant::now();
+                        if deadline.is_none_or(|d| now > d) {
+                            notify_idle(isolate, now + IDLE_FOR);
+                        }
+                    }
+                    Some(at) => {
+                        let wait = at.saturating_duration_since(Instant::now());
+                        drop(
+                            inner
+                                .changed
+                                .wait_timeout(p, wait)
+                                .unwrap_or_else(|e| e.into_inner()),
+                        );
+                    }
+                    None => drop(inner.changed.wait(p).unwrap_or_else(|e| e.into_inner())),
+                }
             }
         }
     }
@@ -200,7 +262,17 @@ enum Step {
     Message,
     Replies,
     Frame(Instant),
+    NotifyIdle(Instant),
     Idle,
+}
+
+/// Tells the VM the loop is idle until `until`, unless less than
+/// [`IDLE_AT_LEAST`] is left.
+fn notify_idle(isolate: &mut IsolateScope<'_>, until: Instant) {
+    let left = until.saturating_duration_since(Instant::now());
+    if left >= IDLE_AT_LEAST {
+        isolate.with(|s| s.notify_idle(left));
+    }
 }
 
 /// One frame, as the engine runs it.

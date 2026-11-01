@@ -12,7 +12,7 @@ jit = ["fl-dart-sys/jit"]
 aot = ["fl-dart-sys/aot"]
 
 [dependencies]
-fl-dart-sys = { workspace = true }
+fl-dart-sys = { workspace = true, features = ["tools"] }
 thiserror = { workspace = true }
 
 [dev-dependencies]

@@ -494,6 +494,15 @@ impl<'s> HandleScope<'s> {
         unsafe { sys::Dart_HasLivePorts() }
     }
 
+    /// `Dart_NotifyIdle`: the embedder expects to be idle for `for_`, and
+    /// the VM may garbage-collect, and empty its page cache, in that time.
+    pub fn notify_idle(&mut self, for_: std::time::Duration) {
+        let us = i64::try_from(for_.as_micros()).unwrap_or(i64::MAX);
+        // SAFETY: the current isolate is this scope's, as Dart_NotifyIdle
+        // requires; the deadline is on Dart_TimelineGetMicros' clock.
+        unsafe { sys::Dart_NotifyIdle(sys::Dart_TimelineGetMicros().saturating_add(us)) }
+    }
+
     /// Runs the pending microtasks. A message handler drains them itself
     /// (`_RawReceivePort._handleMessage`); a call into Dart made directly,
     /// as the engine makes `_beginFrame`, leaves them queued until this.
