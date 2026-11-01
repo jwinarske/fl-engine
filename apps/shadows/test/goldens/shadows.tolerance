@@ -5,8 +5,9 @@
 #
 # Inside the blurs a level or two; over 32 only at the edges of the rounded
 # rect, the oval and the physical models. Rects, rounded rects and circles
-# blurred analytically, as Impeller blurs them; the oval by emblema's blur.
-# Measured 2026-10-30, lavapipe: 6.290% differ, 0.373% by more than 2,
-# 0.002% by more than 32.
-differ 7.0
+# blurred analytically, as Impeller blurs them; the oval as Impeller's
+# shadow mesh (emblema#242). Measured 2026-11-01, lavapipe: 5.091% differ,
+# 0.002% by more than 32; with the oval blurred through a layer it was
+# 6.290%.
+differ 6.0
 differ_over_32 0.05

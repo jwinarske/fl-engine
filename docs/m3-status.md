@@ -90,7 +90,7 @@ Found on the way:
 * emblema's normal mask blur is byte-identical to Impeller's at sigma 2, 4 and 8
 * flutter_tester's engine DPR is 3 whatever `tester.view.devicePixelRatio` says; only `drawShadow` reads it. Goldens with shadows render at DPR 3 so both engines agree
 * flutter_test draws a physical model's outline unless `debugDisableShadows` is false, reset before the test ends
-* A shadow's rect, uniform rounded rect or circle reaches emblema as that shape, so it is blurred analytically, as Impeller's `SimplifyOrDrawPath` sends it. Built from segments, emblema could not tell and ran its general blur, about 0.87 of the sigma in effect: 1 to 3 levels off across every falloff. Against Impeller's formula in double precision the stock engine is within 0.6 levels; emblema's analytic route within 1. Ovals that are not circles keep emblema's blur; Impeller draws them as a shadow mesh, which emblema does not build
+* A shadow's rect, uniform rounded rect or circle reaches emblema as that shape, so it is blurred analytically, as Impeller's `SimplifyOrDrawPath` sends it. Built from segments, emblema could not tell and ran its general blur, about 0.87 of the sigma in effect: 1 to 3 levels off across every falloff. Against Impeller's formula in double precision the stock engine is within 0.6 levels; emblema's analytic route within 1. Ovals that are not circles kept emblema's blur where Impeller draws a shadow mesh; since 2026-11-01 emblema builds the mesh (below)
 * The analytic route drew a colored blur unpremultiplied (jwinarske/emblema#233, fixed in #234); black hid it
 
 ## Stage 4: layout (2026-10-30)
@@ -287,3 +287,9 @@ Not yet, then: a non-modulate atlas under a translucent paint, refused by name. 
 * Tried and not kept, each worse against the golden: Impeller's own placement by Skia's glyph bounds (left edge on the quarter, top on a whole pixel), with and without its cell rounding; hinting alone gives 2.987% and 1.135%, the quarters the rest
 * text golden 3.132% differ, 1.365% by more than 32, to 2.722% and 0.389%; counter 1.423% and 0.550% to 1.259% and 0.175%. Tolerances tightened to 3.5 and 0.6, 1.7 and 0.3
 * What is left is the rasterizers: Skia's coverage and slight hinting against swash's and skrifa's, about 3% more ink
+
+## Follow-ups: the shadow mesh (2026-11-01)
+
+* emblema#242: a mask-blurred convex fill with no analytic shape, an oval that is not a circle, a rounded rect with unequal corners or any convex outline, is a shadow mesh, as Impeller's `AttemptDrawBlurredPathSource`; `drawShadow` reaches it through the mask blur. Concave paths and the other blur styles keep the blurred layer. Repinned to its merge
+* shadows golden: around the oval, 19.70% of pixels differ through the layer, 4.29% as the mesh; the frame 6.290% to 5.091%, 0.002% by more than 32. Tolerance tightened to 6.0
+* No fl-engine code: fl-raster already hands emblema the path and the blur
