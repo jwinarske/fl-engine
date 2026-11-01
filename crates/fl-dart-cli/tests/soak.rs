@@ -84,7 +84,7 @@ fn report(args: &[&std::ffi::OsStr]) -> Report {
         .split_whitespace()
         .filter_map(|kv| kv.split_once('='))
         // The lists, read from the line.
-        .filter(|(k, _)| !k.ends_with("_tenths_kb"))
+        .filter(|(k, _)| !k.ends_with("_tenths_kb") && !k.ends_with("_tenths"))
         .map(|(k, v)| (k.to_owned(), v.parse().unwrap()))
         .collect();
     Report { line, values }

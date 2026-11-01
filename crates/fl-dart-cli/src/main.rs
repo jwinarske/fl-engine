@@ -194,6 +194,7 @@ fn app_cycle(path: &str, n: u32, app: AppArgs) -> Result<(), Failure> {
     let (mut warm, mut mid, mut frames) = (None, None, 0u64);
     let mut tenths = Vec::with_capacity(10);
     let mut kinds = Vec::with_capacity(10);
+    let mut threads = Vec::with_capacity(10);
     // Sampled with every frame drawn: one in flight holds its pixels and
     // the last frame's, a whole frame more (1,875 kB at 800x600).
     let usage = || {
@@ -216,6 +217,7 @@ fn app_cycle(path: &str, n: u32, app: AppArgs) -> Result<(), Failure> {
         if ends_a_tenth(i, n) {
             tenths.push(usage().0);
             kinds.push(rss_by_kind());
+            threads.push(thread_count());
         }
     }
     let end = usage();
@@ -223,12 +225,13 @@ fn app_cycle(path: &str, n: u32, app: AppArgs) -> Result<(), Failure> {
     let mid = mid.unwrap_or(end);
     let gpu = finish_raster(raster, &app)?;
     println!(
-        "cycles={n} frames={frames} rss_warm_kb={} rss_tenth_kb={} rss_end_kb={} rss_tenths_kb={} {} fds_warm={} fds_end={} persistent_handles={} gpu_images={} gpu_kb={} atlas_side={} atlas_glyphs={} atlas_placements={} atlas_uploads={}",
+        "cycles={n} frames={frames} rss_warm_kb={} rss_tenth_kb={} rss_end_kb={} rss_tenths_kb={} {} threads_tenths={} fds_warm={} fds_end={} persistent_handles={} gpu_images={} gpu_kb={} atlas_side={} atlas_glyphs={} atlas_placements={} atlas_uploads={}",
         warm.0,
         mid.0,
         end.0,
         joined(&tenths),
         kinds_report(&kinds),
+        joined(&threads),
         warm.1,
         end.1,
         fl_dart_vm::live_persistent_handles(),
@@ -586,6 +589,7 @@ fn cycle(path: &str, n: u32) -> Result<(), Failure> {
     let (mut warm, mut mid) = (None, None);
     let mut tenths = Vec::with_capacity(10);
     let mut kinds = Vec::with_capacity(10);
+    let mut threads = Vec::with_capacity(10);
     for i in 0..n {
         #[cfg(feature = "jit")]
         let mut isolate = vm.isolate_from_kernel(&program, quiet.clone())?;
@@ -604,18 +608,20 @@ fn cycle(path: &str, n: u32) -> Result<(), Failure> {
         if ends_a_tenth(i, n) {
             tenths.push(usage_now().0);
             kinds.push(rss_by_kind());
+            threads.push(thread_count());
         }
     }
     let end = usage_now();
     let warm = warm.unwrap_or(end);
     let mid = mid.unwrap_or(end);
     println!(
-        "cycles={n} rss_warm_kb={} rss_tenth_kb={} rss_end_kb={} rss_tenths_kb={} {} fds_warm={} fds_end={} persistent_handles={}",
+        "cycles={n} rss_warm_kb={} rss_tenth_kb={} rss_end_kb={} rss_tenths_kb={} {} threads_tenths={} fds_warm={} fds_end={} persistent_handles={}",
         warm.0,
         mid.0,
         end.0,
         joined(&tenths),
         kinds_report(&kinds),
+        joined(&threads),
         warm.1,
         end.1,
         fl_dart_vm::live_persistent_handles()
@@ -672,6 +678,19 @@ fn rss_by_kind() -> [u64; 4] {
         };
     }
     kb
+}
+
+/// The process's threads, from `/proc/self/status`; zero where it cannot
+/// be read. A thread pool that grows once keeps the stacks it started.
+fn thread_count() -> u64 {
+    std::fs::read_to_string("/proc/self/status")
+        .ok()
+        .and_then(|s| {
+            s.lines()
+                .find_map(|l| l.strip_prefix("Threads:"))
+                .and_then(|v| v.trim().parse().ok())
+        })
+        .unwrap_or(0)
 }
 
 /// One `rss_<kind>_tenths_kb=a,b,c` per kind, from samples of

@@ -234,6 +234,8 @@ Found on the way:
 * The system font scan was a collection's, so with each lifecycle's collection new, an app falling back rescanned and reread the system's fonts each cycle; it is the process's now, as Skia's font manager is
 * `app-cycle` sampled RSS while a frame was in flight, its pixels and the last frame's both held: images at 800x600 read a frame (1,875 kB) high or not, at random, and failed the soak once in ci. The raster thread drops the last frame's pixels before it marks a scene drawn, and samples wait for every scene drawn (`RasterThread::wait_drawn`)
 * `cycle` and `app-cycle` report `rss_tenths_kb`, RSS at the end of each tenth; a failing soak shows whether growth is a step or a slope. text at 1600x1200@2 grew 1,608 to 1,696 kB in the soak lane on d38550b, 44110bf and da90abb, its tenth below its warm sample; locally 300 cycles are flat to the kB
+* The reports also give each tenth's RSS by mapping kind (`rss_<kind>_tenths_kb`: heap, anon, memfd, file) and thread count (`threads_tenths`). text's step was anonymous memory, threads flat at 14
+* Gone with idle notifications (4433d22): the VM was never told it was idle, so never collected between frames or emptied its page cache. Flat to the kB in the soak lane since. Emptying the caches before each sample (`Dart_NotifyLowMemory`) did not remove it, and is not done
 
 ## Follow-ups: gradients and shader matrices (2026-10-31)
 
