@@ -7,9 +7,9 @@
 # libjpeg-turbo; linear sampling's rounding; the translucent stripes'
 # blend. Over 32: the checker at none, whose 17.5-pixel texels put square
 # edges on pixel centers, and the photo crop's nearest texels. The atlas
-# under srcOver, overlay and a translucent paint, and the translucent
-# nine-slice, agree, and the stripes repeated across and decaled down.
-# Measured 2026-11-01, lavapipe, at 800x800: 7.133% differ, 0.061% by
-# more than 32.
+# under srcOver, overlay, and srcOver under a translucent paint, the
+# translucent nine-slice, and the stripes repeated across and decaled
+# down, agree. Measured 2026-11-01, lavapipe, at 800x800: 7.136% differ,
+# 0.061% by more than 32.
 differ 12.0
 differ_over_32 0.1

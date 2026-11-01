@@ -257,12 +257,16 @@ Done: `drawAtlas` colors under any blend mode, and `drawImageNine` under a trans
 * fl-raster: `drawAtlas`'s mode as `Paint::with_tint_blend`, modulate when there are no colors; `drawImageNine` faded by the paint's alpha (emblema's opacity, which outlives the shader a nine-slice replaces); an image draw's alpha is its paint's opacity
 * `apps/images`: the atlas under srcOver, overlay and a half-alpha paint, the nine-slice at half alpha; the view now 800x800 at DPR 2 for a fourth row. Golden 8.130% differ, 0.061% by more than 32, within 12.0 and 0.1
 
-Not yet:
-
-* A non-modulate atlas under a translucent paint is refused by name: upstream fades the blended result by the paint's alpha, emblema's opacity fades the sprite before the blend; the same under modulate only
+Not yet, then: a non-modulate atlas under a translucent paint, refused by name. Done since #240, below.
 
 ## Follow-ups: an image shader's tile mode per axis (2026-11-01)
 
 * emblema#239: `Shader::Image` takes a tile mode per axis, `Paint::with_tile_modes(x, y)`, each axis folded and decaled by its own, as upstream's tiled texture contents (#230). Repinned to its merge
 * fl-raster: `ImageShader`'s `tmx` and `tmy` to it; the refusal of differing modes is gone
 * `apps/images`: cell 4's stripes repeated across and decaled down, one band. Golden 7.133% differ, 0.061% by more than 32
+
+## Follow-ups: an atlas faded after its blend (2026-11-01)
+
+* emblema#240: a mesh or atlas with colors of its own fades what its tint blend produced by the paint's opacity, after the blend, as upstream's `AtlasContents`; emblema faded the sprite first, the same under modulate only. Repinned to its merge
+* fl-raster: the refusal of a non-modulate atlas under a translucent paint is gone
+* `apps/images`: cell 14 is srcOver under a half-alpha paint, where it was modulate. Golden 7.136% differ, 0.061% by more than 32; cell 14 differs in 29 pixels, the opaque atlas cells in 141

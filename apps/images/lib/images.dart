@@ -138,8 +138,8 @@ class _Cells extends CustomPainter {
     // sprite the source and its color the destination.
     atlas(canvas, 12, BlendMode.srcOver, plain);
     atlas(canvas, 13, BlendMode.overlay, plain);
-    // 14: modulate under a half-alpha paint.
-    atlas(canvas, 14, BlendMode.modulate, Paint()..color = const Color(0x80000000));
+    // 14: srcOver under a half-alpha paint, the blend's result faded.
+    atlas(canvas, 14, BlendMode.srcOver, Paint()..color = const Color(0x80000000));
     // 15: the nine-slice under a half-alpha paint.
     canvas.drawImageNine(
       _img('nine.png'),

@@ -702,20 +702,13 @@ fn draw_one(canvas: &mut Canvas, draw: &Draw, slots: &mut Slots) -> Result<(), R
             quality,
         } => {
             // Each sprite blended with its color by the mode, the sprite the
-            // source (jwinarske/emblema#238); without colors the mode is
-            // unused, as dart:ui says. Upstream fades the blended result by
-            // the paint's alpha, where emblema's opacity fades the sprite
-            // before the blend: the same under modulate, not under the
-            // other modes, which a translucent paint is refused with.
+            // source (jwinarske/emblema#238), the result faded by the paint's
+            // alpha (#240), as upstream's AtlasContents; without colors the
+            // mode is unused, as dart:ui says.
             let tint = match colors {
                 Some(_) => blend_of(*blend_mode)?,
                 None => emblema::BlendMode::Modulate,
             };
-            if tint != emblema::BlendMode::Modulate && paint.color[3] < 1.0 {
-                return Err(RasterError::Unsupported(format!(
-                    "drawAtlas colors with blend mode {blend_mode} and a translucent paint"
-                )));
-            }
             let (slot, size) = slots.slot(image)?;
             let sprites: Vec<Sprite> = transforms
                 .iter()
