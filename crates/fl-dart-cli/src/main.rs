@@ -188,10 +188,11 @@ fn app_cycle(path: &str, n: u32, app: AppArgs) -> Result<(), Failure> {
     // Dropped before `vm`: no poster is in the VM when it is cleaned up.
     let _posters = ffi::Posters;
     let raster = raster_for(&app)?;
-    // Sampled as `cycle` samples: after the first cycle, after a tenth,
+    // Sampled as `cycle` samples: after the first cycle, after each tenth,
     // and at the end.
     let tenth = (n / 10).max(1);
     let (mut warm, mut mid, mut frames) = (None, None, 0u64);
+    let mut tenths = Vec::with_capacity(10);
     // Sampled with every frame drawn: one in flight holds its pixels and
     // the last frame's, a whole frame more (1,875 kB at 800x600).
     let usage = || {
@@ -211,16 +212,20 @@ fn app_cycle(path: &str, n: u32, app: AppArgs) -> Result<(), Failure> {
         if i + 1 == tenth {
             mid = Some(usage());
         }
+        if ends_a_tenth(i, n) {
+            tenths.push(usage().0);
+        }
     }
     let end = usage();
     let warm = warm.unwrap_or(end);
     let mid = mid.unwrap_or(end);
     let gpu = finish_raster(raster, &app)?;
     println!(
-        "cycles={n} frames={frames} rss_warm_kb={} rss_tenth_kb={} rss_end_kb={} fds_warm={} fds_end={} persistent_handles={} gpu_images={} gpu_kb={} atlas_side={} atlas_glyphs={} atlas_placements={} atlas_uploads={}",
+        "cycles={n} frames={frames} rss_warm_kb={} rss_tenth_kb={} rss_end_kb={} rss_tenths_kb={} fds_warm={} fds_end={} persistent_handles={} gpu_images={} gpu_kb={} atlas_side={} atlas_glyphs={} atlas_placements={} atlas_uploads={}",
         warm.0,
         mid.0,
         end.0,
+        joined(&tenths),
         warm.1,
         end.1,
         fl_dart_vm::live_persistent_handles(),
@@ -573,8 +578,10 @@ fn cycle(path: &str, n: u32) -> Result<(), Failure> {
     // lifetime), after a tenth of the run, and at the end. Growth from the
     // tenth to the end is what a per-cycle leak shows up in; the first
     // cycle's one-time growth does not count against it.
+    // Each tenth's end sampled too, to tell a step from a slope.
     let tenth = (n / 10).max(1);
     let (mut warm, mut mid) = (None, None);
+    let mut tenths = Vec::with_capacity(10);
     for i in 0..n {
         #[cfg(feature = "jit")]
         let mut isolate = vm.isolate_from_kernel(&program, quiet.clone())?;
@@ -590,20 +597,37 @@ fn cycle(path: &str, n: u32) -> Result<(), Failure> {
         if i + 1 == tenth {
             mid = Some(usage_now());
         }
+        if ends_a_tenth(i, n) {
+            tenths.push(usage_now().0);
+        }
     }
     let end = usage_now();
     let warm = warm.unwrap_or(end);
     let mid = mid.unwrap_or(end);
     println!(
-        "cycles={n} rss_warm_kb={} rss_tenth_kb={} rss_end_kb={} fds_warm={} fds_end={} persistent_handles={}",
+        "cycles={n} rss_warm_kb={} rss_tenth_kb={} rss_end_kb={} rss_tenths_kb={} fds_warm={} fds_end={} persistent_handles={}",
         warm.0,
         mid.0,
         end.0,
+        joined(&tenths),
         warm.1,
         end.1,
         fl_dart_vm::live_persistent_handles()
     );
     Ok(())
+}
+
+/// Whether cycle `i` of `n` is the last of a tenth of them: cycles
+/// (k n / 10) for k of 1 to 10, so ten samples, the last at the end, or
+/// fewer if `n` is under ten.
+fn ends_a_tenth(i: u32, n: u32) -> bool {
+    let (c, n) = (u64::from(i) + 1, u64::from(n));
+    (1..=10).any(|k| (k * n / 10).max(1) == c)
+}
+
+/// `v` as `a,b,c`, one report value.
+fn joined(v: &[u64]) -> String {
+    v.iter().map(u64::to_string).collect::<Vec<_>>().join(",")
 }
 
 /// (VmRSS in kB, open descriptors), from procfs.

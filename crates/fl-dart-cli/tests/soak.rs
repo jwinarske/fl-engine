@@ -30,12 +30,36 @@ const PROGRAMS: [&str; 4] = ["hello", "loop", "ffi", "burst"];
 /// (docs/m2-status.md); this limit is what would catch it coming back.
 const RSS_GROWTH_LIMIT_KB: u64 = 512;
 
-fn cycle_report(prog: &std::path::Path, n: u32) -> HashMap<String, u64> {
+fn cycle_report(prog: &std::path::Path, n: u32) -> Report {
     report(&["cycle".as_ref(), prog.as_os_str(), n.to_string().as_ref()])
 }
 
-/// The `key=value` line a leak-harness command prints, from `args`.
-fn report(args: &[&std::ffi::OsStr]) -> HashMap<String, u64> {
+/// The `key=value` line a leak-harness command prints: its numbers by key,
+/// and the line as printed, which a failure shows whole, `rss_tenths_kb`'s
+/// ten samples in order among them.
+struct Report {
+    line: String,
+    values: HashMap<String, u64>,
+}
+
+impl std::ops::Index<&str> for Report {
+    type Output = u64;
+
+    fn index(&self, key: &str) -> &u64 {
+        self.values
+            .get(key)
+            .unwrap_or_else(|| panic!("no {key} in {}", self.line))
+    }
+}
+
+impl std::fmt::Debug for Report {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.line)
+    }
+}
+
+/// The report a leak-harness command prints, from `args`.
+fn report(args: &[&std::ffi::OsStr]) -> Report {
     // One malloc arena. With glibc's default, burst's threads land in new
     // arenas now and then and RSS steps up 0.5-1.5 MB at random: 3,000
     // cycles measured flat, 6,000 grew 1.5 MB. With one arena 6,000 cycles
@@ -55,11 +79,15 @@ fn report(args: &[&std::ffi::OsStr]) -> HashMap<String, u64> {
         .output()
         .unwrap();
     assert!(o.status.success(), "{o:?}");
-    let line = String::from_utf8_lossy(&o.stdout).into_owned();
-    line.split_whitespace()
+    let line = String::from_utf8_lossy(&o.stdout).trim().to_owned();
+    let values = line
+        .split_whitespace()
         .filter_map(|kv| kv.split_once('='))
+        // The one list, read from the line.
+        .filter(|(k, _)| *k != "rss_tenths_kb")
         .map(|(k, v)| (k.to_owned(), v.parse().unwrap()))
-        .collect()
+        .collect();
+    Report { line, values }
 }
 
 #[test]
