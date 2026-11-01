@@ -222,6 +222,8 @@ failed command echoed into an annotation cannot leak it. The asset id comes
 from a scan of the release JSON that a unit test pins against the payload
 shape GitHub serves. Found by ci's annotated failures; the alias commit, the
 no-token attempt and this are its first three catches.
+Since public: the token is optional, sent when set for the API's rate limit,
+and the config goes to curl on stdin, never to a file (#1).
 
 Still not in the lanes, deliberately sequenced after a green L2: the qemu
 aarch64/riscv64 lanes, and the ASan/leak lane, which waits on a
