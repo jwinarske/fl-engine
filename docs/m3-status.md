@@ -223,7 +223,7 @@ Limits (§15) and the tests that cross them:
 
 Not yet:
 
-* harfrust's operation limits: set on every shape from the text's length, as HarfBuzz's, and not switchable, so on; no font here crosses them. A crafted looping GSUB font would
+* harfrust's operation limits: set on every shape from the text's length, as HarfBuzz's, and not switchable. Crossed since 2026-11-02 by `a_font_whose_lookups_loop_still_shapes`: Roboto with its GSUB replaced, 16 ways 8 levels deep. A lookup that only applies itself is no test of it: HarfBuzz's nesting limit, 64, ends that first
 * The soak's time budget for changing text: frames and memory are held, time is not
 
 Found on the way:

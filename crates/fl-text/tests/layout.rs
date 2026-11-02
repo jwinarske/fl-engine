@@ -118,3 +118,113 @@ fn a_character_no_font_has_is_unresolved() {
     assert_eq!(p.line_count(), 1);
     assert!(p.max_intrinsic_width() > 0.0);
 }
+
+/// Roboto with its GSUB replaced by `gsub`: the table directory kept in
+/// order, every table copied, offsets four-byte aligned. Checksums are left
+/// as they were; nothing here reads them.
+fn with_gsub(font: &[u8], gsub: &[u8]) -> Vec<u8> {
+    let be16 = |b: &[u8], at: usize| u16::from_be_bytes([b[at], b[at + 1]]);
+    let be32 = |b: &[u8], at: usize| u32::from_be_bytes([b[at], b[at + 1], b[at + 2], b[at + 3]]);
+    let n = usize::from(be16(font, 4));
+    let mut out = font[..12 + 16 * n].to_vec();
+    let mut at = out.len();
+    for i in 0..n {
+        let rec = 12 + 16 * i;
+        let tag = &font[rec..rec + 4];
+        let data = if tag == b"GSUB" {
+            gsub
+        } else {
+            let (off, len) = (be32(font, rec + 8) as usize, be32(font, rec + 12) as usize);
+            &font[off..off + len]
+        };
+        out[rec + 8..rec + 12].copy_from_slice(&(at as u32).to_be_bytes());
+        out[rec + 12..rec + 16].copy_from_slice(&(data.len() as u32).to_be_bytes());
+        out.extend_from_slice(data);
+        while out.len() % 4 != 0 {
+            out.push(0);
+        }
+        at = out.len();
+    }
+    assert!(out.windows(4).any(|w| w == b"GSUB"), "no GSUB to replace");
+    out
+}
+
+/// A GSUB whose work grows as `WIDTH` to the power `DEPTH` without the
+/// shaper's operation limit, and never nests deeper than `DEPTH`, under
+/// HarfBuzz's nesting limit of 64, which would end it first. Lookup 0 is
+/// on by default (`ccmp`). Lookups 0 to `DEPTH - 1` are contextual
+/// (format 3): each matches `WIDTH` of `glyph` and applies the next lookup
+/// at every one of them. The last substitutes `glyph` for itself.
+fn looping_gsub(glyph: u16) -> Vec<u8> {
+    const WIDTH: u16 = 16;
+    const DEPTH: u16 = 8;
+    fn put(g: &mut Vec<u8>, v: &[u16]) {
+        v.iter().for_each(|x| g.extend_from_slice(&x.to_be_bytes()));
+    }
+    let mut g = Vec::new();
+    // Header: version 1.0, then the three lists' offsets.
+    put(&mut g, &[1, 0, 10, 30, 44]);
+    // ScriptList at 10: DFLT, its script at 8, whose default LangSys at 4
+    // lists feature 0.
+    put(&mut g, &[1]);
+    g.extend_from_slice(b"DFLT");
+    put(&mut g, &[8, 4, 0, 0, 0xFFFF, 1, 0]);
+    // FeatureList at 30: ccmp, at 8, with lookup 0.
+    put(&mut g, &[1]);
+    g.extend_from_slice(b"ccmp");
+    put(&mut g, &[8, 0, 1, 0]);
+    // LookupList at 44: the lookups' offsets, then the lookups.
+    let contextual = 8 + 6 + 6 * WIDTH + 6;
+    let count = DEPTH + 1;
+    put(&mut g, &[count]);
+    for i in 0..count {
+        put(&mut g, &[2 + 2 * count + i * contextual]);
+    }
+    for i in 0..DEPTH {
+        // Type 5, no flags, one subtable at 8. Format 3: WIDTH glyphs and
+        // WIDTH records, every coverage at the end of the subtable, every
+        // record (j, lookup i + 1). Coverage: format 1, the one glyph.
+        let coverage = 6 + 6 * WIDTH;
+        put(&mut g, &[5, 0, 1, 8, 3, WIDTH, WIDTH]);
+        (0..WIDTH).for_each(|_| put(&mut g, &[coverage]));
+        (0..WIDTH).for_each(|j| put(&mut g, &[j, i + 1]));
+        put(&mut g, &[1, 1, glyph]);
+    }
+    // The last: type 1, one subtable at 8, format 2, coverage at 8, one
+    // substitute, the glyph itself.
+    put(&mut g, &[1, 0, 1, 8, 2, 8, 1, glyph, 1, 1, glyph]);
+    g
+}
+
+/// harfrust's operation limit (brief M3 §15, shaping cost): a crafted font
+/// whose lookups fan out 16 ways 8 levels deep, 4 billion applications at
+/// each position, shapes and returns. The limit is what ends it: 8 levels
+/// are well inside the nesting limit.
+#[test]
+#[ignore = "app lane: needs FLUTTER_ROOT"]
+fn a_font_whose_lookups_loop_still_shapes() {
+    let roboto = roboto("Roboto-Regular.ttf");
+    let glyph = {
+        use skrifa::MetadataProvider;
+        let font = skrifa::FontRef::new(&roboto).unwrap();
+        font.charmap().map('a').unwrap().to_u32() as u16
+    };
+    let looping = with_gsub(&roboto, &looping_gsub(glyph));
+    let text = "a".repeat(200);
+    let plain = paragraph(fonts(), &text, f32::INFINITY).max_intrinsic_width();
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let f = FontCollection::without_system_fonts();
+        assert!(f.add_font(looping, "Roboto"));
+        let p = paragraph(Arc::new(f), &text, f32::INFINITY);
+        let _ = tx.send(p.max_intrinsic_width());
+    });
+    // Locally 20 ms, against under 1 ms for Roboto as it is: the budget,
+    // 4,096 operations a character, spent.
+    let width = rx
+        .recv_timeout(std::time::Duration::from_secs(60))
+        .expect("shaping a font whose lookups loop did not return within 60 s");
+    // Every lookup substitutes the glyph for itself: what comes out is
+    // Roboto's.
+    assert!(near(width, plain), "{width} against {plain}");
+}
