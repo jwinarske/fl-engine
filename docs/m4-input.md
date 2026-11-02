@@ -1,7 +1,7 @@
 # M4: input
 
-> Brief, 2026-11-02. Draft: D2, D3, D7, D8 and D9 in §13 were taken 2026-11-02; the rest are
-> proposals until taken. Findings from bring-up go in `docs/m4-status.md`, newer where the two disagree.
+> Brief, 2026-11-02. Draft: D2, D3, D7, D8, D9 and D10 in §13 were taken 2026-11-02; the rest
+> are proposals until taken. Findings from bring-up go in `docs/m4-status.md`, newer where the two disagree.
 
 **`flutter create`'s counter app, unmodified, counts the taps it is given, and a `TextField` takes typed text, a composed character, a selection made by dragging, and copy and paste; each frame matches the stock engine's golden within a recorded tolerance. Pointer, key and text-input events reach the framework as the engine's Linux embedder delivers them, from the boards' input devices through drmkit and from a script in CI.**
 
@@ -21,7 +21,7 @@ Sources, read at the pin (Flutter 3.47.8, engine `cf636b1d`, Dart `416e33b0`): e
 * input sources: the boards' devices through drmkit (libinput, under a seat), a scripted source in CI and for tests
 
 **Is not:**
-* a Wayland or X11 window (M2's D1 stands); input on a desktop comes with one
+* a Wayland window (M2's D1 stands for now); the desktop is a Wayland backend, later (D8). No X11 in any form (D10)
 * a system IME (IBus, Fcitx) or an on-screen keyboard: composing is driven by the scripted source and by the dead keys and compose sequences of the keymap (§5)
 * a cursor theme of its own: the cursor is drmkit's (XCursor themes, on the cursor plane), answered on `flutter/mousecursor`
 * accessibility and semantics, gamepads, stylus pressure and tilt beyond what the packet carries, drag and drop from outside the app
@@ -94,7 +94,7 @@ drmkit is a new dependency (0.1.3, MIT), with its C libraries as they are: libin
 ## 9. Goldens and References
 
 * **Frames**: `flutter_tester` with Impeller as in M3, the input given by `tester.tap`, `tester.enterText`, `tester.drag` and `sendKeyEvent` at the same points; the frame after the input compared with the recorded tolerance
-* **Events**: `flutter_tester` injects input above the engine, so it cannot be the reference for what the engine sends. The reference for `apps/keys` and `apps/pointer` is the stock Linux embedder, a release build run under X11 with `xdotool` replaying the same script, recorded once into `test/*.txt`, as `metrics.txt` was for M3. Recorded on a desktop, outside CI (D5)
+* **Events**: `flutter_tester` injects input above the engine, so it cannot be the reference for what the engine sends. The reference for what the key tracker and the packet converter emit is Flutter's own unit tests, ported: `fl_key_embedder_responder_test.cc` (D7) and `pointer_data_packet_converter_unittests.cc`. End-to-end recordings of `apps/keys` and `apps/pointer` from the stock Linux embedder are D5's question
 
 ## 10. Test Plan
 
@@ -127,14 +127,15 @@ drmkit is a new dependency (0.1.3, MIT), with its C libraries as they are: libin
 
 ## 13. Decisions
 
-* **D1, input sources: the boards' devices and a script, no window.** M2's D1 still rules out a Wayland or X11 client for now; a later platform is a backend (D8). The boards read their devices through drmkit, as a KMS kiosk does; CI scripts the same events
+* **D1, input sources: the boards' devices and a script, no window.** M2's D1 still rules out a Wayland client for now; Wayland is a later backend (D8). The boards read their devices through drmkit, as a KMS kiosk does; CI scripts the same events. Developing without a window means scripts and offscreen frames, or running from a text console on a machine with KMS
 * **D2, keys sent both ways** (taken 2026-11-02). `KeyData` and `flutter/keyevent`, as the Linux embedder at the pin does: the framework's `HardwareKeyboard` and its legacy `RawKeyboard` both still listen, and an app may use either. The event is handled if either answer says so; only then does it go to text input. `flutter/keyevent`'s payload is the platform's (`keymap: linux`, `toolkit: gtk` here), supplied by the source; the channel lives in one module, to go when the framework drops `RawKeyEvent`
 * **D3, keymap: xkbcommon, through drmkit** (taken 2026-11-02). drmkit-input's `Keyboard`: the system's keymap from RMLVO names, keysyms and their characters, Compose, modifiers and LEDs. `kbvm`, a pure-Rust XKB, was the candidate while the keymap had to be pure Rust; with drmkit's libraries taken as they are, it is not needed. A backend on a platform without xkbcommon brings its own keymap
 * **D4, clipboard in the process.** No system clipboard exists without a display server; copy and paste work within the app
-* **D5, event references recorded once, outside CI.** The stock embedder needs X11 and GTK, which CI's lanes refuse to install; the recording is checked in with the script and toolchain that made it
+* **D5, end-to-end event references** (proposed). Flutter's unit tests are the reference for the tracker and the converter either way (§9). Recordings of the stock Linux embedder would add one end to end: `flutter build linux` (GTK, on Wayland through GDK) under a headless wlroots compositor (cage or sway, `WLR_BACKENDS=headless`), the script replayed through the virtual-keyboard and virtual-pointer protocols (`wtype`, `wlrctl`; to check), every event the framework sees logged and checked in. On Wayland GTK takes its keymap from the compositor as XKB, so its key path is closer to drmkit's than any other reference. Building the stock runner needs clang, CMake and GTK's headers, a C++ toolchain, so it is made outside the regular lanes: by hand, or a manual workflow of its own. Or not at all
 * **D6, no system IME.** IBus and Fcitx are reached over D-Bus and need a session; composing is tested through the keymap's compose and the script. The `flutter/textinput` side is complete either way, so an IME is a source to add later
 * **D7, key state tracked per keyboard model** (taken 2026-11-02). Which keys are down and the logical key each went down as, a down for a key already down, an up for one that is not, modifiers and locks synchronized with synthesized events: one tracker for XKB-style state, ported from fl_key_embedder_responder, which every Linux source shares (evdev or libinput, the script, later Wayland). Not one for every platform: Windows, macOS and the rest report modifiers and locks in ways a common model would need a hook for each, and their stock embedders are the references. Not one per source: the Linux sources would each carry the same 785 lines. A non-Linux platform brings its own; a common core is factored out at the third, if one shows. Its acceptance tests are fl_key_embedder_responder_test.cc's. Simpler than GTK's: the state comes from the keymap, known exactly, so GTK's inference of when lock state applies (`caps_lock_state_logic_inferrence`) is not ported. Where the stock embedder's events follow from that inference, the reference is checked for intent and the difference recorded
 * **D8, a platform boundary at the embedder API's shape** (taken 2026-11-02). Events as data shaped as `embedder.h`'s `FlutterPointerEvent` and `FlutterKeyEvent` (view id, every device kind, timestamps on the frame clock), pushed from any thread; traits only where the platform acts (text input and IME, clipboard, cursor). A neutral core (`fl-input`: events, D7's tracker, the editing model) with no OS code, building and testing with no backend; backends by platform, not by library: `fl-input-script`, `fl-platform-kms` on drmkit, later Wayland, which owns its window and its input together. drmkit's C libraries are taken as they are, so exit criterion 8 reads "no C compiler"; fl-engine's Rust floor rises to drmkit's 1.94.1
+* **D10, no X11, in any form** (taken 2026-11-02). Wayland replaces it: no X11 window or connection, no XWayland, no X11 tools in tests or references (Xvfb, xdotool), no X11 features of dependencies (`xkbcommon-x11`, `x11rb`). XKB keymaps and XCursor theme files are Wayland's own formats, xkbcommon and the cursor themes Wayland compositors and clients read, and are not X11
 * **D9, drmkit owns KMS, display included** (taken 2026-11-02). One owner of the card: the seat hands out its descriptor and takes it back on a terminal switch, and the cursor plane is committed with the frame, so display, session, input and cursor share one stack. `fl-platform-kms` implements emblema's `ScanoutOutput`, the trait emblema keeps for a KMS stack other than its own drm-rs one; emblema renders, drmkit modesets, flips and reports each flip's sequence and time. Not emblema's `DrmScanoutTarget`, which opens the card itself, around the seat. M2's stage 6, KMS on the boards, is done this way as M4's stage 6, not first through drm-rs. To check there: drmkit's present and GBM paths take buffers rendered elsewhere, and the Pi 5 measurement (60 Hz, no blank missed) holds through drmkit
 
 ## 14. Risks
