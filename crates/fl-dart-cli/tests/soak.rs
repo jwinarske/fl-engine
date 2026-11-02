@@ -30,6 +30,15 @@ const PROGRAMS: [&str; 4] = ["hello", "loop", "ffi", "burst"];
 /// (docs/m2-status.md); this limit is what would catch it coming back.
 const RSS_GROWTH_LIMIT_KB: u64 = 512;
 
+/// text_churn's mean build time a frame, `_beginFrame` to `render` as the
+/// engine's `FrameTiming` counts it, over 10,000 frames of text never the
+/// same: a quarter of a 60 Hz frame. Raster time is not in it; a full
+/// pipeline makes a scene wait after `render`, not before. Locally,
+/// release, 4 cores: 0.39 ms mean, 0.27 ms median, 3.6 to 7.8 ms at the
+/// 99th percentile, mostly each cycle's first frame building the tree.
+#[cfg(feature = "aot")]
+const CHURN_BUILD_BUDGET_US: u64 = 4_000;
+
 fn cycle_report(prog: &std::path::Path, n: u32) -> Report {
     report(&["cycle".as_ref(), prog.as_os_str(), n.to_string().as_ref()])
 }
@@ -237,6 +246,16 @@ fn app_cycles_stay_flat() {
         // already in it (brief M3 §15, atlas uploads).
         if matches!(name, "text" | "counter") {
             assert!(r["atlas_uploads"] <= u64::from(n), "{name}: {r:?}");
+        }
+        // Text that changes every frame laid out within its time (brief M3
+        // §15, UI-thread layout).
+        if name == "text_churn" {
+            assert!(
+                r["build_us_mean"] <= CHURN_BUILD_BUDGET_US,
+                "{name}: frames took {} us to build on average, over the {} us budget: {r:?}",
+                r["build_us_mean"],
+                CHURN_BUILD_BUDGET_US
+            );
         }
         println!("{name}: {r:?}");
     }

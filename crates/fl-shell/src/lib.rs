@@ -10,7 +10,7 @@
 
 mod frame_loop;
 
-pub use frame_loop::{run, Report, Wake};
+pub use frame_loop::{frame_begun, run, Report, Wake};
 
 use fl_dart_vm::{DartError, HandleScope, IsolateConfig};
 

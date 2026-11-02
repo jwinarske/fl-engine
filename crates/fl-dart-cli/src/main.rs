@@ -192,6 +192,7 @@ fn app_cycle(path: &str, n: u32, app: AppArgs) -> Result<(), Failure> {
     // and at the end.
     let tenth = (n / 10).max(1);
     let (mut warm, mut mid, mut frames) = (None, None, 0u64);
+    let mut builds: Vec<u64> = Vec::new();
     let mut tenths = Vec::with_capacity(10);
     let mut kinds = Vec::with_capacity(10);
     let mut threads = Vec::with_capacity(10);
@@ -209,7 +210,9 @@ fn app_cycle(path: &str, n: u32, app: AppArgs) -> Result<(), Failure> {
         // Each lifecycle an engine's: the bundle and fonts afresh, so the
         // fonts an app loaded go with it, as with the engine.
         set_assets(path, &app)?;
-        frames += app_once(&vm, &program, path, &app, raster.as_ref(), false)?.rendered;
+        let run = app_once(&vm, &program, path, &app, raster.as_ref(), false)?;
+        frames += run.rendered;
+        builds.extend(run.builds_us);
         if i == 0 {
             warm = Some(usage());
         }
@@ -234,7 +237,7 @@ fn app_cycle(path: &str, n: u32, app: AppArgs) -> Result<(), Failure> {
     let mid = mid.unwrap_or(end);
     let gpu = finish_raster(raster, &app)?;
     println!(
-        "cycles={n} frames={frames} rss_warm_kb={} rss_tenth_kb={} rss_end_kb={} rss_tenths_kb={} {} threads_tenths={} faces_tenths={} {} fds_warm={} fds_end={} persistent_handles={} gpu_images={} gpu_kb={} atlas_side={} atlas_glyphs={} atlas_placements={} atlas_uploads={}",
+        "cycles={n} frames={frames} rss_warm_kb={} rss_tenth_kb={} rss_end_kb={} rss_tenths_kb={} {} threads_tenths={} faces_tenths={} {} {} fds_warm={} fds_end={} persistent_handles={} gpu_images={} gpu_kb={} atlas_side={} atlas_glyphs={} atlas_placements={} atlas_uploads={}",
         warm.0,
         mid.0,
         end.0,
@@ -243,6 +246,7 @@ fn app_cycle(path: &str, n: u32, app: AppArgs) -> Result<(), Failure> {
         joined(&threads),
         joined(&faces),
         atlas_report(&atlas),
+        builds_report(&mut builds),
         warm.1,
         end.1,
         fl_dart_vm::live_persistent_handles(),
@@ -304,6 +308,9 @@ fn load_app(path: &str) -> Result<AppProgram, Failure> {
 struct AppRun {
     rendered: u64,
     report: fl_shell::Report,
+    /// Each rendered frame's build time in microseconds, `_beginFrame` to
+    /// `render`, as the engine's `FrameTiming` counts it.
+    builds_us: Vec<u64>,
 }
 
 /// One run of an app in `vm`: prepare, `main`, the frame loop, shutdown.
@@ -320,9 +327,18 @@ fn app_once(
     use std::sync::{Arc, Mutex};
 
     let rendered = Arc::new(Mutex::new(0u64));
+    let builds = Arc::new(Mutex::new(Vec::new()));
     let sink_raster = raster.map(Arc::clone);
-    let (sink_count, ops) = (Arc::clone(&rendered), app.ops);
+    let (sink_count, sink_builds, ops) = (Arc::clone(&rendered), Arc::clone(&builds), app.ops);
     fl_ui::set_frame_sink(move |f| {
+        // First, before printing or a full pipeline makes the scene wait.
+        if let Some(begun) = fl_shell::frame_begun() {
+            let us = u64::try_from(begun.elapsed().as_micros()).unwrap_or(u64::MAX);
+            sink_builds
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .push(us);
+        }
         let mut n = sink_count.lock().unwrap_or_else(|e| e.into_inner());
         *n += 1;
         if echo {
@@ -381,9 +397,11 @@ fn app_once(
             "{path}: ran to completion without rendering a frame"
         )));
     }
+    let builds_us = std::mem::take(&mut *builds.lock().unwrap_or_else(|e| e.into_inner()));
     Ok(AppRun {
         rendered: count,
         report,
+        builds_us,
     })
 }
 
@@ -733,6 +751,25 @@ fn thread_count() -> u64 {
                 .and_then(|v| v.trim().parse().ok())
         })
         .unwrap_or(0)
+}
+
+/// `build_us_mean`, `build_us_p50`, `build_us_p99` and `build_us_max`: the
+/// frames' build times, `_beginFrame` to `render`, over the whole run; all
+/// zero if none rendered.
+fn builds_report(builds: &mut [u64]) -> String {
+    builds.sort_unstable();
+    let at = |q: usize| builds.get((builds.len() * q / 100).min(builds.len().saturating_sub(1)));
+    let mean = if builds.is_empty() {
+        0
+    } else {
+        builds.iter().sum::<u64>() / builds.len() as u64
+    };
+    format!(
+        "build_us_mean={mean} build_us_p50={} build_us_p99={} build_us_max={}",
+        at(50).copied().unwrap_or(0),
+        at(99).copied().unwrap_or(0),
+        builds.last().copied().unwrap_or(0),
+    )
 }
 
 /// `atlas_compactions_tenths`, `atlas_growths_tenths` and

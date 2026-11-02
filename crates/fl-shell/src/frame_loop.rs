@@ -99,6 +99,18 @@ impl Inner {
     }
 }
 
+/// When the frame in hand was begun, before `_beginFrame`.
+static FRAME_BEGUN: std::sync::Mutex<Option<Instant>> = std::sync::Mutex::new(None);
+
+/// When the frame being built was begun: from this to the scene's `render`
+/// is the frame's build time, as the engine's `FrameTiming` counts it,
+/// `buildStart` to `buildFinish`. A frame sink reads it as the scene
+/// arrives, before anything it does with the scene waits. `None` before
+/// the first frame.
+pub fn frame_begun() -> Option<Instant> {
+    *FRAME_BEGUN.lock().unwrap_or_else(|e| e.into_inner())
+}
+
 /// What a [`run`] did.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Report {
@@ -277,6 +289,7 @@ fn notify_idle(isolate: &mut IsolateScope<'_>, until: Instant) {
 
 /// One frame, as the engine runs it.
 fn frame(s: &mut HandleScope<'_>, time_us: i64, number: i64) -> Result<(), DartError> {
+    *FRAME_BEGUN.lock().unwrap_or_else(|e| e.into_inner()) = Some(Instant::now());
     let ui = s.lookup_library("dart:ui")?;
     let t = s.new_int(time_us);
     let n = s.new_int(number);
