@@ -1,7 +1,7 @@
 # M4: input
 
-> Brief, 2026-11-02. Draft: the decisions in §13 are proposals until taken. Findings from bring-up
-> go in `docs/m4-status.md`, newer where the two disagree.
+> Brief, 2026-11-02. Draft: D2 and D7 in §13 were taken 2026-11-02; the rest are proposals until
+> taken. Findings from bring-up go in `docs/m4-status.md`, newer where the two disagree.
 
 **`flutter create`'s counter app, unmodified, counts the taps it is given, and a `TextField` takes typed text, a composed character, a selection made by dragging, and copy and paste; each frame matches the stock engine's golden within a recorded tolerance. Pointer, key and text-input events reach the framework as the engine's Linux embedder delivers them, from Linux input devices on the boards and from a script in CI, in pure Rust.**
 
@@ -57,7 +57,7 @@ M2 and M3 answer messages the framework sends. M4 is the first to send one: the 
 The logical key and the character a key types depend on the layout. The Linux embedder takes both from GDK, which has them from xkbcommon, a C library. fl-engine needs a keymap in pure Rust:
 * **logical keys and text**: an XKB keymap compiled from the system's rules (RMLVO: `evdev`, `pc105`, `us`, ...), the keysym for each key and modifier state, and the keysym's character. A pure-Rust XKB implementation is checked at stage 3 (`kbvm`); the fallback is a built-in US layout with the keysym tables as data (D3)
 * **dead keys and compose**: the system's `Compose` file, so `´` then `e` composes `é`; composing shows as the editing state's composing region, as a preedit does
-* **modifiers and lock state**: Shift, Control, Alt, Meta, CapsLock, NumLock tracked by the keymap, and corrected into `KeyData` with synthesized events as fl_key_embedder_responder does
+* **modifiers and lock state**: Shift, Control, Alt, Meta, CapsLock, NumLock tracked by the keymap, and corrected into `KeyData` with synthesized events as fl_key_embedder_responder does, by one tracker every XKB source shares (D7)
 
 ## 6. Threads
 
@@ -120,14 +120,16 @@ Packets are made on the UI thread at dispatch, as the engine's `PointerDataDispa
 6. **evdev.** The input thread, devices, hotplug, grab; the boards. Board check
 7. **Lanes.** Soak with input, fuzz targets, TSan, compile-fail cases. Exit criteria 6 to 8
 
-## 13. Decisions (proposed)
+## 13. Decisions
 
 * **D1, input sources: evdev and a script, no window.** M2's D1 still rules out a Wayland or X11 client without a C toolchain. The boards read their devices directly, as a KMS kiosk does; CI scripts the same events
-* **D2, keys sent both ways.** `KeyData` and `flutter/keyevent`, as the Linux embedder at the pin does: the framework's `HardwareKeyboard` and its legacy `RawKeyboard` both still listen, and an app may use either
-* **D3, keymap: a pure-Rust XKB if one holds up, else built-in US.** To check at stage 3: compiling the system keymap, keysyms to characters, and the Compose file, in pure Rust with no build script. If none does, a US layout and US-international dead keys as data, and other layouts deferred
+* **D2, keys sent both ways** (taken 2026-11-02). `KeyData` and `flutter/keyevent`, as the Linux embedder at the pin does: the framework's `HardwareKeyboard` and its legacy `RawKeyboard` both still listen, and an app may use either. The event is handled if either answer says so; only then does it go to text input. `flutter/keyevent`'s payload is the platform's (`keymap: linux`, `toolkit: gtk` here), supplied by the source; the channel lives in one module, to go when the framework drops `RawKeyEvent`
+* **D3, keymap: a pure-Rust XKB if one holds up, else built-in US.** To check at stage 3: compiling the system keymap, keysyms to characters, and the Compose file, in pure Rust. Candidate: `kbvm`, keymaps from files and RMLVO names, XCompose, the RMLVO registry; 0.1.7 needs Rust 1.85, 0.2 needs 1.95, past the pinned 1.94.1; its build script asks pkg-config only for the XKB data directory, falling back to `/usr/share/X11/xkb`. If it does not hold up, a US layout and US-international dead keys as data, and other layouts deferred
 * **D4, clipboard in the process.** No system clipboard exists without a display server; copy and paste work within the app
 * **D5, event references recorded once, outside CI.** The stock embedder needs X11 and GTK, which CI's lanes refuse to install; the recording is checked in with the script and toolchain that made it
 * **D6, no system IME.** IBus and Fcitx are reached over D-Bus and need a session; composing is tested through the keymap's compose and the script. The `flutter/textinput` side is complete either way, so an IME is a source to add later
+* **D7, key state tracked per keyboard model** (taken 2026-11-02). Which keys are down and the logical key each went down as, a down for a key already down, an up for one that is not, modifiers and locks synchronized with synthesized events: one tracker for XKB-style state, ported from fl_key_embedder_responder, which every Linux source shares (evdev or libinput, the script, later Wayland). Not one for every platform: Windows, macOS and the rest report modifiers and locks in ways a common model would need a hook for each, and their stock embedders are the references. Not one per source: the Linux sources would each carry the same 785 lines. A non-Linux platform brings its own; a common core is factored out at the third, if one shows. Its acceptance tests are fl_key_embedder_responder_test.cc's. Simpler than GTK's: the state comes from the keymap, known exactly, so GTK's inference of when lock state applies (`caps_lock_state_logic_inferrence`) is not ported. Where the stock embedder's events follow from that inference, the reference is checked for intent and the difference recorded
+* **D8, a platform boundary at the embedder API's shape** (proposed). Events as data shaped as `embedder.h`'s `FlutterPointerEvent` and `FlutterKeyEvent` (view id, every device kind, timestamps on the frame clock), pushed from any thread; traits only where the platform acts (text input and IME, clipboard, cursor). A neutral core (`fl-input`: events, D7's tracker, the editing model, the packet converter's input) with no OS code, building and testing with no backend; backends by platform, not by library: `fl-input-script`, a KMS platform on drmkit (input, session, cursor; display to follow), later Wayland, which owns the window and its input together. Open: drmkit's C libraries (libinput, xkbcommon, libseat) or pure-Rust features added to drmkit (evdev, `kbvm`, logind over `zbus`), which keep exit criterion 8 as written; drmkit's Rust 1.94.1 against fl-engine's declared 1.85
 
 ## 14. Risks
 
