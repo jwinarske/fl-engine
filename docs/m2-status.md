@@ -196,3 +196,8 @@ Next: stage 6, KMS on the boards (needs the hardware). Before it: images and tex
 * Fix: `Vm::init` passes `--timeline_recorder=none` ahead of `VmConfig::flags`, JIT only. The product VM (AOT) has no timeline and rejects the flag. The recorder is only readable through the VM service, which is off
 * After: live heap +7.6 kB at 500 cycles, +9.6 kB at 2,000; ASan profile diff 0 bytes (burst: 3 chunks, a worker's buffers)
 * Soak limit back to 512 kB for both modes. JIT soak locally: hello +20 kB, loop +8, ffi +24, burst +156
+
+## Stage 6 moved to M4 (2026-11-02)
+
+* KMS on the boards is done in M4's stage 6, through drmkit (docs/m4-input.md, D9): one owner of the card for display, seat, input and cursor. emblema's `ScanoutOutput` over drmkit, not its drm-rs `DrmScanoutTarget`
+* M2's exit criterion 4 is met there
