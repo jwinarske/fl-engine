@@ -2,7 +2,7 @@
 
 State of the §11 exit criteria and the §15 list of the brief (docs/m3-images-text.md), with the evidence for each. Evidence is a CI lane, a test, or a recorded finding. Pin: Dart 3.13.7, Flutter 3.47.8, emblema `7914fa3`. Goldens: the stock engine's `flutter_tester` with Impeller, on lavapipe.
 
-Open: one §15 limit without a test that crosses it (the time budget for changing text), and first numbers on boards. Every exit criterion is met.
+Open: first numbers on boards. Every exit criterion is met, and every §15 limit has a test that crosses it.
 
 ## §11 exit criteria
 
@@ -14,7 +14,7 @@ Open: one §15 limit without a test that crosses it (the time budget for changin
 | 4 | `gif` advances through its frames at their durations | done | `gif_advances_at_its_durations`; `gif_frames_match_the_stock_engine`; `gif_matches_its_golden`, 0.000%. The timing test can fail on a stall under heavy parallel load (below) |
 | 5 | Every M3 native called by an app; every stub listed | done | `every_native_is_called_by_an_app`, 14 apps; stubs in `fl_ui::STUBS`; `every_native_matches_its_dart_declaration` |
 | 6 | Atlas and GPU image cache thread-placed by type, each with a compile-fail case | done | `crates/fl-raster/tests/compile_fail`: `glyph_atlas_crosses_threads`, `gpu_images_cross_threads`, and `offscreen_crosses_threads` |
-| 7 | Leak and sanitizer lanes green with the M3 programs; fuzz targets in them; every §15 limit crossed by a test | done but one limit | soak.yml at `2e71c7d`: `app_cycles_stay_flat` (text, counter, images, gif, ticker, text_churn), `valgrind_finds_no_errors_or_leaks_in_app_cycles`, `apps_under_a_sanitizer`. Fuzz: fl-image and fl-text `--test fuzz`, short in ci.yml, long in sanitize.yml's ASan leg. Limits: §15 below; the churn time budget has none |
+| 7 | Leak and sanitizer lanes green with the M3 programs; fuzz targets in them; every §15 limit crossed by a test | done | soak.yml at `2e71c7d`: `app_cycles_stay_flat` (text, counter, images, gif, ticker, text_churn), `valgrind_finds_no_errors_or_leaks_in_app_cycles`, `apps_under_a_sanitizer`. Fuzz: fl-image and fl-text `--test fuzz`, short in ci.yml, long in sanitize.yml's ASan leg. Limits: §15 below |
 | 8 | No C toolchain: decoders, shaper, rasterizer pure Rust; the no-C++ lane covers them | done | ci.yml `no C++ toolchain` (`ci/no-cxx.sh`) builds `fl-dart`, which links fl-image, fl-text (skrifa, harfrust, swash) and fl-raster, with `g++`/`clang` absent |
 
 Criterion 6: `Glyphs` and `GpuImages` each carry `PhantomData<*const ()>`, so neither is `Send`; `RasterThread` is the only way to them from another thread.
@@ -36,7 +36,7 @@ Criterion 6: `Glyphs` and `GpuImages` each carry `PhantomData<*const ()>`, so ne
 | Fallback determinism | done | `text_draws_no_fallback_glyph` |
 | Format drift | done | `metrics_decodes_every_style_field` |
 | harfrust's age | done | shaping behind one function, fl-text `shape::shape`, one file |
-| UI-thread layout | partly | shaped runs cached (`shape::CACHE`); text_churn holds 10,000 frames of changing text to memory, not yet to a time budget |
+| UI-thread layout | done | shaped runs cached (`shape::CACHE`); the soak holds text_churn's 10,000 frames of changing text to a mean build of 4 ms, `_beginFrame` to `render` as `FrameTiming` counts it; in CI 0.21 to 0.28 ms, the 99th percentile 0.3 to 1.0 ms |
 | Startup | done | manifest fonts parsed on first match (`LazyFamily`); system scan on the first fallback miss, once (`SYSTEM`) |
 | Atlas uploads | done | one upload a frame; soak `atlas_uploads`: text 300 over 600 frames, none on steady-state frames. No region write asked of emblema |
 | Image uploads | done | uploaded when decoded (`RasterThread::uploader`); soak reports `gpu_images`, `gpu_kb` |
@@ -45,7 +45,7 @@ Criterion 6: `Glyphs` and `GpuImages` each carry `PhantomData<*const ()>`, so ne
 
 ## Open, carried forward
 
-* Time budget for changing text: text_churn's frames timed and held to a limit in the soak lane
+* The text app's slowest frame, once a run: 1.9 to 2.5 s in the soak lane, against 50 to 70 µs typical and 72 to 102 ms for a cycle's first; thought to be the system font scan on a first fallback miss, not yet looked at
 * Boards: text frames on Pi 5 and VisionFive 2, against emblema's 5.19 ms UI frame
 * `gif_advances_at_its_durations`: a 1.4 s stall under parallel load, five of six loaded runs pass (4433d22); passes alone
 * Not yet in M3's text (m3-status.md, stage 4): script itemization of mixed-script blocks; ICU's line-break and word tailorings
