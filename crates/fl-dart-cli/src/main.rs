@@ -706,6 +706,22 @@ fn rss_by_kind() -> [u64; 5] {
     kb
 }
 
+/// `malloc_trim(0)`: glibc gives back the free pages anywhere in its heap,
+/// not only above the last block in use. Nothing elsewhere.
+fn trim_malloc() {
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
+    {
+        extern "C" {
+            fn malloc_trim(pad: usize) -> std::ffi::c_int;
+        }
+        // SAFETY: glibc's malloc_trim takes no pointer and is safe to call
+        // from any thread at any time; it only takes malloc's own locks.
+        unsafe {
+            malloc_trim(0);
+        }
+    }
+}
+
 /// The process's threads, from `/proc/self/status`; zero where it cannot
 /// be read. A thread pool that grows once keeps the stacks it started.
 fn thread_count() -> u64 {
@@ -753,8 +769,19 @@ fn joined(v: &[u64]) -> String {
     v.iter().map(u64::to_string).collect::<Vec<_>>().join(",")
 }
 
-/// (VmRSS in kB, open descriptors), from procfs.
+/// (VmRSS in kB, open descriptors), from procfs, with malloc's free pages
+/// given back first.
+///
+/// glibc returns free memory to the system only from the top of its heap.
+/// A large block freed in the middle stays resident, and whether the next
+/// one of that size reuses the hole or takes a mapping of its own depends
+/// on what else was allocated meanwhile: text's 1.6 MB font copy, made
+/// each cycle, sat in such a hole in most runs and moved out of it in one
+/// of four or five, between cycle 30 and 60, leaving the hole behind. Read
+/// after `malloc_trim`, RSS is memory in use, not memory malloc keeps for
+/// reuse, as the VM's page cache is emptied for `cycle`'s samples.
 fn usage_now() -> (u64, usize) {
+    trim_malloc();
     let rss = std::fs::read_to_string("/proc/self/status")
         .ok()
         .and_then(|s| {
