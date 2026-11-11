@@ -15,7 +15,7 @@ aot = ["fl-ui/aot"]
 fl-ui = { workspace = true }
 # Vulkan first (docs/m2-dart-ui.md D4). No window-system feature: offscreen
 # now, KMS at stage 6.
-# Pinned to a commit of emblema's, not 0.2.0 from crates.io: it carries
+# Pinned to a commit on emblema's main, not 0.2.0 from crates.io: it carries
 # BlendMode and TileMode numbered as upstream (jwinarske/emblema#225) and
 # draw_shadow in device pixels (#227), a colored analytic blur
 # premultiplied (#234), a shader's local transform (#235), a paint's
@@ -24,9 +24,8 @@ fl-ui = { workspace = true }
 # per axis (#239), an atlas faded after its blend (#240), a glyph key's
 # subpixel bucket (#241), a blurred convex path's shadow mesh (#242), an
 # atlas resident from the start (#243) and pipelines built ahead of the
-# first frame (#245, its branch until it merges; then its merge). Back to a
-# registry version once one includes them.
-emblema = { git = "https://github.com/jwinarske/emblema", rev = "1c0baad10b8f2da830067a3438f20b78e87fbd29", default-features = false, features = ["vulkan"] }
+# first frame (#245). Back to a registry version once one includes them.
+emblema = { git = "https://github.com/jwinarske/emblema", rev = "e4bfdf4f1e6c38a9cbe5727a487c9053ad12d8f2", default-features = false, features = ["vulkan"] }
 png = "0.18"
 # Glyph coverage (brief M3 D2), on skrifa, as emblema's own example names.
 swash = { version = "0.2", default-features = false, features = ["scale", "render", "std"] }
