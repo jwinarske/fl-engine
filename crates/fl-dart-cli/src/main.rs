@@ -28,6 +28,9 @@ fn main() -> ExitCode {
     std::hint::black_box(&ffi::KEEP);
 
     let args: Vec<String> = std::env::args().skip(1).collect();
+    if args.len() == 1 && args[0] == "prepare" {
+        return prepare();
+    }
     let (cmd, path, rest) = match args.as_slice() {
         [cmd, path, rest @ ..] => (cmd.as_str(), path.as_str(), rest),
         _ => return usage(),
@@ -69,6 +72,25 @@ fn main() -> ExitCode {
     }
 }
 
+/// `prepare`: builds the pipelines a first frame needs, then exits. On a
+/// Pi 5 with Mesa's shader cache empty that is 3.6 s, paid inside an app's
+/// first frame otherwise; run once when a board image is built or on its
+/// first boot, it fills the cache, and every app after starts from it
+/// (m3-status.md, first-use compiles).
+fn prepare() -> ExitCode {
+    let started = std::time::Instant::now();
+    match fl_raster::Offscreen::new(1, 1).and_then(|mut t| t.prepare()) {
+        Ok(()) => {
+            println!("prepared in {} ms", started.elapsed().as_millis());
+            ExitCode::SUCCESS
+        }
+        Err(e) => {
+            eprintln!("fl-dart: prepare: {e}");
+            ExitCode::from(EXIT_ERROR)
+        }
+    }
+}
+
 fn usage() -> ExitCode {
     let modes = if cfg!(feature = "jit") {
         "run <file.dill>"
@@ -87,7 +109,7 @@ fn usage() -> ExitCode {
         "libapp.so"
     };
     eprintln!(
-        "       fl-dart run-app <{app}> [WxH[@dpr]] [--assets DIR] [--png out.png] [--frames-dir DIR] [--ops] [--natives] [--styles] [--font FAMILY=PATH]... [--frames N] [--hz H]\n       fl-dart app-cycle <{app}> <n> [run-app options]"
+        "       fl-dart run-app <{app}> [WxH[@dpr]] [--assets DIR] [--png out.png] [--frames-dir DIR] [--ops] [--natives] [--styles] [--font FAMILY=PATH]... [--frames N] [--hz H]\n       fl-dart app-cycle <{app}> <n> [run-app options]\n       fl-dart prepare"
     );
     ExitCode::from(64)
 }
