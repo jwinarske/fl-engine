@@ -714,22 +714,33 @@ fn gif_matches_its_golden() {
 /// shows it: loaded after the first frame, then the framework asks for a
 /// frame when the next is due, so the color changes in order, each after
 /// its frame's duration, to within a few vsync periods.
+///
+/// Run once untimed first. With Mesa's shader cache empty, the driver's
+/// first compile lands in a frame: on lavapipe the first draw of the
+/// decoded image, 0.4 s, 1.4 to 2.4 s under the lane's parallel load
+/// (m3-status.md, first-use compiles). The first run fills the cache;
+/// the timed run measures the engine.
 #[test]
 #[ignore = "app lane: needs FLUTTER_ROOT and a Vulkan driver"]
 fn gif_advances_at_its_durations() {
     let app = build_app("gif");
     let dir = common::out_dir().join("apps/gif-frames");
-    let _ = std::fs::remove_dir_all(&dir);
-    let o = common::fl_dart(&[
-        "run-app".as_ref(),
-        app.as_os_str(),
-        "400x300".as_ref(),
-        "--frames".as_ref(),
-        "16".as_ref(),
-        "--frames-dir".as_ref(),
-        dir.as_os_str(),
-    ]);
-    assert!(o.status.success(), "{o:?}");
+    let run = || {
+        let _ = std::fs::remove_dir_all(&dir);
+        let o = common::fl_dart(&[
+            "run-app".as_ref(),
+            app.as_os_str(),
+            "400x300".as_ref(),
+            "--frames".as_ref(),
+            "16".as_ref(),
+            "--frames-dir".as_ref(),
+            dir.as_os_str(),
+        ]);
+        assert!(o.status.success(), "{o:?}");
+        o
+    };
+    run();
+    let o = run();
     let out = String::from_utf8_lossy(&o.stdout);
     let (_, vsync) = out.rsplit_once("vsync: ").unwrap_or((&out, ""));
     let (n, gaps) = vsync

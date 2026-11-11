@@ -309,3 +309,28 @@ Not yet, then: a non-modulate atlas under a translucent paint, refused by name. 
 * The atlas starts at 1024. Started there, the counter app still crept 720 kB as glyphs landed on pages the allocator had only promised; emblema#243 writes every texel when the atlas is made; repinned to its merge. Measured: counter +448 kB, text +260 kB, text_churn flat; at 2048, counter crept 4.1 MB
 * Each cycle's fonts are new, so counter's glyphs fill the atlas over the first thirty cycles or so before it evicts: warm-up the soak's tenth fell inside at 100 cycles, +448 to 848 kB with the load. counter now runs 300 cycles, as text does; massif shows the heap flat throughout. Two soak runs: counter +248 and +276 kB, text +192 and +132 kB, text_churn flat
 * Text stepped about 1.6 MB between its first two tenths under load, on d38550b, 44110bf and da90abb in CI and once locally, with the atlas not growing; explained above (stage 7, lanes): the font copy leaving a free hole in the malloc heap
+
+## Follow-ups: first-use compiles, the Pi 5, the second replay (2026-11-11)
+
+First-use compiles: the text app's slowest frame, 1.9 to 2.5 s once a run in the soak lane, is no font scan; the text app falls back to no system font and the scan never runs. It is the GPU driver compiling shaders inside a frame, with Mesa's shader cache empty, as every CI run starts:
+* emblema builds a pipeline on its first use (`ensure_pipeline`), one per key: format, blend, samples, stencil, role. The text app needs three: srcOver at 1 and 4 samples, src
+* lavapipe: each pipeline 30 ms, then llvmpipe JIT-compiles its shader variants at the first draw that needs them. Text's slowest frame 1.23 s with the cache empty, 103 ms with it full; gif's second vsync interval 383 ms, due 83
+* Pi 5, V3D (v3dv): **1.8 s a pipeline**, at creation, so 3.6 s in the text app's first frames with the cache empty, 51 ms with it full. A board pays it on its first run and after each Mesa upgrade. Intel (anv): no stall
+* The raster thread's slow frame reaches the UI side through `submit`, which waits while a scene is queued, so the next `render` counts it as build time
+* `gif_advances_at_its_durations` flaked for the same reason: under parallel load the image's first draw stalled 1.4 to 2.4 s. The test now runs the app once untimed first; with the cache emptied and every core loaded, 6 of 6 pass (the test as it was: 3 of 4)
+* Open: the first frames on a board with an empty cache. emblema building its pipelines ahead of the first frame, as Impeller does at context creation, or fl-raster drawing a warm-up when its target is made, would move the 3.6 s to startup; neither shortens it
+
+Pi 5, Raspberry Pi OS (Debian 13, Mesa v3dv), cross-compiled on x64 (fl-dart by cargo, apps by the Dart SDK's x64-to-arm64 gen_snapshot through `tools/flutter-app/build.sh`). Steady state, 1920x1080, the cache full, per raster frame:
+
+| app | first replay, atlas, second replay | GPU draw | readback |
+|---|---|---|---|
+| text | 3.0 ms | 4.6 ms | 8.8 ms |
+| counter | 0.6 ms | 9.4 ms | 8.9 ms |
+| text_churn | 1.05 ms | 3.8 ms | 8.3 ms |
+
+* Against emblema's 5.19 ms UI-like frame: text and text_churn draw within it; counter's draw is nearly twice it, not yet looked at
+* Readback is the offscreen target's, `--png`; a KMS frame has none
+* UI side, `app-cycle`, no drawing: text's build p50 75 to 86 µs, p99 6.1 to 6.2 ms (a cycle's first frame); text_churn's mean 0.25 ms against the 4 ms budget
+* The soak's text configuration at 1600x1200, DPR 2, RSS flat over 300 cycles: +144 and -16 kB over the last nine tenths
+
+The second replay: text_churn on the Pi, the first replay with its new glyphs rasterized 0.66 ms, the atlas upload 0.38 ms, the second replay 0.03 ms. The walk the second replay adds is under 1% of the frame; left as it is

@@ -6,6 +6,9 @@
 #   build.sh <flutter-root> <app-dir> <out-dir> [target | kernel]
 #
 #   target: x86_64-unknown-linux-gnu (default) | aarch64-unknown-linux-gnu
+#           (aarch64 cross-compiled on an x64 host: Flutter's linux-arm64
+#           gen_snapshot is itself an arm64 binary, so the Dart SDK's
+#           x64-to-arm64 one, the same VM revision, is used instead)
 #   kernel: <out-dir>/<app>.dill instead, for fl-dart's JIT build: the
 #           non-product platform, linked in, as `flutter run` compiles in
 #           debug mode but in one file. Architecture-independent.
@@ -60,14 +63,27 @@ if [[ "$target" == kernel ]]; then
   exit 0
 fi
 
+work="$(mktemp -d)"
+trap 'rm -rf "$work"' EXIT
+
 sdk_root="$cache/artifacts/engine/common/flutter_patched_sdk_product"
 gen_snapshot="$cache/artifacts/engine/$engine/gen_snapshot"
+if [[ "$target" == aarch64-unknown-linux-gnu && "$(uname -m)" == x86_64 ]]; then
+  # dartdev fetches its cross gen_snapshot on the first cross compile.
+  sdk="$cache/dart-sdk"
+  version="$(cat "$sdk/version")"
+  gen_snapshot="$HOME/.dart/dartdev/sdk_cache/$version/gen_snapshot_linux_x64_linux_arm64"
+  if [[ ! -x "$gen_snapshot" ]]; then
+    echo 'void main() {}' > "$work/stub.dart"
+    "$sdk/bin/dart" compile aot-snapshot --target-os linux --target-arch arm64 \
+      "$work/stub.dart" -o "$work/stub.aot" >/dev/null
+  fi
+  [[ -x "$gen_snapshot" ]] || { echo "build.sh: dartdev left no cross gen_snapshot at $gen_snapshot" >&2; exit 1; }
+fi
 for f in "$dart" "$fes" "$sdk_root/platform_strong.dill" "$gen_snapshot"; do
   [[ -e "$f" ]] || { echo "build.sh: $f missing; run 'flutter precache --linux' at $flutter_root" >&2; exit 1; }
 done
 
-work="$(mktemp -d)"
-trap 'rm -rf "$work"' EXIT
 "$dart" "$fes" \
   --sdk-root "$sdk_root/" --target=flutter --no-print-incremental-dependencies \
   -Ddart.vm.profile=false -Ddart.vm.product=true \
