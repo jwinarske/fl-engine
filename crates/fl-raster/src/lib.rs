@@ -103,7 +103,10 @@ impl Offscreen {
     /// at one sample and at the canvas's four, with and without a clip.
     /// Otherwise the first frame builds them, and on a Pi 5 with Mesa's
     /// shader cache empty that is 1.8 s a sample count inside it
-    /// (m3-status.md, first-use compiles). Drawing without it is correct.
+    /// (m3-status.md, first-use compiles). For `fl-dart prepare`, which
+    /// fills the driver's cache ahead of any app; not called at the raster
+    /// thread's start, where it only delayed the first frames. Drawing
+    /// without it is correct.
     pub fn prepare(&mut self) -> Result<(), RasterError> {
         Ok(self
             .ctx
@@ -437,10 +440,6 @@ fn raster_main(
         height,
         ..Rastered::default()
     };
-    // After `ready`, so the UI side starts its isolate meanwhile and its
-    // first frame waits only for what is left. Not fatal: a frame builds
-    // what this did not, and names the same fault if there is one.
-    let _ = target.prepare();
     // Until the UI side hangs up. After a failure the rest are taken and
     // dropped, so the UI thread is never left waiting on a full queue.
     for work in rx {
