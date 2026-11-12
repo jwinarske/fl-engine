@@ -336,3 +336,11 @@ Pi 5, Raspberry Pi OS (Debian 13, Mesa v3dv), cross-compiled on x64 (fl-dart by 
 * The soak's text configuration at 1600x1200, DPR 2, RSS flat over 300 cycles: +144 and -16 kB over the last nine tenths
 
 The second replay: text_churn on the Pi, the first replay with its new glyphs rasterized 0.66 ms, the atlas upload 0.38 ms, the second replay 0.03 ms. The walk the second replay adds is under 1% of the frame; left as it is
+
+## Follow-ups: counter's frame on the Pi 5 (2026-11-12)
+
+* Counter's GPU draw at 1080p was 9.4 ms against emblema's 5.19. Draw by draw on the Pi: without the shadow 9.32 ms, without the button's path 8.96, without the glyphs 9.34, without the two rounded rectangles 1.89
+* Both are Material's backgrounds, `Scaffold` and the app bar: rounded rectangles with no radii, 1920x1080 and 1920x56. emblema drew them as rounded rectangles, evaluated in the fragment stage across the frame's four-sample pass
+* The engine never draws one so: `DisplayListBuilder::drawRoundRect` turns a rounded rectangle that `IsRect` into `drawRect` and one that `IsOval` into `drawOval`, and `ClipRoundRect` the same into `ClipRect` and `ClipOval`, on the radii `RoundingRadii::Scaled` fits. fl-raster now does too (`shape_of`); an oval clip stays a path, as Impeller clips one
+* Counter 9.36 ms to 3.83, the same pixels; text 4.6 and text_churn 3.8 unchanged. Every golden's distance unchanged to the thousandth
+* Open, emblema's: a rounded rectangle that is one costs as much, about 7.5 ms for one the size of the frame at four samples on V3D
