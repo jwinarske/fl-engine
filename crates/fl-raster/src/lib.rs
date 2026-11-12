@@ -621,9 +621,16 @@ fn draw_one(canvas: &mut Canvas, draw: &Draw, slots: &mut Slots) -> Result<(), R
                 ClipOp::Difference => canvas.clip_out_rect(rect(*ltrb))?,
             };
         }
-        Draw::ClipRRect { rrect, .. } => {
-            canvas.clip_path(&rrect_path(rrect))?;
-        }
+        Draw::ClipRRect { rrect, .. } => match shape_of(rrect) {
+            RRectShape::Rect(bounds) => {
+                canvas.clip_rect(bounds)?;
+            }
+            // emblema has no oval clip, and Impeller clips an oval by its
+            // path too.
+            RRectShape::Oval(_) | RRectShape::RRect => {
+                canvas.clip_path(&rrect_path(rrect))?;
+            }
+        },
         Draw::ClipPath { path, .. } => clip_to(canvas, path)?,
         Draw::Paint(p) => {
             canvas.draw_paint(&paint_of(p, slots)?)?;
@@ -645,11 +652,14 @@ fn draw_one(canvas: &mut Canvas, draw: &Draw, slots: &mut Slots) -> Result<(), R
             canvas.draw_rect(rect(*ltrb), &paint_of(paint, slots)?)?;
         }
         Draw::RRect { rrect, paint } => {
-            canvas.draw_rrect_with_radii(
-                rect(rrect.ltrb),
-                radii(rrect),
-                &paint_of(paint, slots)?,
-            )?;
+            let paint = paint_of(paint, slots)?;
+            match shape_of(rrect) {
+                RRectShape::Rect(bounds) => canvas.draw_rect(bounds, &paint)?,
+                RRectShape::Oval(bounds) => canvas.draw_oval(bounds, &paint)?,
+                RRectShape::RRect => {
+                    canvas.draw_rrect_with_radii(rect(rrect.ltrb), radii(rrect), &paint)?
+                }
+            };
         }
         Draw::DRRect {
             outer,
@@ -853,6 +863,76 @@ fn vec2([x, y]: fl_ui::Point) -> Vec2 {
 fn radii(rr: &RRect) -> RoundingRadii {
     let [tl, tr, br, bl] = rr.radii;
     [tl, tr, bl, br]
+}
+
+/// What a rounded rectangle is drawn and clipped as, as the engine's
+/// `DisplayListBuilder` decides it before Impeller sees it: a rectangle when
+/// no corner is rounded, an oval when every corner is half the side, else a
+/// rounded rectangle. A full-window background in Material is a rounded
+/// rectangle with no radii; drawn as one it was 9.4 ms of a 1080p frame on
+/// a Pi 5, as a rectangle 3.8 ms (m3-status.md).
+#[derive(Debug, PartialEq)]
+enum RRectShape {
+    Rect(Rect),
+    Oval(Rect),
+    RRect,
+}
+
+/// `DlRoundRect::MakeRectRadii`'s `IsRect` and `IsOval`, on the radii as
+/// `RoundingRadii::Scaled` fits them: bounds made positive, a corner with a
+/// side not above zero made zero, and all of them scaled by one factor until
+/// each pair fits its side.
+fn shape_of(rr: &RRect) -> RRectShape {
+    const CLOSE_ENOUGH: f32 = 1e-3; // impeller's kEhCloseEnough
+    let [l, t, r, b] = rr.ltrb;
+    if ![l, t, r, b].iter().all(|v| v.is_finite()) {
+        return RRectShape::RRect;
+    }
+    let (l, r) = (l.min(r), l.max(r));
+    let (t, b) = (t.min(b), t.max(b));
+    let (w, h) = (r - l, b - t);
+    if !(w > 0.0 && h > 0.0) {
+        return RRectShape::RRect;
+    }
+    let bounds = Rect::new(l, t, r, b);
+    // [tl, tr, br, bl], as dart:ui carries them.
+    let mut c = rr.radii;
+    let finite = c.iter().flatten().all(|v| v.is_finite());
+    for corner in &mut c {
+        if !(finite && corner[0] > 0.0 && corner[1] > 0.0) {
+            *corner = [0.0, 0.0];
+        }
+    }
+    if c.iter().all(|corner| *corner == [0.0, 0.0]) {
+        return RRectShape::Rect(bounds);
+    }
+    let [tl, tr, br, bl] = c;
+    let mut scale = 1.0f32;
+    for (a, z, side) in [
+        (tl[0], tr[0], w),
+        (bl[0], br[0], w),
+        (tl[1], bl[1], h),
+        (tr[1], br[1], h),
+    ] {
+        if a + z > side {
+            scale = scale.min(side / (a + z));
+        }
+    }
+    let c = c.map(|[x, y]| {
+        if scale < 1.0 {
+            [x * scale, y * scale]
+        } else {
+            [x, y]
+        }
+    });
+    let near = |a: f32, z: f32| (a - z).abs() <= CLOSE_ENOUGH;
+    let same = c
+        .iter()
+        .all(|[x, y]| near(*x, c[0][0]) && near(*y, c[0][1]));
+    if same && near(c[0][0], w * 0.5) && near(c[0][1], h * 0.5) {
+        return RRectShape::Oval(bounds);
+    }
+    RRectShape::RRect
 }
 
 fn rrect_path(rr: &RRect) -> emblema::Path {
@@ -1178,6 +1258,68 @@ mod tests {
 
     fn picture(draws: Vec<Draw>) -> Arc<Picture> {
         Arc::new(Picture { draws })
+    }
+
+    fn rr(ltrb: [f32; 4], radii: [[f32; 2]; 4]) -> RRect {
+        RRect { ltrb, radii }
+    }
+
+    /// `DlRoundRect`'s `IsRect` and `IsOval` on the radii `Scaled` fits.
+    #[test]
+    fn a_rounded_rect_is_drawn_as_the_display_list_builder_reduces_it() {
+        let r = |l, t, rr_, b| Rect::new(l, t, rr_, b);
+        // No corner rounded: Material's backgrounds.
+        assert_eq!(
+            shape_of(&rr([0.0, 0.0, 1920.0, 1080.0], [[0.0; 2]; 4])),
+            RRectShape::Rect(r(0.0, 0.0, 1920.0, 1080.0))
+        );
+        // A corner flat in one direction, or negative, is no corner.
+        assert_eq!(
+            shape_of(&rr(
+                [0.0, 0.0, 10.0, 10.0],
+                [[5.0, 0.0], [-1.0, 4.0], [0.0, 0.0], [0.0, 3.0]]
+            )),
+            RRectShape::Rect(r(0.0, 0.0, 10.0, 10.0))
+        );
+        // Non-finite radii are none, as `Scaled` normalizes them.
+        assert_eq!(
+            shape_of(&rr([0.0, 0.0, 10.0, 10.0], [[f32::NAN, 1.0]; 4])),
+            RRectShape::Rect(r(0.0, 0.0, 10.0, 10.0))
+        );
+        // Bounds made positive.
+        assert_eq!(
+            shape_of(&rr([10.0, 20.0, 0.0, 0.0], [[0.0; 2]; 4])),
+            RRectShape::Rect(r(0.0, 0.0, 10.0, 20.0))
+        );
+        // Every corner half the side: an oval, a circle or not.
+        assert_eq!(
+            shape_of(&rr([0.0, 0.0, 100.0, 50.0], [[50.0, 25.0]; 4])),
+            RRectShape::Oval(r(0.0, 0.0, 100.0, 50.0))
+        );
+        // Radii that overrun are scaled by one factor: proportional ones
+        // become the oval, others do not.
+        assert_eq!(
+            shape_of(&rr([0.0, 0.0, 100.0, 50.0], [[200.0, 100.0]; 4])),
+            RRectShape::Oval(r(0.0, 0.0, 100.0, 50.0))
+        );
+        assert_eq!(
+            shape_of(&rr([0.0, 0.0, 100.0, 50.0], [[1000.0, 1000.0]; 4])),
+            RRectShape::RRect
+        );
+        // A rounded rectangle stays one, and so does one with no area,
+        // which a stroke may still draw.
+        assert_eq!(
+            shape_of(&rr([0.0, 0.0, 100.0, 50.0], [[8.0, 8.0]; 4])),
+            RRectShape::RRect
+        );
+        assert_eq!(
+            shape_of(&rr([0.0, 0.0, 100.0, 0.0], [[0.0; 2]; 4])),
+            RRectShape::RRect
+        );
+        assert_eq!(
+            shape_of(&rr([0.0, f32::INFINITY, 100.0, 50.0], [[0.0; 2]; 4])),
+            RRectShape::RRect
+        );
     }
 
     #[test]
