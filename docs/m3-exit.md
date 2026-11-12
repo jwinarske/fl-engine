@@ -45,11 +45,10 @@ Criterion 6: `Glyphs` and `GpuImages` each carry `PhantomData<*const ()>`, so ne
 
 ## Open, carried forward
 
-* The text app's slowest frame, once a run: 1.9 to 2.5 s in the soak lane, against 50 to 70 µs typical and 72 to 102 ms for a cycle's first; thought to be the system font scan on a first fallback miss, not yet looked at
-* Boards: text frames on Pi 5 and VisionFive 2, against emblema's 5.19 ms UI frame
-* `gif_advances_at_its_durations`: a 1.4 s stall under parallel load, five of six loaded runs pass (4433d22); passes alone
+* Closed 2026-11-11 (m3-status.md, first-use compiles): the text app's slowest frame is the driver compiling shaders in a frame with Mesa's cache empty, not the font scan; `gif_advances_at_its_durations` stalled for the same reason and now runs once untimed first; the second replay measured at 0.03 ms a frame on the Pi 5 and left
+* First frames on a board with an empty shader cache: 3.6 s on Pi 5 V3D, 1.8 s a sample count. `fl-dart prepare`, run once when the image is built or on first boot, takes them out of every app's first frames (51 ms); the compile itself is not shortened
+* Boards: Pi 5 measured (m3-status.md); counter's GPU draw 9.4 ms against emblema's 5.19 ms. VisionFive 2 not yet
 * Not yet in M3's text (m3-status.md, stage 4): script itemization of mixed-script blocks; ICU's line-break and word tailorings
-* The first replay walks the scene a second time each frame (stage 5)
 
 ## Soak, as of 2e71c7d
 

@@ -99,6 +99,20 @@ impl Offscreen {
         (self.width, self.height)
     }
 
+    /// Builds the pipelines a first frame needs, ahead of it: source-over
+    /// at one sample and at the canvas's four, with and without a clip.
+    /// Otherwise the first frame builds them, and on a Pi 5 with Mesa's
+    /// shader cache empty that is 1.8 s a sample count inside it
+    /// (m3-status.md, first-use compiles). For `fl-dart prepare`, which
+    /// fills the driver's cache ahead of any app; not called at the raster
+    /// thread's start, where it only delayed the first frames. Drawing
+    /// without it is correct.
+    pub fn prepare(&mut self) -> Result<(), RasterError> {
+        Ok(self
+            .ctx
+            .prepare_pipelines(PixelFormat::Rgba8Unorm, CANVAS_SAMPLES)?)
+    }
+
     /// Draws `scene` over transparent black and reads the pixels back:
     /// `width * height` RGBA8 pixels, top row first, as the target holds them.
     ///
@@ -244,6 +258,9 @@ impl InFlight {
 
 /// Scenes queued or drawing before [`RasterThread::submit`] waits.
 const PIPELINE_DEPTH: usize = 2;
+
+/// The sample count emblema's `Canvas` antialiases at, its default.
+const CANVAS_SAMPLES: u32 = 4;
 
 /// What a raster thread did, from [`RasterThread::finish`].
 #[derive(Debug, Default)]
