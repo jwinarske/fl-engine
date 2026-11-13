@@ -80,6 +80,11 @@ impl Range {
     pub fn intersects(&self, other: Range) -> bool {
         self.start.max(other.start) <= self.end.min(other.end)
     }
+
+    /// Whether `other` lies within this range.
+    pub fn contains_range(&self, other: Range) -> bool {
+        other.start >= self.start && other.end <= self.end
+    }
 }
 
 /// A font feature over a range of text: tag, value, range.
@@ -259,6 +264,8 @@ pub(crate) struct Run {
     pub correct_descent: f32,
     pub correct_leading: f32,
     pub ellipsis: bool,
+    /// The ISO 15924 script it was shaped in; zero for a placeholder.
+    pub script: [u8; 4],
     /// Per glyph: the shift, and the previous cluster's shift.
     pub justification_shifts: Vec<[f32; 2]>,
 }
@@ -309,6 +316,7 @@ impl Run {
             correct_descent: 0.0,
             correct_leading: 0.0,
             ellipsis: false,
+            script: [0; 4],
             justification_shifts: Vec::new(),
         };
         r.calculate_metrics();
@@ -476,17 +484,13 @@ impl Run {
         line.add_run(self);
     }
 
-    /// The cursive scripts letter spacing is not added to.
-    pub fn is_cursive_script(&self, text: &str) -> bool {
-        text.get(self.text_range.start..self.text_range.end)
-            .and_then(|t| t.chars().find(|c| !c.is_whitespace()))
-            .is_some_and(|c| {
-                matches!(c,
-                    '\u{600}'..='\u{6FF}' | '\u{750}'..='\u{77F}' | '\u{8A0}'..='\u{8FF}'
-                    | '\u{FB50}'..='\u{FDFF}' | '\u{FE70}'..='\u{FEFF}'
-                    | '\u{700}'..='\u{74F}' | '\u{840}'..='\u{85F}' | '\u{1800}'..='\u{18AF}'
-                    | '\u{7C0}'..='\u{7FF}' | '\u{A840}'..='\u{A87F}' | '\u{10D00}'..='\u{10D3F}')
-            })
+    /// The cursive scripts letter spacing is not added to, by the script
+    /// the run was shaped in (`Run::isCursiveScript`).
+    pub fn is_cursive_script(&self) -> bool {
+        matches!(
+            &self.script,
+            b"Arab" | b"Rohg" | b"Mand" | b"Mong" | b"Nkoo" | b"Phag" | b"Syrc"
+        )
     }
 }
 
@@ -1014,46 +1018,63 @@ impl Paragraph {
         let mut tried: Vec<u64> = Vec::new();
         let mut unresolved: Vec<Range> = vec![range];
         let mut resolved: Vec<Piece> = Vec::new();
-        let mut first: Option<Piece> = None;
+        // The first face's shaping, a piece per script run.
+        let mut first: Vec<Piece> = Vec::new();
         let attempt = |p: &Paragraph,
                        face: &Arc<Face>,
                        unresolved: &mut Vec<Range>,
                        resolved: &mut Vec<Piece>,
-                       first: &mut Option<Piece>| {
+                       first: &mut Vec<Piece>| {
             let tf = Typeface::new(face, &variations);
+            let record = first.is_empty();
             let mut still = Vec::new();
             for r in unresolved.drain(..) {
-                let text = &p.text[r.start..r.end];
-                let feats: Vec<([u8; 4], u32, std::ops::Range<usize>)> = features
-                    .iter()
-                    .filter(|(_, _, fr)| fr.intersects(r))
-                    .map(|(t, v, fr)| {
-                        let s = fr.start.max(r.start) - r.start;
-                        let e = fr.end.min(r.end) - r.start;
-                        (*t, *v, s..e)
-                    })
-                    .collect();
-                let shaped = shape::shape(&tf, style.font_size, text, rtl, &style.locale, &feats);
-                if first.is_none() {
-                    *first = Some(Piece {
-                        tf: tf.clone(),
-                        shaped: Arc::clone(&shaped),
-                        text: r,
-                        glyphs: Range::new(0, shaped.glyphs.len()),
-                        shaped_start: r.start,
-                    });
-                }
-                for (ok, text_r, glyphs) in p.sort_out_glyphs(&shaped, r, rtl) {
-                    if ok {
-                        resolved.push(Piece {
+                // Each unresolved stretch shaped a script run at a time,
+                // the rest of the stretch its context, as OneLineShaper
+                // hands it to SkShaper with a script iterator.
+                let whole = &p.text[r.start..r.end];
+                for (sr, script) in unicode::script_runs(whole) {
+                    let sr = Range::new(r.start + sr.start, r.start + sr.end);
+                    let feats: Vec<([u8; 4], u32, std::ops::Range<usize>)> = features
+                        .iter()
+                        .filter(|(_, _, fr)| fr.intersects(sr))
+                        .map(|(t, v, fr)| {
+                            let s = fr.start.max(sr.start) - sr.start;
+                            let e = fr.end.min(sr.end) - sr.start;
+                            (*t, *v, s..e)
+                        })
+                        .collect();
+                    let seg = shape::Segment {
+                        text: &p.text[sr.start..sr.end],
+                        pre: &p.text[r.start..sr.start],
+                        post: &p.text[sr.end..r.end],
+                        script,
+                        rtl,
+                    };
+                    let shaped = shape::shape(&tf, style.font_size, &seg, &style.locale, &feats);
+                    if record {
+                        first.push(Piece {
                             tf: tf.clone(),
                             shaped: Arc::clone(&shaped),
-                            text: text_r,
-                            glyphs,
-                            shaped_start: r.start,
+                            text: sr,
+                            glyphs: Range::new(0, shaped.glyphs.len()),
+                            shaped_start: sr.start,
+                            script,
                         });
-                    } else {
-                        still.push(text_r);
+                    }
+                    for (ok, text_r, glyphs) in p.sort_out_glyphs(&shaped, sr, rtl) {
+                        if ok {
+                            resolved.push(Piece {
+                                tf: tf.clone(),
+                                shaped: Arc::clone(&shaped),
+                                text: text_r,
+                                glyphs,
+                                shaped_start: sr.start,
+                                script,
+                            });
+                        } else {
+                            still.push(text_r);
+                        }
                     }
                 }
             }
@@ -1103,7 +1124,7 @@ impl Paragraph {
             for c in self.text[h.start..h.end].chars() {
                 self.unresolved.insert(c);
             }
-            if let Some(f) = &first {
+            if let Some(f) = first.iter().find(|f| f.text.contains_range(h)) {
                 if let Some(glyphs) = f.glyphs_for(h, rtl) {
                     resolved.push(Piece {
                         text: h,
@@ -1113,14 +1134,8 @@ impl Paragraph {
                 }
             } else if let Some(face) = self.fonts.find(&[], style.font_style).first() {
                 let tf = Typeface::new(face, &variations);
-                let shaped = shape::shape(
-                    &tf,
-                    style.font_size,
-                    &self.text[h.start..h.end],
-                    rtl,
-                    &style.locale,
-                    &[],
-                );
+                let seg = shape::Segment::alone(&self.text[h.start..h.end], rtl);
+                let shaped = shape::shape(&tf, style.font_size, &seg, &style.locale, &[]);
                 let n = shaped.glyphs.len();
                 resolved.push(Piece {
                     tf,
@@ -1128,6 +1143,7 @@ impl Paragraph {
                     text: h,
                     glyphs: Range::new(0, n),
                     shaped_start: h.start,
+                    script: seg.script,
                 });
             }
         }
@@ -1262,6 +1278,7 @@ impl Paragraph {
         } else {
             p.text.start - p.shaped_start
         };
+        run.script = p.script;
         *advance_x += run_advance;
         self.runs.push(run);
     }
@@ -1291,7 +1308,7 @@ impl Paragraph {
             && self.runs.len() == 1
         {
             let ls = self.blocks[0].style.letter_spacing;
-            if !self.runs[0].is_cursive_script(&self.text) {
+            if !self.runs[0].is_cursive_script() {
                 self.runs[0].add_letter_spaces_evenly(ls);
             }
             self.build_cluster_table();
@@ -1311,7 +1328,7 @@ impl Paragraph {
             }
             let cr = self.runs[ri].cluster_range;
             let ltr = self.runs[ri].left_to_right();
-            let cursive = self.runs[ri].is_cursive_script(&self.text);
+            let cursive = self.runs[ri].is_cursive_script();
             for k in 0..cr.width() {
                 let ci = if ltr { cr.start + k } else { cr.end - k - 1 };
                 self.shift_cluster_glyphs(ri, ci, shift);
@@ -1748,6 +1765,8 @@ struct Piece {
     glyphs: Range,
     /// Where the shaped text started.
     shaped_start: usize,
+    /// The script it was shaped in.
+    script: [u8; 4],
 }
 
 impl Piece {

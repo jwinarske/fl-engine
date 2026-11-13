@@ -6,6 +6,7 @@
 use std::sync::Arc;
 
 use fl_text::font::FontCollection;
+use fl_text::paint::PaintOp;
 use fl_text::style::{ParagraphStyle, TextStyle};
 use fl_text::{Paragraph, ParagraphBuilder, RectHeightStyle, RectWidthStyle};
 
@@ -227,4 +228,26 @@ fn a_font_whose_lookups_loop_still_shapes() {
     // Every lookup substitutes the glyph for itself: what comes out is
     // Roboto's.
     assert!(near(width, plain), "{width} against {plain}");
+}
+
+/// Text in three scripts one face covers is three runs, a script each, as
+/// SkShaper's script iterator splits it; the spaces join the run before.
+#[test]
+#[ignore = "app lane: needs FLUTTER_ROOT"]
+fn mixed_scripts_are_shaped_a_run_each() {
+    let text = "abc \u{416}\u{414} \u{3B1}\u{3B2}";
+    let p = paragraph(fonts(), text, 400.0);
+    assert_eq!(p.unresolved_glyphs(), 0);
+    let runs = p
+        .paint_ops(0.0, 0.0)
+        .iter()
+        .filter(|op| matches!(op, PaintOp::Glyphs { .. }))
+        .count();
+    assert_eq!(runs, 3);
+    // The same width as each script's text laid out alone.
+    let alone: f32 = ["abc ", "\u{416}\u{414} ", "\u{3B1}\u{3B2}"]
+        .iter()
+        .map(|t| paragraph(fonts(), t, 400.0).max_intrinsic_width())
+        .sum();
+    assert!(near(p.max_intrinsic_width(), alone));
 }

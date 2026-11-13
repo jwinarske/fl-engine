@@ -115,7 +115,7 @@ Done: `metrics` matches flutter_tester with Impeller: 748 lines, every number eq
 
 Not yet:
 
-* Script itemization: a style block is shaped as one run, its script guessed from its text. Mixed-script blocks shape apart from SkShaper's
+* Script itemization: a style block is shaped as one run, its script guessed from its text. Mixed-script blocks shape apart from SkShaper's. Done 2026-11-13 (follow-ups, script runs)
 * ICU's line-break and word tailorings: UAX #14 and #29 as written
 * Soft hyphens are not rendered (Flutter does not ask)
 
@@ -363,3 +363,10 @@ The second replay: text_churn on the Pi, the first replay with its new glyphs ra
 * RK3566 (Radxa Zero 3, Mali-G52, Debian 12): the same four apps 6.3 to 8.7 s before, 1.1 to 2.2 s after, through GLES; PanVK fails at the first draw on that board's kernel, as emblema's on-a-board.md records
 * Steady state, emblema's bench on the Pi: Vulkan 12 to 36% faster a row, the mixed frame 14.04 ms to 9.72; GLES 34 to 62%, 19.70 ms to 9.49
 * `fl-dart prepare` stays, now optional: an app's first frames pay a fraction of a second without it
+
+## Follow-ups: script runs (2026-11-13)
+
+* A style block was shaped as one run, its script guessed from its first letter. OneLineShaper hands SkShaper a script iterator (`SkUnicodeHbScriptRunIterator`), so the stock engine shapes a run per script: Common and Inherited characters join the run they are in, a run takes its first real script, and one of only those is `Zyyy`
+* fl-text does the same (`unicode::script_runs`): each unresolved stretch is shaped a script run at a time, the script set on the buffer and the rest of the stretch passed as HarfBuzz's pre- and post-context, as `ShaperHarfBuzz::shape` adds it. Each run keeps its script; letter spacing skips the cursive scripts by it (`Run::isCursiveScript`), not by the first character's range
+* Where it shows in Roboto: a pair across a script boundary is no longer kerned. `metrics` gains `scripts-adjacent`, Latin, Greek and Cyrillic letters side by side: flutter_tester gives 118.604 wide, fl-text 113.019 before and 118.604 after; 13 lines differed, now all 766 match
+* Han, Hiragana and Katakana are runs apart, as the iterator has no Japanese merging

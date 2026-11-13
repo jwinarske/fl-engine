@@ -205,7 +205,7 @@ impl TextLine {
             let Some(run) = p.runs.get(c.run_index) else {
                 continue;
             };
-            if !run.is_placeholder() && !run.is_cursive_script(&p.text) {
+            if !run.is_placeholder() && !run.is_cursive_script() {
                 line.shift += c.half_letter_spacing;
                 break;
             }
@@ -476,7 +476,8 @@ fn shape_ellipsis(p: &Paragraph, li: usize, ellipsis: &str, ci: usize) -> Run {
         }
     }
     let make = |tf: Typeface| -> Run {
-        let s = shape::shape(&tf, style.font_size, ellipsis, false, &style.locale, &[]);
+        let seg = shape::Segment::alone(ellipsis, false);
+        let s = shape::shape(&tf, style.font_size, &seg, &style.locale, &[]);
         let n = s.glyphs.len();
         let mut r = Run::new(
             Some(tf),
@@ -500,6 +501,7 @@ fn shape_ellipsis(p: &Paragraph, li: usize, ellipsis: &str, ci: usize) -> Run {
             r.offsets[i] = s.offsets[i];
         }
         r.ellipsis = true;
+        r.script = seg.script;
         r
     };
     let variations = style.variations();
