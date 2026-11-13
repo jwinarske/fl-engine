@@ -67,7 +67,7 @@ Flutter use, not yet from this embedder running.
 | Kernel consumable? | **Yes.** `dart compile kernel` links the platform by default; `Dart_CreateIsolateGroupFromKernel(app.dill)` then `Dart_LoadScriptFromKernel(app.dill)` is `dartvm`'s own fallback path, and is what `isolate_from_kernel` does. Verify at first run. |
 | Snapshot blobs | `Dart_Initialize` takes none. JIT from kernel needs none. A core snapshot (`gen_snapshot --snapshot_kind=core`) is an optional startup optimization, declined for M1. |
 | `print()` | Implemented as `dartutils.cc` does it, via `dart:_builtin`'s `_getPrintClosure` and a Rust `Builtin_PrintString`. Verify at first run that `dart:_builtin` is present in AOT snapshots; the fallback is an entry-point tear-off from the program's own root library. Microtask hooks (`_setScheduleImmediateClosure`, `_setupHooks`) are installed too. `entropy_source` is provided (without it `Random.secure()` throws). Null file callbacks are safe. |
-| Symbol visibility | `DynamicLibrary.process()` is `dlsym(RTLD_DEFAULT)` on every target. `-rdynamic` plus a `#[used]` table keeping the exports. Verified: FFI test passes on x86_64 native, aarch64 and riscv64 under qemu. Boards still to confirm. |
+| Symbol visibility | `DynamicLibrary.process()` is `dlsym(RTLD_DEFAULT)` on every target. `-rdynamic` plus a `#[used]` table keeping the exports; since 2026-11-13 `--export-dynamic-symbol=fl_dart_*` in place of `-rdynamic` (below). Verified: FFI test passes on x86_64 native, aarch64 and riscv64 under qemu. Boards still to confirm. |
 | Isolate flags | `Dart_IsolateFlagsInitialize` defaults are right. `null_safety` is forced on and ignored; AOT snapshots override group flags. Flutter sets only `snapshot_is_dontneed_safe`, an mmap optimization. |
 | AOT cross-targeting | `dart compile aot-snapshot --target-os linux --target-arch arm64|riscv64` works and downloads the cross `gen_snapshot` from dart-archive (tested in this container). Output is an `ELF DYN` with no `DT_NEEDED`; glibc `dlopen` loads it. Its features string is `product ... no-compressed-pointers`. |
 
@@ -325,3 +325,8 @@ Found on the way:
 * `new_finalizable` had no test. `tests/finalizer.rs`: 100 peers, each dropped once by isolate shutdown, none again at VM drop. Also in the sanitizer lanes
 * The brief's `FinalizableHandle<T>` is not a value: the API keeps the handle and promises the peer's lifetime
 
+## Follow-up: the executable's exports (2026-11-13)
+
+* `-rdynamic` exported every global symbol of the executable, and the linker's gc-sections keeps an exported symbol and what it reaches: every library's public functions stayed in, used or not. Found when icu_segmenter's unused constructors kept its Chinese and Japanese dictionary and LSTM models in fl-dart
+* fl-dart now exports the `fl_dart_*` FFI functions alone (`-Wl,--export-dynamic-symbol=fl_dart_*`, GNU ld 2.35 and lld): 4 exported symbols. The stripped x86_64 release binary 17.9 MB to 11.1 MB; aarch64 10.2 MB
+* `ffi_crossings_both_directions` and the rest of the L2 suite pass in AOT and JIT, the app lane's 26 in both; on the Pi 5 the aarch64 build runs `ffi.dart` (`add=42`, `len=11`, `port=from rust,7`) and the text, counter and material apps with the same PNGs as before
