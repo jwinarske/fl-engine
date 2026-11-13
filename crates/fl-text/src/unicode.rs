@@ -7,9 +7,11 @@
 //! text. Line breaks are UAX #14 (unicode-linebreak), graphemes and words
 //! UAX #29 (unicode-segmentation), each with the tailoring Flutter's ICU
 //! data carries from Chromium: lines as CSS `line-break: normal`, words
-//! broken at full stops between letters. Not yet: ICU's dictionaries for
-//! Thai, Lao, Khmer and Burmese, which break words and lines inside a run
-//! of those scripts.
+//! broken at full stops between letters. Inside a run of Thai, Lao,
+//! Khmer or Burmese (the Complex_Context class) words and lines break
+//! where ICU's dictionaries put a word boundary (icu_segmenter, the
+//! `dictionary` feature), as ICU's rule-based iterators hand such a run to
+//! their dictionary engines.
 
 use std::borrow::Cow;
 
@@ -125,6 +127,14 @@ pub(crate) fn code_unit_flags(text: &mut String) -> Vec<u16> {
             flag::SOFT_LINE_BREAK_BEFORE
         };
     }
+    for run in complex_runs(text) {
+        for f in &mut flags[run.start + 1..run.end] {
+            *f &= !flag::SOFT_LINE_BREAK_BEFORE;
+        }
+        for pos in dictionary_breaks(&text[run.clone()]) {
+            flags[run.start + pos] |= flag::SOFT_LINE_BREAK_BEFORE;
+        }
+    }
     for (pos, _) in text.grapheme_indices(true) {
         flags[pos] |= flag::GRAPHEME_START;
     }
@@ -222,7 +232,88 @@ pub(crate) fn word_boundaries(text: &str) -> Vec<usize> {
         .map(|(i, _)| i)
         .collect();
     v.push(text.len());
+    let runs = complex_runs(text);
+    if runs.is_empty() {
+        return v;
+    }
+    // ICU's word rules take a Complex_Context letter as ALetter, so a run
+    // is one word with the letters and digits it touches; its dictionary
+    // engine then divides the run alone.
+    for run in runs {
+        let before = text[..run.start].graphemes(true).next_back();
+        let after = text[run.end..].chars().next();
+        let joins_before = before
+            .and_then(|g| g.chars().next())
+            .is_some_and(|c| joins_a_letter(c, true));
+        let joins_after = after.is_some_and(|c| joins_a_letter(c, false));
+        v.retain(|&b| {
+            !(b > run.start && b < run.end
+                || b == run.start && joins_before
+                || b == run.end && joins_after)
+        });
+        v.extend(
+            dictionary_breaks(&text[run.clone()])
+                .into_iter()
+                .map(|b| run.start + b),
+        );
+    }
+    v.sort_unstable();
+    v.dedup();
     v
+}
+
+/// Whether UAX #29 keeps `c` and a letter together, `c` before the letter
+/// or after it: a letter, a digit or a connector (WB5, WB9, WB10, WB13a,
+/// WB13b), as ICU's rules join them to a Complex_Context letter.
+fn joins_a_letter(c: char, before: bool) -> bool {
+    let mut s = String::with_capacity(5);
+    if before {
+        s.push(c);
+        s.push('a');
+    } else {
+        s.push('a');
+        s.push(c);
+    }
+    s.split_word_bounds().count() == 1
+}
+
+/// The maximal runs of Complex_Context characters (line-break class SA:
+/// Thai, Lao, Khmer, Burmese and their kin), letters and marks, in bytes.
+fn complex_runs(text: &str) -> Vec<std::ops::Range<usize>> {
+    let mut out: Vec<std::ops::Range<usize>> = Vec::new();
+    for (i, c) in text.char_indices() {
+        if unicode_linebreak::break_property(c as u32)
+            != unicode_linebreak::BreakClass::ComplexContext
+        {
+            continue;
+        }
+        let end = i + c.len_utf8();
+        match out.last_mut() {
+            Some(r) if r.end == i => r.end = end,
+            _ => out.push(i..end),
+        }
+    }
+    out
+}
+
+/// Where ICU's dictionaries break `run`, a run of Complex_Context text:
+/// the boundaries inside it, in bytes. icu_segmenter's line segmenter
+/// with its dictionaries, which carry no Chinese or Japanese one: a
+/// dictionary word is where both a word and a line may break.
+#[cfg(feature = "dictionary")]
+fn dictionary_breaks(run: &str) -> Vec<usize> {
+    use icu_segmenter::options::LineBreakOptions;
+    use icu_segmenter::LineSegmenter;
+    LineSegmenter::new_dictionary(LineBreakOptions::default())
+        .segment_str(run)
+        .filter(|&b| b > 0 && b < run.len())
+        .collect()
+}
+
+/// Without the dictionaries a run does not break inside.
+#[cfg(not(feature = "dictionary"))]
+fn dictionary_breaks(_run: &str) -> Vec<usize> {
+    Vec::new()
 }
 
 /// `text` with each character in `swap` replaced by its stand-in: one of
@@ -426,6 +517,31 @@ mod tests {
             let f = code_unit_flags(&mut s);
             assert!(f[3] & flag::SOFT_LINE_BREAK_BEFORE != 0, "{t}");
         }
+    }
+
+    /// Thai as ICU's dictionary divides it, and as one word with the Latin
+    /// letters it touches, as ICU's word rules join them.
+    #[cfg(feature = "dictionary")]
+    #[test]
+    fn thai_breaks_at_dictionary_words() {
+        // "The Thai language writes", three dictionary words.
+        let t =
+            "\u{E20}\u{E32}\u{E29}\u{E32}\u{E44}\u{E17}\u{E22}\u{E40}\u{E02}\u{E35}\u{E22}\u{E19}";
+        let b = word_boundaries(t);
+        let chars = |i: usize| t[..i].chars().count();
+        assert_eq!(
+            b.iter().map(|&i| chars(i)).collect::<Vec<_>>(),
+            [0, 4, 7, 12]
+        );
+        let mut s = String::from(t);
+        let f = code_unit_flags(&mut s);
+        let lines: Vec<usize> = (1..t.len())
+            .filter(|&i| f[i] & flag::SOFT_LINE_BREAK_BEFORE != 0)
+            .map(chars)
+            .collect();
+        assert_eq!(lines, [4, 7]);
+        let mixed = "abc\u{E44}\u{E17}\u{E22}def ok";
+        assert_eq!(word_boundaries(mixed), [0, 15, 16, 18]);
     }
 
     #[test]

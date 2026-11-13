@@ -227,14 +227,16 @@ fn metrics_match_the_stock_engine() {
     );
 }
 
-/// The cases ICU breaks by dictionary (Thai, Lao, Khmer, Burmese), which
-/// fl-text does not yet: their lines are allowed to differ, and must, so
-/// that closing the gap updates this list.
-const BREAKS_BY_DICTIONARY: &[&str] = &["thai", "lao", "khmer", "burmese", "mixed"];
+/// The cases whose dictionary words fl-text's dictionaries (icu_segmenter)
+/// find otherwise than Flutter's ICU: Khmer, one boundary of four, where
+/// ICU's Khmer engine is Chromium-patched and each release's dictionary
+/// differs. Their lines are allowed to differ, and must, so that closing
+/// the gap updates this list.
+const BREAKS_BY_DICTIONARY: &[&str] = &["khmer"];
 
 /// Word boundaries and line breaks as the stock engine's ICU gives them,
 /// with Chromium's tailorings (test/breaks.txt, from flutter_tester with
-/// Impeller): every line equal, but for the dictionary cases.
+/// Impeller): every line equal, but for the Khmer case.
 #[test]
 #[ignore = "app lane: needs FLUTTER_ROOT"]
 fn breaks_match_the_stock_engine() {
