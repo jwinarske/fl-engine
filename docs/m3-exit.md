@@ -46,7 +46,7 @@ Criterion 6: `Glyphs` and `GpuImages` each carry `PhantomData<*const ()>`, so ne
 ## Open, carried forward
 
 * Closed 2026-11-11 (m3-status.md, first-use compiles): the text app's slowest frame is the driver compiling shaders in a frame with Mesa's cache empty, not the font scan; `gif_advances_at_its_durations` stalled for the same reason and now runs once untimed first; the second replay measured at 0.03 ms a frame on the Pi 5 and left
-* First frames on a board with an empty shader cache: 3.6 s on Pi 5 V3D, 1.8 s a sample count. `fl-dart prepare`, run once when the image is built or on first boot, takes them out of every app's first frames (51 ms); the compile itself is not shortened
+* First frames on a board with an empty shader cache: 3.6 s on Pi 5 V3D before emblema#247, 0.2 to 0.55 s for a whole 5-frame run since; RK3566 (Mali-G52, GLES) 6.3 to 8.7 s, 1.1 to 2.2 s since (m3-status.md, shader variants). `fl-dart prepare` (0.18 s on the Pi) is optional on either board
 * Boards: Pi 5 measured (m3-status.md); counter's GPU draw 9.4 ms against emblema's 5.19 ms, 3.8 ms since rounded rectangles with no radii are drawn as rectangles, as the engine's DisplayList does. A rounded rectangle that is one is tessellated in a multisampled pass since emblema#246: a rounded-corner screen 13.7 ms to 8.9. VisionFive 2 not yet
 * Not yet in M3's text (m3-status.md, stage 4): script itemization of mixed-script blocks; ICU's line-break and word tailorings
 

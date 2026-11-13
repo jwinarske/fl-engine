@@ -101,9 +101,10 @@ impl Offscreen {
 
     /// Builds the pipelines a first frame needs, ahead of it: source-over
     /// at one sample and at the canvas's four, with and without a clip.
-    /// Otherwise the first frame builds them, and on a Pi 5 with Mesa's
-    /// shader cache empty that is 1.8 s a sample count inside it
-    /// (m3-status.md, first-use compiles). For `fl-dart prepare`, which
+    /// Otherwise the first frame builds them: on a Pi 5 with Mesa's shader
+    /// cache empty 57 ms a sample count since emblema#247, which compiles
+    /// the core variant of its shader, 1.8 s before (m3-status.md,
+    /// first-use compiles). For `fl-dart prepare`, which
     /// fills the driver's cache ahead of any app; not called at the raster
     /// thread's start, where it only delayed the first frames. Drawing
     /// without it is correct.

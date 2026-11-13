@@ -345,3 +345,21 @@ The second replay: text_churn on the Pi, the first replay with its new glyphs ra
 * Counter 9.36 ms to 3.83, the same pixels; text 4.6 and text_churn 3.8 unchanged. Every golden's distance unchanged to the thousandth
 * A rounded rectangle that is one cost as much, about 7.5 ms for one the size of the frame at four samples on V3D: emblema evaluated it in the fragment stage even in a pass already multisampled. emblema#246 tessellates the fill once the pass is multisampled, as the engine does without `--impeller-use-sdfs`; repinned to its merge
 * Measured on the Pi at 1920x1080, three runs a side: a screen of a full-height `DecoratedBox` panel with radius 28, twelve `Material` cards and three pill buttons, 13.7 ms GPU draw to 8.9, 172 pixels differing by at most 4 levels; the `material` app 3.68 ms either way, the same pixels (its card is not drawn as a rounded rectangle)
+
+## Follow-ups: shader variants (2026-11-13)
+
+* The 1.8 s a sample count on V3D (first-use compiles, above) was one shader: emblema's `solid.wgsl` fragment stage, 3376 instructions, every material's arm in one switch. The compiler tried four register allocations, three failed or spilled, before a two-thread one fit. Images and meshes drove the spills; the color filter and tint blend added to them
+* emblema#247 compiles that shader in 20 variants, each with only the arms, filter and blend a draw needs, chosen per draw and built on first use. `prepare_pipelines` builds only the core variant: solid colors, gradients and glyphs, 743 instructions on V3D; repinned to its merge
+* Pi 5, Mesa's cache disabled, a whole `run-app --frames 5` at 1920x1080, before and after, the same PNGs:
+
+| app | before | after |
+|---|---|---|
+| text | 3.71 s | 0.55 s |
+| counter | 1.95 s | 0.31 s |
+| material | 1.94 s | 0.20 s |
+| rounded | 1.95 s | 0.20 s |
+| `fl-dart prepare` | 3.6 s | 0.18 s |
+
+* RK3566 (Radxa Zero 3, Mali-G52, Debian 12): the same four apps 6.3 to 8.7 s before, 1.1 to 2.2 s after, through GLES; PanVK fails at the first draw on that board's kernel, as emblema's on-a-board.md records
+* Steady state, emblema's bench on the Pi: Vulkan 12 to 36% faster a row, the mixed frame 14.04 ms to 9.72; GLES 34 to 62%, 19.70 ms to 9.49
+* `fl-dart prepare` stays, now optional: an app's first frames pay a fraction of a second without it
