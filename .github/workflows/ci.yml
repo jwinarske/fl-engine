@@ -146,10 +146,11 @@ jobs:
       # with Impeller on lavapipe: flutter test compares exactly, so a pin
       # bump that changes them fails here, not as drift in fl-engine's
       # tolerance. Impeller, not Skia: fl-engine matches Impeller. metrics'
-      # golden is its numbers, test/metrics.txt.
+      # golden is its numbers, test/metrics.txt, and breaks' its word and line
+      # breaks, test/breaks.txt.
       - name: Goldens
         run: |
-          for app in shapes material natives images shadows metrics text counter gif gradients; do
+          for app in shapes material natives images shadows metrics breaks text counter gif gradients; do
             (cd "apps/$app" && "$FLUTTER_ROOT/bin/flutter" test --enable-impeller)
           done
       - name: Apps

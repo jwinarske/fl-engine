@@ -5,8 +5,13 @@
 //! The character classes are ICU's: `u_isspace`, `u_isWhitespace`,
 //! `u_iscntrl` and the Ideographic property, for the ranges that occur in
 //! text. Line breaks are UAX #14 (unicode-linebreak), graphemes and words
-//! UAX #29 (unicode-segmentation); ICU tailors both slightly, which shows
-//! only at the edges of those algorithms.
+//! UAX #29 (unicode-segmentation), each with the tailoring Flutter's ICU
+//! data carries from Chromium: lines as CSS `line-break: normal`, words
+//! broken at full stops between letters. Not yet: ICU's dictionaries for
+//! Thai, Lao, Khmer and Burmese, which break words and lines inside a run
+//! of those scripts.
+
+use std::borrow::Cow;
 
 use unicode_bidi::{BidiInfo, Level};
 use unicode_segmentation::UnicodeSegmentation;
@@ -111,7 +116,7 @@ pub(crate) fn is_hard_break(c: char) -> bool {
 /// the end.
 pub(crate) fn code_unit_flags(text: &mut String) -> Vec<u16> {
     let mut flags = vec![0u16; text.len() + 1];
-    for (pos, op) in unicode_linebreak::linebreaks(text) {
+    for (pos, op) in unicode_linebreak::linebreaks(&as_line_normal(text)) {
         let hard = op == unicode_linebreak::BreakOpportunity::Mandatory
             && text[..pos].chars().next_back().is_some_and(is_hard_break);
         flags[pos] |= if hard {
@@ -209,11 +214,62 @@ pub(crate) fn reorder_visual(levels: &[u8]) -> Vec<usize> {
     BidiInfo::reorder_visual(&levels)
 }
 
-/// `getWords`: the word boundaries, UAX #29, in UTF-8 bytes.
+/// `getWords`: the word boundaries, UAX #29 as Chromium's ICU tailors
+/// it ([`as_chromium_words`]), in UTF-8 bytes.
 pub(crate) fn word_boundaries(text: &str) -> Vec<usize> {
-    let mut v: Vec<usize> = text.split_word_bound_indices().map(|(i, _)| i).collect();
+    let mut v: Vec<usize> = as_chromium_words(text)
+        .split_word_bound_indices()
+        .map(|(i, _)| i)
+        .collect();
     v.push(text.len());
     v
+}
+
+/// `text` with each character in `swap` replaced by its stand-in: one of
+/// the class the tailoring gives it and of the same UTF-8 length, so every
+/// boundary falls at the same byte. Borrowed when nothing is swapped.
+fn swapped(text: &str, swap: impl Fn(char) -> Option<char>) -> Cow<'_, str> {
+    if !text.chars().any(|c| swap(c).is_some()) {
+        return Cow::Borrowed(text);
+    }
+    Cow::Owned(
+        text.chars()
+            .map(|c| match swap(c) {
+                Some(s) if s.len_utf8() == c.len_utf8() => s,
+                _ => c,
+            })
+            .collect(),
+    )
+}
+
+/// The line-break classes of ICU's root line iterator as Flutter ships it,
+/// `line_normal` (Chromium's line_normal.patch): CSS `line-break: normal`,
+/// where the conditional Japanese starters (small kana, the prolonged
+/// sound mark) are ideographs, so a line may start with one. UAX #14 as
+/// written makes them nonstarters, as `line-break: strict` does. Each is
+/// three bytes, as U+4E00 is.
+fn as_line_normal(text: &str) -> Cow<'_, str> {
+    swapped(text, |c| {
+        (unicode_linebreak::break_property(c as u32)
+            == unicode_linebreak::BreakClass::ConditionalJapaneseStarter)
+            .then_some('\u{4E00}')
+    })
+}
+
+/// The word-break classes of ICU's word iterator as Flutter ships it
+/// (Chromium's wordbrk.patch): the full stops are MidNum, not MidNumLet,
+/// so a hostname or "e.g." breaks at its dots while "3.14" holds, and the
+/// colons are not MidLetter. The stand-ins: the commas, MidNum, and
+/// characters of no word-break class.
+fn as_chromium_words(text: &str) -> Cow<'_, str> {
+    swapped(text, |c| match c {
+        '.' => Some(','),
+        '\u{FF0E}' => Some('\u{FF0C}'),
+        ':' => Some('!'),
+        '\u{FE55}' => Some('\u{FE56}'),
+        '\u{FF1A}' => Some('\u{FF01}'),
+        _ => None,
+    })
 }
 
 /// The UTF-8 index of each UTF-16 index and one past the end, and the
@@ -342,6 +398,34 @@ mod tests {
             ]
         );
         assert!(script_runs("").is_empty());
+    }
+
+    #[test]
+    fn words_break_at_full_stops_between_letters_as_chromium_tailors() {
+        let words = |t: &str| {
+            let b = word_boundaries(t);
+            b.windows(2)
+                .map(|w| t[w[0]..w[1]].to_owned())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(words("e.g."), ["e", ".", "g", "."]);
+        assert_eq!(words("example.com"), ["example", ".", "com"]);
+        // Between digits a full stop is MidNum, so a number holds.
+        assert_eq!(words("3.14"), ["3.14"]);
+        assert_eq!(words("a:b"), ["a", ":", "b"]);
+        // Other MidNumLet and MidLetter characters still join.
+        assert_eq!(words("don't"), ["don't"]);
+    }
+
+    #[test]
+    fn lines_may_start_with_small_kana_as_css_normal_allows() {
+        // \u{30C3} (small tsu) and \u{30FC} (prolonged sound mark) are
+        // conditional Japanese starters.
+        for t in ["\u{30AB}\u{30C3}\u{30C8}", "\u{30CA}\u{30FC}"] {
+            let mut s = String::from(t);
+            let f = code_unit_flags(&mut s);
+            assert!(f[3] & flag::SOFT_LINE_BREAK_BEFORE != 0, "{t}");
+        }
     }
 
     #[test]
