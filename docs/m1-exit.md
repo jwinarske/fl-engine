@@ -44,7 +44,7 @@ Criterion 8, no C++ toolchain: bare `ubuntu:24.04`, gcc as rustc's linker driver
 | `dart compile kernel` consumable directly | Yes. `--link-platform` defaults on; `Dart_CreateIsolateGroupFromKernel` takes the dill as is | L2 jit lane |
 | JIT VM snapshot blobs | None. Kernel-only JIT; 3.13 has no `vm_snapshot_*` in `Dart_InitializeParams`. AOT is one data/text pair from the program | L2 jit and aot lanes |
 | print hook, IO and entropy callbacks | `dart:_builtin` `_getPrintClosure`, or `dart:ui` `@Native` `Logger_PrintString` via `Dart_SetFfiNativeResolver` (libapp.so). IO through the dart:io shim, `tools/dart-prebuilt/fl_dart/` | L2 hello; libapp.so run, m1-status.md |
-| Symbol visibility for `DynamicLibrary.process()` | `-rdynamic` (fl-dart-cli build.rs) plus a `#[used]` table so the exports survive gc-sections | `ffi_crossings_both_directions` on x86_64, aarch64, riscv64 (qemu) |
+| Symbol visibility for `DynamicLibrary.process()` | `-rdynamic` (fl-dart-cli build.rs) plus a `#[used]` table so the exports survive gc-sections; since 2026-11-13 `--export-dynamic-symbol=fl_dart_*`, the FFI functions alone (m1-status.md) | `ffi_crossings_both_directions` on x86_64, aarch64, riscv64 (qemu) |
 | `IsolateConfig` flags needed | `Dart_IsolateFlagsInitialize` defaults. VM side: `Dart_SetVMFlags` once, even empty; `--precompilation` for AOT | L2 aot lane; m1-status.md |
 | AOT cross-targeting | `dart compile aot-snapshot --target-os linux --target-arch arm64\|riscv64` directly; the SDK fetches the cross gen_snapshot. The pipeline does not drive gen_snapshot | cross.yml |
 

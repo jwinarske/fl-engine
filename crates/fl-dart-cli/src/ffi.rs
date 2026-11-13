@@ -136,8 +136,8 @@ pub extern "C" fn fl_dart_post_burst(port: i64, threads: i64, each: i64) -> bool
 }
 
 /// Referenced from `main` so the linker keeps the functions above: an
-/// executable's unreferenced functions are garbage-collected before
-/// `-rdynamic` gets to export them.
+/// executable's unreferenced functions are garbage-collected before the
+/// linker gets to export them (build.rs).
 type Exports = (
     extern "C" fn(i64, i64) -> i64,
     unsafe extern "C" fn(*const c_char) -> i64,
