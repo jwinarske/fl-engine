@@ -7,7 +7,9 @@
 //! This is the one place shaping happens, so changing shapers is one file
 //! (brief M3 §15).
 
-use harfrust::{Buffer, ClusterLevel, Direction, Feature, Language, ShapeOptions, ShaperFont, Tag};
+use harfrust::{
+    Buffer, ClusterLevel, Direction, Feature, Language, Script, ShapeOptions, ShaperFont, Tag,
+};
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -57,6 +59,53 @@ pub(crate) const MAX_SHAPE_BYTES: usize = 32 * 1024;
 /// The shaped runs kept (brief M3 §15): past it the cache starts over.
 const CACHE_ENTRIES: usize = 4096;
 
+/// The characters of context HarfBuzz keeps on each side of the text
+/// (`HB_BUFFER_CONTEXT_LENGTH`): more changes nothing.
+const CONTEXT_CHARS: usize = 5;
+
+/// One script run to shape, as SkShaper hands HarfBuzz one
+/// (`ShaperHarfBuzz::shape`): its text, the text around it within what
+/// is being shaped as context, its script, and its direction.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Segment<'a> {
+    pub text: &'a str,
+    /// The text before, of which the last [`CONTEXT_CHARS`] count.
+    pub pre: &'a str,
+    /// The text after, of which the first [`CONTEXT_CHARS`] count.
+    pub post: &'a str,
+    /// ISO 15924, as the script iterator gave it; `Zyyy` for text of no
+    /// one script.
+    pub script: [u8; 4],
+    pub rtl: bool,
+}
+
+impl<'a> Segment<'a> {
+    /// `text` alone, in its first script run's script.
+    pub fn alone(text: &'a str, rtl: bool) -> Segment<'a> {
+        Segment {
+            text,
+            pre: "",
+            post: "",
+            script: crate::unicode::script_runs(text)
+                .first()
+                .map_or(*b"Zyyy", |(_, s)| *s),
+            rtl,
+        }
+    }
+}
+
+/// The last `n` characters of `s`.
+fn last_chars(s: &str, n: usize) -> &str {
+    let start = s.char_indices().rev().nth(n - 1).map_or(0, |(i, _)| i);
+    &s[start..]
+}
+
+/// The first `n` characters of `s`.
+fn first_chars(s: &str, n: usize) -> &str {
+    let end = s.char_indices().nth(n).map_or(s.len(), |(i, _)| i);
+    &s[..end]
+}
+
 /// What a shaping depends on.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct Key {
@@ -64,6 +113,9 @@ struct Key {
     variations: Vec<([u8; 4], u32)>,
     size: u32,
     text: String,
+    pre: String,
+    post: String,
+    script: [u8; 4],
     rtl: bool,
     locale: String,
     features: Vec<([u8; 4], u32, usize, usize)>,
@@ -78,18 +130,22 @@ pub fn clear_shaped_runs() {
     *CACHE.lock().unwrap_or_else(|e| e.into_inner()) = None;
 }
 
-/// `text` (UTF-8) shaped in `tf` at `size`, right to left if `rtl`, with
-/// `features` (tag, value, and the byte range within `text`). Cached by
-/// all of those; a panic in the shaper is the text unshaped, so
-/// unresolved.
+/// `seg` shaped in `tf` at `size`, with `features` (tag, value, and the
+/// byte range within `seg.text`). Cached by all of those; a panic in the
+/// shaper is the text unshaped, so unresolved.
 pub(crate) fn shape(
     tf: &Typeface,
     size: f32,
-    text: &str,
-    rtl: bool,
+    seg: &Segment,
     locale: &str,
     features: &[([u8; 4], u32, std::ops::Range<usize>)],
 ) -> Arc<Shaped> {
+    let seg = Segment {
+        pre: last_chars(seg.pre, CONTEXT_CHARS),
+        post: first_chars(seg.post, CONTEXT_CHARS),
+        ..*seg
+    };
+    let (text, rtl) = (seg.text, seg.rtl);
     let key = Key {
         face: tf.face.id,
         variations: tf
@@ -99,6 +155,9 @@ pub(crate) fn shape(
             .collect(),
         size: size.to_bits(),
         text: text.to_owned(),
+        pre: seg.pre.to_owned(),
+        post: seg.post.to_owned(),
+        script: seg.script,
         rtl,
         locale: locale.to_owned(),
         features: features
@@ -116,7 +175,7 @@ pub(crate) fn shape(
     }
     let shaped = Arc::new(
         std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            shape_pieces(tf, size, text, rtl, locale, features)
+            shape_pieces(tf, size, &seg, locale, features)
         }))
         .unwrap_or_else(|_| empty(text, rtl)),
     );
@@ -155,14 +214,14 @@ pub(crate) fn pieces(text: &str) -> Vec<std::ops::Range<usize>> {
 fn shape_pieces(
     tf: &Typeface,
     size: f32,
-    text: &str,
-    rtl: bool,
+    seg: &Segment,
     locale: &str,
     features: &[([u8; 4], u32, std::ops::Range<usize>)],
 ) -> Shaped {
+    let (text, rtl) = (seg.text, seg.rtl);
     let ranges = pieces(text);
     if ranges.len() == 1 {
-        return shape_one(tf, size, text, rtl, locale, features);
+        return shape_one(tf, size, seg, locale, features);
     }
     let mut parts: Vec<(usize, Shaped)> = ranges
         .into_iter()
@@ -178,10 +237,27 @@ fn shape_pieces(
                     )
                 })
                 .collect();
-            (
-                r.start,
-                shape_one(tf, size, &text[r.clone()], rtl, locale, &f),
-            )
+            // Each piece's context is the text beside it, the
+            // segment's own past the ends.
+            let before = &text[..r.start];
+            let after = &text[r.end..];
+            let pre = if before.chars().count() >= CONTEXT_CHARS {
+                last_chars(before, CONTEXT_CHARS).to_owned()
+            } else {
+                format!("{}{before}", seg.pre)
+            };
+            let post = if after.chars().count() >= CONTEXT_CHARS {
+                first_chars(after, CONTEXT_CHARS).to_owned()
+            } else {
+                format!("{after}{}", seg.post)
+            };
+            let piece = Segment {
+                text: &text[r.clone()],
+                pre: &pre,
+                post: &post,
+                ..*seg
+            };
+            (r.start, shape_one(tf, size, &piece, locale, &f))
         })
         .collect();
     if rtl {
@@ -242,13 +318,16 @@ fn feature(tag: &[u8; 4], value: u32, r: &std::ops::Range<usize>, len: usize) ->
 fn shape_one(
     tf: &Typeface,
     size: f32,
-    text: &str,
-    rtl: bool,
+    seg: &Segment,
     locale: &str,
     features: &[([u8; 4], u32, std::ops::Range<usize>)],
 ) -> Shaped {
+    let (text, rtl) = (seg.text, seg.rtl);
     let mut buffer = Buffer::new();
+    buffer.set_pre_context(seg.pre);
     buffer.push_str(text);
+    buffer.set_post_context(seg.post);
+    buffer.set_script(Script::from_iso15924_tag(Tag::new(&seg.script)));
     buffer.set_direction(if rtl {
         Direction::RightToLeft
     } else {
@@ -387,7 +466,8 @@ mod tests {
         let face = crate::font::Face::new(Arc::new(data), 0, "Roboto").unwrap();
         let tf = Typeface::new(&face, &[]);
         for i in 0..CACHE_ENTRIES + 10 {
-            shape(&tf, 14.0, &format!("text {i}"), false, "", &[]);
+            let t = format!("text {i}");
+            shape(&tf, 14.0, &Segment::alone(&t, false), "", &[]);
             let n = CACHE.lock().unwrap().as_ref().map_or(0, HashMap::len);
             assert!(n <= CACHE_ENTRIES);
         }

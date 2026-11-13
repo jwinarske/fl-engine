@@ -237,6 +237,40 @@ pub(crate) fn utf_maps(text: &str) -> (Vec<usize>, Vec<usize>) {
     (utf8_of_16, utf16_of_8)
 }
 
+/// The script runs of `text`, as SkShaper's HarfBuzz script iterator
+/// (`SkUnicodeHbScriptRunIterator`) gives them: a run takes the script of
+/// its first character of a real script, Common and Inherited characters
+/// joining the run they are in; a run of only those is Common. Each is
+/// its byte range and ISO 15924 tag.
+pub(crate) fn script_runs(text: &str) -> Vec<(std::ops::Range<usize>, [u8; 4])> {
+    use harfrust::Script;
+    let script = |c: char| harfrust::unicode::script(c as u32);
+    let tag = |s: Script| s.tag().to_be_bytes();
+    let mut out = Vec::new();
+    let mut chars = text.char_indices().peekable();
+    while let Some((start, c)) = chars.next() {
+        let mut current = script(c);
+        let mut end = start + c.len_utf8();
+        while let Some(&(i, c)) = chars.peek() {
+            let s = script(c);
+            if s != current {
+                if current == Script::INHERITED || current == Script::COMMON {
+                    current = s;
+                } else if s != Script::INHERITED && s != Script::COMMON {
+                    break;
+                }
+            }
+            end = i + c.len_utf8();
+            chars.next();
+        }
+        if current == Script::INHERITED {
+            current = Script::COMMON;
+        }
+        out.push((start..end, tag(current)));
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::unwrap_used)]
@@ -275,6 +309,39 @@ mod tests {
         assert_eq!(r.len(), 2);
         assert_eq!((r[0].level, r[1].level), (0, 1));
         assert_eq!(r[1].end, "abc \u{5D0}\u{5D1}".len());
+    }
+
+    #[test]
+    fn script_runs_split_where_skshaper_splits() {
+        fn tags(t: &str) -> Vec<(&str, String)> {
+            script_runs(t)
+                .into_iter()
+                .map(|(r, s)| (&t[r], std::str::from_utf8(&s).unwrap().to_owned()))
+                .collect()
+        }
+        // Common text joins the run it is in; a run takes its first real
+        // script.
+        assert_eq!(
+            tags("(abc) 123 \u{65E5}\u{672C}!"),
+            [
+                ("(abc) 123 ", "Latn".to_owned()),
+                ("\u{65E5}\u{672C}!", "Hani".to_owned()),
+            ]
+        );
+        // Only Common, or a mark alone, is Common.
+        assert_eq!(tags("12 34"), [("12 34", "Zyyy".to_owned())]);
+        assert_eq!(tags("\u{301}"), [("\u{301}", "Zyyy".to_owned())]);
+        // A mark stays with its base; Kana and Han are runs apart, as the
+        // iterator has no Japanese merging.
+        assert_eq!(
+            tags("e\u{301}\u{30AB}\u{6F22}"),
+            [
+                ("e\u{301}", "Latn".to_owned()),
+                ("\u{30AB}", "Kana".to_owned()),
+                ("\u{6F22}", "Hani".to_owned()),
+            ]
+        );
+        assert!(script_runs("").is_empty());
     }
 
     #[test]

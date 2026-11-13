@@ -157,6 +157,9 @@ final List<Spec> specs = <Spec>[
   Spec('locale', 300, 'Hello world', textStyle: _ts(locale: const ui.Locale('en', 'US'))),
   Spec('accents', 300, 'Crème brûlée, é naïve'),
   Spec('greek-cyrillic', 300, 'Αθήνα Москва'),
+  // Latin, Greek and Cyrillic side by side: a run a script, so the pairs
+  // across a boundary are not kerned.
+  Spec('scripts-adjacent', 300, 'T\u0391 \u0422A \u0393a T\u043E P\u0410 F\u0391'),
   Spec(
     'mixed',
     300,

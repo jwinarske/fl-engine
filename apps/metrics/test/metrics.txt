@@ -671,6 +671,24 @@ greek-cyrillic lineBoundaries: 0:0-12 1:0-12 2:0-12 3:0-12 4:0-12 5:0-12 6:0-12 
 greek-cyrillic lineNumbers: 0:0 1:0 2:0 3:0 4:0 5:0 6:0 7:0 8:0 9:0 10:0 11:0 12:-
 greek-cyrillic glyphs: 0:0-1l(0.000,-0.406,9.133,16.000) 1:1-2l(9.133,-0.406,17.104,16.000) 2:2-3l(17.104,-0.406,25.033,16.000) 3:3-4l(25.033,-0.406,31.726,16.000) 4:4-5l(31.726,-0.406,39.635,16.000) 5:5-6l(39.635,-0.406,43.101,16.000) 6:6-7l(43.101,-0.406,55.323,16.000) 7:7-8l(55.323,-0.406,63.308,16.000) 8:8-9l(63.308,-0.406,70.636,16.000) 9:9-10l(70.636,-0.406,78.196,16.000) 10:10-11l(78.196,-0.406,86.194,16.000) 11:11-12l(86.194,-0.406,93.810,16.000) 12:none
 greek-cyrillic closest: 3-4
+scripts-adjacent: width=300.000 height=16.000 longest=118.604 min=17.965 max=118.604 alphabetic=12.988 ideographic=16.406 exceeded=false lines=1
+scripts-adjacent line 0: hard=true ascent=12.988 descent=3.418 unscaled=12.988 height=16.000 width=118.604 left=0.000 baseline=12.582
+scripts-adjacent lineAt 0: 12.582 118.604
+scripts-adjacent boxes tight: [0.000 -0.406 118.604 16.000 ltr]
+scripts-adjacent boxes max: [0.000 -0.406 118.604 16.000 ltr]
+scripts-adjacent boxes includeLineSpacingMiddle: [0.000 -0.406 118.604 16.000 ltr]
+scripts-adjacent boxes includeLineSpacingTop: [0.000 -0.406 118.604 16.000 ltr]
+scripts-adjacent boxes includeLineSpacingBottom: [0.000 -0.406 118.604 16.000 ltr]
+scripts-adjacent boxes strut: [0.000 -0.406 118.604 16.000 ltr]
+scripts-adjacent boxes max-width: [0.000 -0.406 118.604 16.000 ltr]
+scripts-adjacent boxes 2..15: [17.486 -0.406 101.732 16.000 ltr]
+scripts-adjacent placeholders: 
+scripts-adjacent positions: 0d 0d 0d 3d 9u 16d 17u
+scripts-adjacent words: 0:0-2 5:5-6 10:9-11 15:15-17
+scripts-adjacent lineBoundaries: 0:0-17 5:0-17 10:0-17 15:0-17
+scripts-adjacent lineNumbers: 0:0 5:0 10:0 15:0
+scripts-adjacent glyphs: 0:0-1l(0.000,-0.406,8.354,16.000) 5:5-6l(38.438,-0.406,41.904,16.000) 10:10-11l(68.852,-0.406,76.836,16.000) 15:15-16l(101.732,-0.406,109.471,16.000)
+scripts-adjacent closest: 4-5
 mixed: width=300.000 height=28.000 longest=134.099 min=33.574 max=134.099 alphabetic=22.266 ideographic=28.125 exceeded=false lines=1
 mixed line 0: hard=true ascent=22.266 descent=5.859 unscaled=22.266 height=28.000 width=134.099 left=0.000 baseline=22.141
 mixed lineAt 0: 22.141 134.099
