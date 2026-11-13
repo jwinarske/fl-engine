@@ -227,6 +227,55 @@ fn metrics_match_the_stock_engine() {
     );
 }
 
+/// The cases ICU breaks by dictionary (Thai, Lao, Khmer, Burmese), which
+/// fl-text does not yet: their lines are allowed to differ, and must, so
+/// that closing the gap updates this list.
+const BREAKS_BY_DICTIONARY: &[&str] = &["thai", "lao", "khmer", "burmese", "mixed"];
+
+/// Word boundaries and line breaks as the stock engine's ICU gives them,
+/// with Chromium's tailorings (test/breaks.txt, from flutter_tester with
+/// Impeller): every line equal, but for the dictionary cases.
+#[test]
+#[ignore = "app lane: needs FLUTTER_ROOT"]
+fn breaks_match_the_stock_engine() {
+    let app = build_app("breaks");
+    let o = common::fl_dart(&[
+        "run-app".as_ref(),
+        app.as_os_str(),
+        "200x100".as_ref(),
+        "--frames".as_ref(),
+        "1".as_ref(),
+    ]);
+    assert!(o.status.success(), "{o:?}");
+    let out = String::from_utf8_lossy(&o.stdout);
+    let ours: Vec<&str> = out.lines().filter(|l| !l.starts_with("frame ")).collect();
+    let expected = std::fs::read_to_string(repo().join("apps/breaks/test/breaks.txt")).unwrap();
+    let theirs: Vec<&str> = expected.lines().collect();
+    assert_eq!(ours.len(), theirs.len(), "{out}");
+    let mut bad = Vec::new();
+    let mut dictionary_same = Vec::new();
+    for (a, b) in ours.iter().zip(&theirs) {
+        let case = b.split(' ').next().unwrap_or("");
+        if BREAKS_BY_DICTIONARY.contains(&case) {
+            if a == b && b.contains(" words: ") {
+                dictionary_same.push(case);
+            }
+        } else if a != b {
+            bad.push(format!("  ours:   {a}\n  theirs: {b}"));
+        }
+    }
+    assert!(
+        bad.is_empty(),
+        "{} lines differ:\n{}",
+        bad.len(),
+        bad.join("\n")
+    );
+    assert!(
+        dictionary_same.is_empty(),
+        "now matching, take out of BREAKS_BY_DICTIONARY: {dictionary_same:?}"
+    );
+}
+
 /// Format drift (brief M3 §15): a paragraph style and text styles with
 /// every field set, as fl-text decoded them (`--styles`), against
 /// test/styles.txt. A Flutter release that moves a field of

@@ -116,7 +116,7 @@ Done: `metrics` matches flutter_tester with Impeller: 748 lines, every number eq
 Not yet:
 
 * Script itemization: a style block is shaped as one run, its script guessed from its text. Mixed-script blocks shape apart from SkShaper's. Done 2026-11-13 (follow-ups, script runs)
-* ICU's line-break and word tailorings: UAX #14 and #29 as written
+* ICU's line-break and word tailorings: UAX #14 and #29 as written. Done 2026-11-13 (follow-ups, ICU's tailorings); dictionary breaking still open
 * Soft hyphens are not rendered (Flutter does not ask)
 
 Found on the way:
@@ -370,3 +370,11 @@ The second replay: text_churn on the Pi, the first replay with its new glyphs ra
 * fl-text does the same (`unicode::script_runs`): each unresolved stretch is shaped a script run at a time, the script set on the buffer and the rest of the stretch passed as HarfBuzz's pre- and post-context, as `ShaperHarfBuzz::shape` adds it. Each run keeps its script; letter spacing skips the cursive scripts by it (`Run::isCursiveScript`), not by the first character's range
 * Where it shows in Roboto: a pair across a script boundary is no longer kerned. `metrics` gains `scripts-adjacent`, Latin, Greek and Cyrillic letters side by side: flutter_tester gives 118.604 wide, fl-text 113.019 before and 118.604 after; 13 lines differed, now all 766 match
 * Han, Hiragana and Katakana are runs apart, as the iterator has no Japanese merging
+
+## Follow-ups: ICU's tailorings (2026-11-13)
+
+* Flutter's ICU (78.2, `icudtl.dat`) carries Chromium's break data: root line breaking is `line_normal` (line_normal.patch), CSS `line-break: normal`, where the conditional Japanese starters (small kana, U+30FC) are ideographs; word breaking moves the full stops from MidNumLet to MidNum and the colons out of MidLetter (wordbrk.patch). No CJ dictionary for words; dictionaries for Thai, Lao, Khmer and Burmese, LSTM models removed
+* fl-text applies both (`as_line_normal`, `as_chromium_words`): each tailored character is swapped, for the UAX crates only, for one of its new class and the same UTF-8 length, so every boundary falls at the same byte
+* `apps/breaks`: 27 cases, word boundaries at every offset and where the first line ends at the width of each prefix, run under flutter_tester (test/breaks.txt) and fl-dart. Before, 6 of 54 lines differed outside the dictionary scripts: "e.g." and hostnames as one word, no line starting with a small kana or U+30FC. Now all match
+* Not yet: dictionary breaking. Thai, Lao, Khmer and Burmese break inside a run only at dictionary words in ICU; fl-text breaks them by UAX #14 and #29, about a character at a time. `breaks_match_the_stock_engine` lists those cases and fails once they match
+* unicode-linebreak is Unicode 15.0; ICU 78 is 17.0 (the Aksara classes, the 15.1 and 16.0 quotation and hyphen rules). No case here shows it yet

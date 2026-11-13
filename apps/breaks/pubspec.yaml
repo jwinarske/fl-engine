@@ -1,0 +1,11 @@
+name: breaks
+description: fl-engine test program. Word boundaries and line breaks against the stock engine's, whose come from ICU (docs/m3-status.md, stage 4).
+publish_to: none
+environment:
+  sdk: ^3.13.0
+dependencies:
+  flutter:
+    sdk: flutter
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
