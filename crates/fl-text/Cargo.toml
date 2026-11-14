@@ -13,9 +13,17 @@ skrifa = "0.49"
 unicode-linebreak = "0.1"
 unicode-bidi = "0.3"
 unicode-segmentation = "1"
+# ICU's dictionaries for Thai, Lao, Khmer and Burmese, as Flutter's ICU data
+# carries them; about 1.1 MB. Without the feature those scripts break as
+# UAX #14 and #29 leave them: a run is one word.
+icu_segmenter = { version = "2.4", optional = true }
 # Read, not mapped (brief M3 §15): a font file truncated while mapped is a
 # SIGBUS.
 fontdb = { version = "0.24", default-features = false, features = ["std", "fs", "fontconfig"] }
+
+[features]
+default = ["dictionary"]
+dictionary = ["dep:icu_segmenter"]
 
 [lints]
 workspace = true

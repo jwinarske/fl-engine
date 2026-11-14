@@ -77,15 +77,17 @@ List<String> probe() {
       words.add('$i:${w.start}-${w.end}');
     }
     out.add('$name words: ${words.join(' ')}');
-    // Behind "a ", so a break always fits: no line is broken inside a
-    // cluster, where the faces each engine found would decide.
-    final String padded = 'a $text';
+    // Behind a word wider than any of the cases', so every line is wider
+    // than the word it wraps: no word is broken at its clusters, where the
+    // faces each engine found would decide.
+    final String pad = '${'a' * 40} ';
+    final String padded = '$pad$text';
     final ui.Paragraph wide = _build(padded, double.infinity);
     final List<String> ends = <String>[];
     for (int i = 1; i <= text.length; i++) {
-      final double w = _prefixWidth(wide, i + 2);
+      final double w = _prefixWidth(wide, i + pad.length);
       final ui.Paragraph p = _build(padded, w + 0.01);
-      ends.add('$i:${p.getLineBoundary(const ui.TextPosition(offset: 0)).end - 2}');
+      ends.add('$i:${p.getLineBoundary(const ui.TextPosition(offset: 0)).end - pad.length}');
     }
     out.add('$name ends: ${ends.join(' ')}');
   }
