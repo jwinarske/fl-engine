@@ -152,7 +152,10 @@ fn input_cycles_stay_flat() {
     // 100 frames at 1 kHz, and the run is those frames and not the typing.
     #[cfg(feature = "kms")]
     let (typing, typed) = {
-        let typed = common::out_dir().join("apps/text_field-soak.txt");
+        // Beside the apps, which may not have been built yet.
+        let dir = common::out_dir().join("apps");
+        std::fs::create_dir_all(&dir).unwrap();
+        let typed = dir.join("text_field-soak.txt");
         let mut text = String::new();
         for i in 0..100 {
             let key = ["keyF", "keyL", "keyU", "keyT", "keyE", "keyR", "space"][i % 7];
@@ -567,7 +570,9 @@ fn apps_under_a_sanitizer() {
     // selected in, copied from and pasted into.
     #[cfg(feature = "kms")]
     let (typing, edit) = {
-        let edit = common::out_dir().join("apps/text_field-sanitizer.txt");
+        let dir = common::out_dir().join("apps");
+        std::fs::create_dir_all(&dir).unwrap();
+        let edit = dir.join("text_field-sanitizer.txt");
         let parts = ["typed", "selected", "pasted", "submitted"].map(|p| {
             std::fs::read_to_string(apps.join(format!("text_field/test/{p}.txt"))).unwrap()
         });

@@ -64,11 +64,11 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq llvm
+          command -v llvm-symbolizer
       # What a script's keys are resolved against and composed by (brief M4
       # D3, D6): linked from the system, as in ci.yml's app lane.
       - name: libxkbcommon
         run: sudo apt-get install -y -qq libxkbcommon-dev xkb-data libx11-data
-          command -v llvm-symbolizer
       # TSan's shadow memory needs the mmap layout of 28 bits of randomness;
       # the runner kernel uses 32.
       - name: mmap randomization for TSan
