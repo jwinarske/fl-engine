@@ -1,0 +1,12 @@
+# Played with `--keymap fr`: what test/keys_test.dart's `french` sends
+# flutter_tester. A key is where it is; the layout says what it means.
+# Key A types q, and is logical key Q.
+key keyA
+# Digit 1 types &, and 1 with Shift: logical key 1 both ways.
+key digit1
+key shiftLeft down
+key digit1
+key shiftLeft up
+# The key right of L types m; the key M is on a US keyboard types a comma.
+key semicolon
+key keyM

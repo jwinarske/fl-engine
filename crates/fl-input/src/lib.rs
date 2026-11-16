@@ -3,11 +3,16 @@
 //! deliver them through.
 //!
 //! No OS code and no Dart: a source (a script, the boards' devices, later a
-//! Wayland seat) builds [`PointerEvent`]s on any thread and hands them to an
+//! Wayland seat) builds [`PointerEvent`]s and [`KeyEvent`]s on any thread and hands them to an
 //! [`EventSink`], which the shell implements. Everything after the sink is
 //! the same for every source.
 
+mod key;
+pub mod xkb;
+
 use std::time::Duration;
+
+pub use key::{KeyData, KeyEvent, KeyEventType};
 
 /// `FlutterPointerPhase`: what a pointer did.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -143,6 +148,10 @@ pub trait EventSink: Send + Sync {
     /// before the next frame. Events arriving faster than they are taken
     /// are bounded by dropping motion ([`PointerEvent::is_motion`]) first.
     fn pointer_events(&self, events: &[PointerEvent]);
+
+    /// Delivers one key event, after everything delivered before it. Key
+    /// events are never dropped.
+    fn key_event(&self, event: KeyEvent);
 
     /// Blocks until the loop has nothing to do: every event delivered has
     /// been dispatched, and every frame that asked for has been drawn.

@@ -289,7 +289,7 @@ impl Run {
             .as_ref()
             .map(|t| FontMetrics::of(t, font_size))
             .unwrap_or_default();
-        let ltr = bidi_level % 2 == 0;
+        let ltr = bidi_level.is_multiple_of(2);
         let mut r = Run {
             text_range: Range::new(
                 first_char + utf8_range.0,
@@ -357,7 +357,7 @@ impl Run {
     }
 
     pub fn left_to_right(&self) -> bool {
-        self.bidi_level % 2 == 0
+        self.bidi_level.is_multiple_of(2)
     }
 
     pub fn is_placeholder(&self) -> bool {
@@ -1273,7 +1273,7 @@ impl Paragraph {
             run.offsets[k] = s.offsets[i];
         }
         // The end cluster of a piece is its own text's end (or start).
-        run.cluster_indexes[g.width()] = if level % 2 == 0 {
+        run.cluster_indexes[g.width()] = if level.is_multiple_of(2) {
             p.text.end - p.shaped_start
         } else {
             p.text.start - p.shaped_start

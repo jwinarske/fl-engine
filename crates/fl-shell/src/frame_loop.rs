@@ -27,6 +27,14 @@
 //! for a frame on their account: the framework does, if what they did
 //! shows. Past [`INPUT_LIMIT`] queued, motion is dropped first.
 //!
+//! Key events (brief M4 §2, D2) come the same way, in their place among
+//! the pointer events, and are never dropped. Each is sent as the Linux
+//! embedder sends it: its `KeyData` on `flutter/keydata`, then its legacy
+//! message on `flutter/keyevent`, each with the microtasks it queued. The
+//! framework answers both; the key is handled if either answer says so
+//! (`fl_keyboard_manager`), and counted ([`Wake::keys`]). An answer that
+//! never comes is the loop's end, and not handled.
+//!
 //! Vsync here is a fixed-interval clock: ticks `period` apart from when the
 //! `Wake` was made, the frame clock's zero. On KMS the flip event will take its place (stage 6).
 //!
@@ -39,11 +47,12 @@
 //! which skips them upstream, is not implemented here.
 
 use std::collections::{HashMap, VecDeque};
-use std::sync::{Arc, Condvar, Mutex, MutexGuard};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard, Weak};
 use std::time::{Duration, Instant};
 
 use fl_dart_vm::{DartError, HandleScope, IsolateScope, MessageNotify};
-use fl_input::{EventSink, PointerEvent};
+use fl_input::{EventSink, KeyEvent, PointerEvent};
+use fl_ui::key::{KEY_DATA_CHANNEL, KEY_EVENT_CHANNEL};
 use fl_ui::pointer::{Converter, PointerData};
 
 /// `Animator`'s `kNotifyIdleTaskWaitTime`: a tad more than three frames at
@@ -57,7 +66,36 @@ const IDLE_FOR: Duration = Duration::from_millis(100);
 /// the VM is not told.
 const IDLE_AT_LEAST: Duration = Duration::from_millis(1);
 
-/// How many pointer events wait for the loop before motion is dropped
+/// One input event waiting for the loop.
+enum Event {
+    Pointer(PointerEvent),
+    Key(KeyEvent),
+}
+
+impl Event {
+    fn timestamp(&self) -> Duration {
+        match self {
+            Event::Pointer(e) => e.timestamp,
+            Event::Key(e) => e.timestamp(),
+        }
+    }
+}
+
+/// Key events delivered, and what the framework said of them
+/// ([`Wake::keys`]). One dispatched and not yet answered is in neither of
+/// the last two.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct KeyCounts {
+    /// Delivered by a source.
+    pub events: u64,
+    /// The framework handled it, on either channel.
+    pub handled: u64,
+    /// Neither answer said so: the key is for whatever comes after the
+    /// framework, text input first (stage 4).
+    pub unhandled: u64,
+}
+
+/// How many input events wait for the loop before motion is dropped
 /// (brief M4 §15): a second of a 1,000 Hz mouse and ten fingers at 120 Hz,
 /// far more than a loop that is running leaves waiting. Buttons, contacts
 /// and signals are kept past it, so a pointer is never left down.
@@ -127,8 +165,10 @@ struct Pending {
     outbound: VecDeque<Outbound>,
     /// The loop has returned: nothing more is dispatched.
     closed: bool,
-    /// Pointer events, oldest first.
-    input: VecDeque<PointerEvent>,
+    /// Pointer and key events, oldest first.
+    input: VecDeque<Event>,
+    /// Key events so far.
+    keys: KeyCounts,
     /// Motion dropped with the queue at its limit.
     input_dropped: u64,
     /// [`Input`]s alive: sources that may still deliver.
@@ -178,9 +218,21 @@ impl EventSink for Input {
             if p.input.len() >= INPUT_LIMIT && e.is_motion() {
                 p.input_dropped += 1;
             } else {
-                p.input.push_back(*e);
+                p.input.push_back(Event::Pointer(*e));
             }
         }
+        p.idle = false;
+        drop(p);
+        self.inner.changed.notify_one();
+    }
+
+    fn key_event(&self, event: KeyEvent) {
+        let mut p = self.inner.lock();
+        if p.closed {
+            return;
+        }
+        p.keys.events += 1;
+        p.input.push_back(Event::Key(event));
         p.idle = false;
         drop(p);
         self.inner.changed.notify_one();
@@ -225,6 +277,11 @@ impl Wake {
     /// waiting.
     pub fn input_dropped(&self) -> u64 {
         self.inner.lock().input_dropped
+    }
+
+    /// Key events delivered so far, and how the framework answered them.
+    pub fn keys(&self) -> KeyCounts {
+        self.inner.lock().keys
     }
 
     /// Wakes the loop for a reply queued on another thread: dart:ui's reply
@@ -406,6 +463,8 @@ pub(crate) fn connect(wake: &Wake) {
     fl_ui::set_reply_waker(move || replies.reply_arrived());
     let responses = wake.clone();
     fl_ui::set_response_sink(move |id, data| responses.respond(id, data));
+    // A new isolate has been told of no key.
+    fl_ui::key::reset_keyboard_state();
 }
 
 fn run_steps(
@@ -489,15 +548,23 @@ fn run_steps(
                 isolate.with(|s| dispatch(s, &m.channel, m.data.as_deref(), id))?;
             }
             Step::Input(events) => {
-                let packet: Vec<PointerData> = events.iter().map(PointerData::from_event).collect();
-                let mut records = Vec::with_capacity(packet.len() + 2);
-                pointers.convert(&packet, |v| v == crate::IMPLICIT_VIEW_ID, &mut records);
-                if !records.is_empty() {
-                    let bytes = fl_ui::pointer::encode_packet(&records);
-                    isolate.with(|s| dispatch_pointers(s, &bytes))?;
-                    if undrawn_input.is_none() && inner.lock().frame.is_some() {
-                        undrawn_input = events.iter().map(|e| e.timestamp).min();
+                let oldest = events.iter().map(Event::timestamp).min();
+                // Pointer events between two keys go as one packet.
+                let mut run = Vec::new();
+                let mut dispatched = false;
+                for event in events {
+                    match event {
+                        Event::Pointer(e) => run.push(e),
+                        Event::Key(e) => {
+                            dispatch_pointer_run(isolate, &mut pointers, &mut run)?;
+                            dispatch_key(isolate, inner, &e)?;
+                            dispatched = true;
+                        }
                     }
+                }
+                dispatched |= dispatch_pointer_run(isolate, &mut pointers, &mut run)?;
+                if dispatched && undrawn_input.is_none() && inner.lock().frame.is_some() {
+                    undrawn_input = oldest;
                 }
             }
             Step::Frame(tick) => {
@@ -575,7 +642,7 @@ enum Step {
     Message,
     Replies,
     Dispatch(Outbound),
-    Input(Vec<PointerEvent>),
+    Input(Vec<Event>),
     Frame(Instant),
     NotifyIdle(Instant),
     Idle,
@@ -607,6 +674,108 @@ fn dispatch(
     let id = s.new_int(response_id);
     s.invoke(ui, "_dispatchPlatformMessage", &[name, data, id])?;
     s.run_microtasks()
+}
+
+/// The pointer events of `run`, emptied, as one packet: made `PointerData`,
+/// put through the converter, and dispatched if anything is left. Whether
+/// anything was.
+fn dispatch_pointer_run(
+    isolate: &mut IsolateScope<'_>,
+    pointers: &mut Converter,
+    run: &mut Vec<PointerEvent>,
+) -> Result<bool, DartError> {
+    if run.is_empty() {
+        return Ok(false);
+    }
+    let packet: Vec<PointerData> = run.drain(..).map(|e| PointerData::from_event(&e)).collect();
+    let mut records = Vec::with_capacity(packet.len() + 2);
+    pointers.convert(&packet, |v| v == crate::IMPLICIT_VIEW_ID, &mut records);
+    if records.is_empty() {
+        return Ok(false);
+    }
+    let bytes = fl_ui::pointer::encode_packet(&records);
+    isolate.with(|s| dispatch_pointers(s, &bytes))?;
+    Ok(true)
+}
+
+/// What the framework says of one key event: handled if either of its
+/// answers says so, counted once both are in.
+struct KeyAnswer {
+    inner: Weak<Inner>,
+    /// Answers still to come, and whether one has said handled.
+    state: Mutex<(u8, bool)>,
+}
+
+impl KeyAnswer {
+    fn new(inner: &Arc<Inner>, awaited: u8) -> Arc<KeyAnswer> {
+        Arc::new(KeyAnswer {
+            inner: Arc::downgrade(inner),
+            state: Mutex::new((awaited, false)),
+        })
+    }
+
+    /// One of the answers.
+    fn answer(&self, handled: bool) {
+        let done = {
+            let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            state.0 = state.0.saturating_sub(1);
+            state.1 |= handled;
+            (state.0 == 0).then_some(state.1)
+        };
+        if let (Some(handled), Some(inner)) = (done, self.inner.upgrade()) {
+            let mut p = inner.lock();
+            if handled {
+                p.keys.handled += 1;
+            } else {
+                p.keys.unhandled += 1;
+            }
+        }
+    }
+}
+
+/// One key event to the framework, as the Linux embedder sends it
+/// (`fl_keyboard_manager_handle_event`): each `KeyData` on
+/// `flutter/keydata`, then the legacy message on `flutter/keyevent`. The
+/// answers awaited are those to the `KeyData` that is neither synthesized
+/// nor empty and to the legacy message; with no such `KeyData` the event
+/// is handled as it stands, as the embedder's responder says of a release
+/// with no press.
+fn dispatch_key(
+    isolate: &mut IsolateScope<'_>,
+    inner: &Arc<Inner>,
+    event: &KeyEvent,
+) -> Result<(), DartError> {
+    let answered = event.answered();
+    let answer = match answered {
+        Some(_) => Some(KeyAnswer::new(inner, 1 + u8::from(event.raw.is_some()))),
+        None => {
+            inner.lock().keys.handled += 1;
+            None
+        }
+    };
+    for (i, data) in event.data.iter().enumerate() {
+        let id = match (&answer, answered == Some(i)) {
+            (Some(answer), true) => {
+                let answer = Arc::clone(answer);
+                inner.await_response(Box::new(move |r| {
+                    answer.answer(fl_ui::key::key_data_handled(r.as_deref()));
+                }))
+            }
+            _ => 0,
+        };
+        let packet = fl_ui::key::encode_packet(data);
+        fl_ui::key::note_dispatched(data);
+        isolate.with(|s| dispatch(s, KEY_DATA_CHANNEL, Some(&packet), id))?;
+    }
+    if let Some(raw) = &event.raw {
+        let id = answer.map_or(0, |answer| {
+            inner.await_response(Box::new(move |r| {
+                answer.answer(fl_ui::key::key_event_handled(r.as_deref()));
+            }))
+        });
+        isolate.with(|s| dispatch(s, KEY_EVENT_CHANNEL, Some(raw), id))?;
+    }
+    Ok(())
 }
 
 /// One pointer packet to the framework, as `PlatformConfiguration::
@@ -764,6 +933,85 @@ mod tests {
         )
     }
 
+    fn pointer(e: &Event) -> Option<&PointerEvent> {
+        match e {
+            Event::Pointer(e) => Some(e),
+            Event::Key(_) => None,
+        }
+    }
+
+    fn key_down() -> KeyEvent {
+        use fl_input::KeyData;
+        KeyEvent {
+            data: vec![KeyData {
+                physical: 0x0007_0004,
+                logical: 0x61,
+                ..KeyData::default()
+            }],
+            raw: Some(b"{}".to_vec()),
+        }
+    }
+
+    #[test]
+    fn keys_are_queued_in_their_place_and_never_dropped() {
+        let w = Wake::default();
+        let input = w.input();
+        let moves: Vec<PointerEvent> = (0..INPUT_LIMIT).map(|i| motion(i as f64)).collect();
+        input.pointer_events(&moves);
+        input.key_event(key_down());
+        input.pointer_events(&[motion(1.0)]);
+        input.key_event(key_down());
+        let p = w.inner.lock();
+        // The limit is passed by the keys alone; the move after it is gone.
+        assert_eq!(p.input.len(), INPUT_LIMIT + 2);
+        assert_eq!(p.input_dropped, 1);
+        assert!(matches!(p.input.back(), Some(Event::Key(_))));
+        assert_eq!(p.keys.events, 2);
+    }
+
+    /// `fl_keyboard_manager_test.cc`'s eight cases of who answered
+    /// (`EngineHandledChannelNotHandledSync` and the rest): handled if
+    /// either says so, in either order, and only once both have.
+    #[test]
+    fn a_key_is_handled_if_either_answer_says_so() {
+        let w = Wake::default();
+        for (engine, channel, engine_first) in [
+            (true, false, true),
+            (false, true, true),
+            (true, true, true),
+            (false, false, true),
+            (true, false, false),
+            (false, true, false),
+            (true, true, false),
+            (false, false, false),
+        ] {
+            let before = w.keys();
+            let answer = KeyAnswer::new(&w.inner, 2);
+            let (first, second) = if engine_first {
+                (engine, channel)
+            } else {
+                (channel, engine)
+            };
+            answer.answer(first);
+            assert_eq!(w.keys(), before, "one answer is not enough");
+            answer.answer(second);
+            let after = w.keys();
+            let handled = engine || channel;
+            assert_eq!(after.handled - before.handled, u64::from(handled));
+            assert_eq!(after.unhandled - before.unhandled, u64::from(!handled));
+        }
+        // `EngineNoResponseChannelHandled`: with no answer from one, the
+        // key is still waiting.
+        let before = w.keys();
+        let answer = KeyAnswer::new(&w.inner, 2);
+        answer.answer(true);
+        assert_eq!(w.keys(), before);
+        // An answer after the wake is gone is counted nowhere, and harms
+        // nothing.
+        drop(w);
+        answer.answer(false);
+    }
+
     #[test]
     fn past_its_limit_the_input_queue_drops_motion_and_nothing_else() {
         use fl_input::PointerPhase;
@@ -776,7 +1024,7 @@ mod tests {
         // The oldest are kept: the converter moves a pointer to its next
         // event, so what is lost is the way there.
         assert_eq!(
-            w.inner.lock().input.back().map(|e| e.x),
+            w.inner.lock().input.back().and_then(pointer).map(|e| e.x),
             Some((INPUT_LIMIT - 1) as f64)
         );
         let up = PointerEvent {
@@ -787,7 +1035,12 @@ mod tests {
         assert_eq!(w.inner.lock().input.len(), INPUT_LIMIT + 1);
         assert_eq!(w.input_dropped(), 12);
         assert_eq!(
-            w.inner.lock().input.back().map(|e| e.phase),
+            w.inner
+                .lock()
+                .input
+                .back()
+                .and_then(pointer)
+                .map(|e| e.phase),
             Some(PointerPhase::Up)
         );
     }

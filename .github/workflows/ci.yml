@@ -41,6 +41,9 @@ jobs:
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo clippy -p fl-dart-cli --no-default-features --features jit --all-targets -- -D warnings
+      # The KMS platform's half of fl-dart. Checked, not linked: libxkbcommon
+      # is the app lane's.
+      - run: cargo clippy -p fl-dart-cli --features kms --all-targets -- -D warnings
       - run: cargo test -p fl-dart-vm --features aot --lib --test compile_fail
       - run: cargo test -p fl-raster --features aot --test compile_fail
       - run: cargo test -p fl-dart-ffi --features aot --test compile_fail
@@ -145,10 +148,12 @@ jobs:
             || { echo "Flutter's Dart is not the pinned 3.13.7"; exit 1; }
       # emblema draws the frames offscreen on Vulkan; lavapipe is Mesa's
       # software Vulkan, as emblema's own CI uses.
-      - name: lavapipe
+      # libxkbcommon and its layouts (xkb-data) are what a script's keys are
+      # resolved against (brief M4 D3): linked from the system, never built.
+      - name: lavapipe and libxkbcommon
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq mesa-vulkan-drivers
+          sudo apt-get install -y -qq mesa-vulkan-drivers libxkbcommon-dev xkb-data
       - name: Fetch the prebuilt VM
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -158,16 +163,20 @@ jobs:
       # bump that changes them fails here, not as drift in fl-engine's
       # tolerance. Impeller, not Skia: fl-engine matches Impeller. metrics'
       # golden is its numbers, test/metrics.txt, and breaks' its word and line
-      # breaks, test/breaks.txt.
+      # breaks, test/breaks.txt; keys' is what the framework makes of the keys
+      # it is sent, test/*_events.txt.
       - name: Goldens
         run: |
-          for app in shapes material natives images shadows metrics breaks text counter gif gradients; do
+          for app in shapes material natives images shadows metrics breaks text counter gif gradients keys; do
             (cd "apps/$app" && "$FLUTTER_ROOT/bin/flutter" test --enable-impeller)
           done
       - name: Apps
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: ci/annotate-on-fail.sh cargo test -p fl-dart-cli --test app -- --ignored
+        run: |
+          # The default build has no keymap, and says so of a script with keys.
+          ci/annotate-on-fail.sh cargo test -p fl-dart-cli --test app -- --ignored keys_need_the_kms_feature
+          ci/annotate-on-fail.sh cargo test -p fl-dart-cli --features kms --test app -- --ignored
       # What the exit criteria look like, kept: each app's frame from the
       # tests above with its golden and diff, ticker's 30 frames and gif's 16.
       # After the AOT run and before the JIT one, which writes the same files.
@@ -199,9 +208,12 @@ jobs:
       - name: Apps (jit)
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: ci/annotate-on-fail.sh cargo test -p fl-dart-cli --no-default-features --features jit --test app -- --ignored
+        run: ci/annotate-on-fail.sh cargo test -p fl-dart-cli --no-default-features --features jit,kms --test app -- --ignored
       - name: dart:ui and shell unit tests
         run: ci/annotate-on-fail.sh cargo test -p fl-dart-ffi -p fl-ui -p fl-raster -p fl-shell --features aot --lib
+      # The XKB keymap against the system's layouts: us, fr, ru.
+      - name: Keymap tests
+        run: ci/annotate-on-fail.sh cargo test -p fl-platform-kms
       # Layout and the glyph cache in Roboto, from the Flutter release's cache.
       # The font fuzz target among them, a short run; the ASan lane runs it
       # long.

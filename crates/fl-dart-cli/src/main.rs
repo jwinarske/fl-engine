@@ -3,7 +3,7 @@
 //! ```text
 //! fl-dart run hello.dill [args...]       # JIT, dev hosts (--features jit)
 //! fl-dart run-aot hello.aot [args...]    # precompiled runtime, every target
-//! fl-dart run-app libapp.so [WxH[@dpr]] [--assets DIR] [--png out.png] [--frames-dir DIR] [--ops] [--natives] [--styles] [--font FAMILY=PATH]... [--message CHANNEL[=TEXT]]... [--input SCRIPT] [--frames N] [--hz H]
+//! fl-dart run-app libapp.so [WxH[@dpr]] [--assets DIR] [--png out.png] [--frames-dir DIR] [--ops] [--natives] [--styles] [--font FAMILY=PATH]... [--message CHANNEL[=TEXT]]... [--input SCRIPT] [--keymap LAYOUT[:VARIANT]] [--frames N] [--hz H]
 //!                                       # a Flutter app, through dart:ui (M2);
 //!                                       # JIT takes the app's kernel instead
 //! fl-dart app-cycle libapp.so <n> [run-app options]
@@ -109,7 +109,7 @@ fn usage() -> ExitCode {
         "libapp.so"
     };
     eprintln!(
-        "       fl-dart run-app <{app}> [WxH[@dpr]] [--assets DIR] [--png out.png] [--frames-dir DIR] [--ops] [--natives] [--styles] [--font FAMILY=PATH]... [--message CHANNEL[=TEXT]]... [--input SCRIPT] [--frames N] [--hz H]\n       fl-dart app-cycle <{app}> <n> [run-app options]\n       fl-dart prepare"
+        "       fl-dart run-app <{app}> [WxH[@dpr]] [--assets DIR] [--png out.png] [--frames-dir DIR] [--ops] [--natives] [--styles] [--font FAMILY=PATH]... [--message CHANNEL[=TEXT]]... [--input SCRIPT] [--keymap LAYOUT[:VARIANT]] [--frames N] [--hz H]\n       fl-dart app-cycle <{app}> <n> [run-app options]\n       fl-dart prepare"
     );
     ExitCode::from(64)
 }
@@ -198,6 +198,9 @@ fn run_app(path: &str, app: AppArgs) -> Result<(), Failure> {
             "{}",
             input_line(&run.report.input_latency_us, run.input_dropped)
         );
+        if run.keys.events > 0 {
+            println!("{}", keys_line(run.keys));
+        }
     }
     if app.natives {
         println!("natives: {}", fl_ui::resolved().join(","));
@@ -336,6 +339,8 @@ fn load_app(path: &str) -> Result<AppProgram, Failure> {
 struct AppRun {
     /// Pointer motion dropped with the input queue at its limit.
     input_dropped: u64,
+    /// Key events delivered, and how the framework answered them.
+    keys: fl_shell::KeyCounts,
     rendered: u64,
     report: fl_shell::Report,
     /// Each rendered frame's build time in microseconds, `_beginFrame` to
@@ -357,6 +362,15 @@ fn app_once(
     use std::sync::{Arc, Mutex};
 
     let script = app.input.as_deref().map(load_script).transpose()?;
+    // Before the app starts: a keymap that cannot be had is no run at all.
+    // It is made again on the script's thread, which it does not leave.
+    let keymap = match &script {
+        Some(script) if script.has_keys() => {
+            keymap_for(app.keymap.as_ref())?;
+            Some(app.keymap.clone())
+        }
+        _ => None,
+    };
     let rendered = Arc::new(Mutex::new(0u64));
     let builds = Arc::new(Mutex::new(Vec::new()));
     let sink_raster = raster.map(Arc::clone);
@@ -431,19 +445,29 @@ fn app_once(
             let input = wake.input();
             std::thread::Builder::new()
                 .name("fl-input-script".into())
-                .spawn(move || script.play(&input))
+                .spawn(move || -> Result<(), Failure> {
+                    match keymap {
+                        Some(names) => {
+                            let mut keymap = keymap_for(names.as_ref())?;
+                            script.play(&input, Some(keymap.as_mut()));
+                        }
+                        None => script.play(&input, None),
+                    }
+                    Ok(())
+                })
         });
         let report = fl_shell::run(&mut scope, &wake, period, || {
             limit.is_some_and(|l| *rendered.lock().unwrap_or_else(|e| e.into_inner()) >= l)
         });
         match player {
-            Some(Ok(thread)) => {
-                if thread.join().is_err() {
+            Some(Ok(thread)) => match thread.join() {
+                Ok(played) => played?,
+                Err(_) => {
                     return Err(Failure::Other(
                         "--input: the script's thread panicked".into(),
                     ));
                 }
-            }
+            },
             Some(Err(e)) => return Err(Failure::Other(format!("--input: {e}"))),
             None => {}
         }
@@ -464,6 +488,7 @@ fn app_once(
     let builds_us = std::mem::take(&mut *builds.lock().unwrap_or_else(|e| e.into_inner()));
     Ok(AppRun {
         input_dropped: wake.input_dropped(),
+        keys: wake.keys(),
         rendered: count,
         report,
         builds_us,
@@ -479,6 +504,38 @@ fn input_line(latency_us: &[u64], dropped: u64) -> String {
         latency_us.len(),
         latency_us.iter().max().copied().unwrap_or(0)
     )
+}
+
+/// `keys: events=… handled=… unhandled=…`: the key events the script
+/// delivered, those the framework said it handled on either channel, and
+/// those it did not.
+fn keys_line(keys: fl_shell::KeyCounts) -> String {
+    format!(
+        "keys: events={} handled={} unhandled={}",
+        keys.events, keys.handled, keys.unhandled
+    )
+}
+
+/// The keymap a script's keys are resolved against: `--keymap`'s layout and
+/// variant, or `us`, as the boards' keys will be (brief M4 §5). Not `Send`:
+/// xkbcommon's state stays on the thread that made it.
+#[cfg(feature = "kms")]
+fn keymap_for(names: Option<&(String, String)>) -> Result<Box<dyn fl_input::xkb::Keymap>, Failure> {
+    let (layout, variant) = names.map_or(("us", ""), |(l, v)| (l.as_str(), v.as_str()));
+    fl_platform_kms::XkbKeymap::from_layout(layout, variant)
+        .map(|k| Box::new(k) as Box<dyn fl_input::xkb::Keymap>)
+        .map_err(|e| Failure::Other(format!("--keymap: {e}")))
+}
+
+/// Without the KMS platform there is no keymap to resolve a key against.
+#[cfg(not(feature = "kms"))]
+fn keymap_for(
+    _names: Option<&(String, String)>,
+) -> Result<Box<dyn fl_input::xkb::Keymap>, Failure> {
+    Err(Failure::Other(
+        "--input: the script has key steps, which need a keymap: build fl-dart with `--features kms`"
+            .into(),
+    ))
 }
 
 /// `--input`'s script, read and parsed. A file over the script's size limit
@@ -636,10 +693,13 @@ struct AppArgs {
     messages: Vec<(String, Option<String>)>,
     /// `--input`: a script of input events.
     input: Option<std::path::PathBuf>,
+    /// `--keymap`: the XKB layout and variant a script's keys are resolved
+    /// against.
+    keymap: Option<(String, String)>,
     frames: Option<u64>,
 }
 
-/// `[WxH[@dpr]] [--assets DIR] [--png out.png] [--frames-dir DIR] [--ops] [--natives] [--styles] [--font FAMILY=PATH]... [--message CHANNEL[=TEXT]]... [--input SCRIPT] [--frames N] [--hz H]`,
+/// `[WxH[@dpr]] [--assets DIR] [--png out.png] [--frames-dir DIR] [--ops] [--natives] [--styles] [--font FAMILY=PATH]... [--message CHANNEL[=TEXT]]... [--input SCRIPT] [--keymap LAYOUT[:VARIANT]] [--frames N] [--hz H]`,
 /// in any order; no size is the default view. Sizes are physical pixels.
 /// `--assets` names the app's asset bundle; without it, `<app>.assets` beside
 /// the program is used if it is there, as `tools/flutter-app/build.sh` puts
@@ -651,7 +711,9 @@ struct AppArgs {
 /// message on a channel, its text as UTF-8 or null without one, once `main` has run, in the order
 /// given, and prints each response as `response CHANNEL: ...` ([`response_line`]); `--input` plays a
 /// script of input events (fl-input-script) once the app has drawn its first frame, and the app runs
-/// until the script has ended and it has nothing left to do; `--frames` stops after N frames rendered;
+/// until the script has ended and it has nothing left to do; `--keymap` names the XKB layout, and a
+/// variant of it, that the script's keys are resolved against (`us` by default; needs the `kms`
+/// feature); `--frames` stops after N frames rendered;
 /// `--hz` sets the vsync rate (60 by default).
 fn app_args(args: &[&str]) -> Option<AppArgs> {
     let mut app = AppArgs::default();
@@ -677,6 +739,14 @@ fn app_args(args: &[&str]) -> Option<AppArgs> {
                 });
             }
             "--input" => app.input = Some(std::path::PathBuf::from(it.next()?)),
+            "--keymap" => {
+                let k = it.next()?;
+                let (layout, variant) = k.split_once(':').unwrap_or((k, ""));
+                if layout.is_empty() {
+                    return None;
+                }
+                app.keymap = Some((layout.to_owned(), variant.to_owned()));
+            }
             "--frames" => app.frames = Some(it.next()?.parse().ok().filter(|n| *n > 0)?),
             "--hz" => app.view.refresh_rate = it.next()?.parse().ok().filter(|v: &f64| *v > 0.0)?,
             _ => {

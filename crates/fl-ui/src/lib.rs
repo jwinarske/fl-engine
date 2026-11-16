@@ -19,6 +19,7 @@ mod buffer;
 mod compositing;
 mod gradient;
 mod image;
+pub mod key;
 mod painting;
 mod path;
 mod platform;

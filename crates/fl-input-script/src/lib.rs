@@ -12,12 +12,23 @@
 //!                   delivered has been dispatched, every frame asked for
 //!                   drawn (an animation run to its end)
 //! wait 250          wait 250 ms
+//! key keyA down     a key going down, named as Flutter names its place
+//!                   on the keyboard (`PhysicalKeyboardKey`: `keyA`,
+//!                   `shiftLeft`, `numpad1`); down again is a repeat
+//! key keyA up       the key coming up
+//! key enter         the key down, then up
 //! ```
 //!
 //! A script starts as if with `idle`, so its first event finds the app's
 //! first frame laid out. A touch is delivered as the Linux embedder's
 //! `fl_touch_manager` delivers one: added as it goes down, removed as it
 //! lifts.
+//!
+//! A key is a place on the keyboard, as a device reports one. What it
+//! means is the keymap's, which whoever plays the script brings
+//! ([`Keymap`]), the one a board's keys go through: the layout's keysym,
+//! its character, the modifiers held. From there it is the Linux
+//! embedder's key path ([`fl_input::xkb`]).
 //!
 //! A script is untrusted input (brief M4 §15): what does not parse is an
 //! error naming its line, never a panic, and its size, its waits and its
@@ -26,6 +37,7 @@
 use std::fmt;
 use std::time::Duration;
 
+use fl_input::xkb::{keycode_named, Keymap, Keys};
 use fl_input::{EventSink, PointerDeviceKind, PointerEvent, PointerPhase};
 
 /// A script's size limit: far more than any test's, and small enough to
@@ -42,12 +54,29 @@ pub const MAX_POSITION: f64 = 1e6;
 /// One step of a script.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Step {
-    Tap { x: f64, y: f64 },
-    Down { x: f64, y: f64 },
-    Move { x: f64, y: f64 },
-    Up { x: f64, y: f64 },
+    Tap {
+        x: f64,
+        y: f64,
+    },
+    Down {
+        x: f64,
+        y: f64,
+    },
+    Move {
+        x: f64,
+        y: f64,
+    },
+    Up {
+        x: f64,
+        y: f64,
+    },
     Idle,
     Wait(Duration),
+    /// A key by its XKB keycode: down, up, or with `None` down then up.
+    Key {
+        keycode: u16,
+        pressed: Option<bool>,
+    },
 }
 
 /// A parsed script.
@@ -98,13 +127,23 @@ impl Script {
         Ok(Script { steps })
     }
 
+    /// Whether the script has a key step, and so needs a keymap to play.
+    pub fn has_keys(&self) -> bool {
+        self.steps.iter().any(|s| matches!(s, Step::Key { .. }))
+    }
+
     /// Plays the script into `sink`, on this thread: waits for the app to
     /// go idle, then each step in turn. Returns when the last has been
     /// delivered, or early if the loop ends first.
-    pub fn play(&self, sink: &dyn EventSink) {
+    ///
+    /// Keys are resolved against `keymap`. With none, key steps are
+    /// skipped: a caller with no keymap asks [`Script::has_keys`] first.
+    pub fn play(&self, sink: &dyn EventSink, mut keymap: Option<&mut dyn Keymap>) {
         if !sink.wait_idle() {
             return;
         }
+        // The keyboard's key path, the script's own as a seat's is.
+        let mut keys = Keys::new();
         for step in &self.steps {
             match *step {
                 Step::Tap { x, y } => {
@@ -141,6 +180,21 @@ impl Script {
                 Step::Wait(d) => {
                     if !wait(sink, d) {
                         return;
+                    }
+                }
+                Step::Key { keycode, pressed } => {
+                    let Some(keymap) = keymap.as_deref_mut() else {
+                        continue;
+                    };
+                    let directions: &[bool] = match pressed {
+                        Some(true) => &[true],
+                        Some(false) => &[false],
+                        None => &[true, false],
+                    };
+                    for pressed in directions {
+                        let key = keymap.key(sink.now(), keycode, *pressed);
+                        let event = keys.handle(&key, |c, g, l| keymap.lookup(c, g, l));
+                        sink.key_event(event);
                     }
                 }
             }
@@ -196,6 +250,21 @@ fn parse_step(command: &str, args: &[&str]) -> Result<Step, String> {
             }
             Ok(Step::Wait(Duration::from_millis(ms)))
         }
+        "key" => {
+            let (name, pressed) = match args {
+                [name] => (name, None),
+                [name, "down"] => (name, Some(true)),
+                [name, "up"] => (name, Some(false)),
+                _ => {
+                    return Err(
+                        "`key` takes a key's name, then `down` or `up` or neither".to_owned()
+                    )
+                }
+            };
+            let keycode =
+                keycode_named(name).ok_or_else(|| format!("`{}` is not a key", clip(name)))?;
+            Ok(Step::Key { keycode, pressed })
+        }
         other => Err(format!("`{}` is not a step", clip(other))),
     }
 }
@@ -223,12 +292,15 @@ fn clip(word: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use fl_input::xkb::XkbKey;
+    use fl_input::KeyEvent;
     use std::sync::Mutex;
 
     #[test]
     fn steps_parse_a_line_each() {
         let s = Script::parse(
-            "# taps\n\n  tap 756 556.5  # the button\nidle\ndown 1 2\nmove -3 4e1\nup 3 40\nwait 250\n",
+            "# taps\n\n  tap 756 556.5  # the button\nidle\ndown 1 2\nmove -3 4e1\nup 3 40\nwait 250\n\
+             key keyA down\nkey keyA up\nkey enter\n",
         );
         assert_eq!(
             s.map(|s| s.steps),
@@ -239,6 +311,18 @@ mod tests {
                 Step::Move { x: -3.0, y: 40.0 },
                 Step::Up { x: 3.0, y: 40.0 },
                 Step::Wait(Duration::from_millis(250)),
+                Step::Key {
+                    keycode: 0x26,
+                    pressed: Some(true)
+                },
+                Step::Key {
+                    keycode: 0x26,
+                    pressed: Some(false)
+                },
+                Step::Key {
+                    keycode: 0x24,
+                    pressed: None
+                },
             ])
         );
         assert_eq!(Script::parse("").map(|s| s.steps.len()), Ok(0));
@@ -258,6 +342,18 @@ mod tests {
             ("wait -1", 1, "`-1` is not a count of milliseconds"),
             ("wait 600001", 1, "a wait of 600001 ms; the limit is 600000"),
             ("\n\nclick 1 2", 3, "`click` is not a step"),
+            (
+                "key",
+                1,
+                "`key` takes a key's name, then `down` or `up` or neither",
+            ),
+            (
+                "key keyA sideways",
+                1,
+                "`key` takes a key's name, then `down` or `up` or neither",
+            ),
+            ("key a", 1, "`a` is not a key"),
+            ("key KeyA down", 1, "`KeyA` is not a key"),
         ];
         for (text, line, message) in cases {
             let e = Script::parse(text).err();
@@ -326,6 +422,26 @@ mod tests {
             }
         }
 
+        fn key_event(&self, event: KeyEvent) {
+            let line: Vec<String> = event
+                .data
+                .iter()
+                .map(|d| {
+                    assert_eq!(d.timestamp, self.now());
+                    let character = d.character.as_deref().unwrap_or("");
+                    format!(
+                        "{:?}:{:#x}:{:#x}:{character}",
+                        d.kind, d.physical, d.logical
+                    )
+                })
+                .collect();
+            let raw =
+                String::from_utf8_lossy(event.raw.as_deref().unwrap_or_default()).into_owned();
+            if let Ok(mut log) = self.log.lock() {
+                log.push(format!("{} {raw}", line.join(" ")));
+            }
+        }
+
         fn wait_idle(&self) -> bool {
             let Ok(mut left) = self.idles_left.lock() else {
                 return false;
@@ -345,11 +461,70 @@ mod tests {
         }
     }
 
+    /// A keymap of one key level: every key gives its keycode as its
+    /// keysym, with no state.
+    struct Plain;
+
+    impl Keymap for Plain {
+        fn key(&mut self, time: Duration, keycode: u16, pressed: bool) -> XkbKey {
+            XkbKey {
+                time,
+                pressed,
+                keycode,
+                keyval: u32::from(keycode),
+                unicode: u32::from(keycode),
+                ..XkbKey::default()
+            }
+        }
+
+        fn lookup(&self, _keycode: u16, _group: u8, _level: u8) -> u32 {
+            0
+        }
+    }
+
+    #[test]
+    fn a_key_goes_through_the_keymap_and_the_embedder_s_key_path() {
+        let script = Script::parse("key keyA down\nkey keyA down\nkey keyA up\nkey escape\n")
+            .unwrap_or_default();
+        assert!(script.has_keys());
+        let sink = Recorder::new(usize::MAX);
+        script.play(&sink, Some(&mut Plain));
+        let raw = |kind: &str, code: u32, logical: &str| {
+            format!(
+                "{{\"type\":\"{kind}\",\"keymap\":\"linux\",\"scanCode\":{code},\"toolkit\":\"gtk\",\
+                 \"keyCode\":{code},\"modifiers\":0,\"unicodeScalarValues\":{code}{logical}}}"
+            )
+        };
+        // Key A's keycode, 0x26, is `&` as a keysym; the layout says `a`.
+        let a = ",\"specifiedLogicalKey\":97";
+        assert_eq!(
+            sink.log(),
+            [
+                "idle".to_owned(),
+                format!("Down:0x70004:0x61:& {}", raw("keydown", 0x26, a)),
+                format!("Repeat:0x70004:0x61:& {}", raw("keydown", 0x26, a)),
+                format!("Up:0x70004:0x61: {}", raw("keyup", 0x26, a)),
+                // Escape is no goal of the layout: its keysym decides.
+                format!("Down:0x70029:0x9:\t {}", raw("keydown", 9, "")),
+                format!("Up:0x70029:0x9: {}", raw("keyup", 9, "")),
+            ]
+        );
+    }
+
+    #[test]
+    fn with_no_keymap_keys_are_skipped() {
+        let script = Script::parse("key keyA\ntap 1 1\n").unwrap_or_default();
+        let sink = Recorder::new(usize::MAX);
+        script.play(&sink, None);
+        assert_eq!(sink.log(), ["idle", "Add@1,1 Down@1,1 Up@1,1 Remove@1,1"]);
+        assert!(!Script::parse("tap 1 1").unwrap_or_default().has_keys());
+    }
+
     #[test]
     fn a_touch_is_added_as_it_goes_down_and_removed_as_it_lifts() {
         let script = Script::parse("tap 5 6\nidle\ndown 1 2\nmove 3 4\nup 3 4\nwait 1\n");
         let sink = Recorder::new(usize::MAX);
-        script.unwrap_or_default().play(&sink);
+        script.unwrap_or_default().play(&sink, None);
         assert_eq!(
             sink.log(),
             [
@@ -369,11 +544,11 @@ mod tests {
         let script = Script::parse("tap 1 1\nidle\ntap 2 2\nwait 600000\ntap 3 3\n");
         // The first idle is the script's own; the second never comes.
         let sink = Recorder::new(1);
-        script.clone().unwrap_or_default().play(&sink);
+        script.clone().unwrap_or_default().play(&sink, None);
         assert_eq!(sink.log(), ["idle", "Add@1,1 Down@1,1 Up@1,1 Remove@1,1"]);
         // Not even the first.
         let sink = Recorder::new(0);
-        script.unwrap_or_default().play(&sink);
+        script.unwrap_or_default().play(&sink, None);
         assert!(sink.log().is_empty());
     }
 }

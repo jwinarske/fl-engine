@@ -17,8 +17,9 @@ Status: milestone 1 (Dart VM hosted from Rust).
 * fl-dart-ffi - native binding layer: symbol tables, peers on native-field wrappers
 * fl-ui - dart:ui natives
 * fl-shell - embedder: views and the runtime hooks a framework isolate needs
-* fl-input - the input boundary: events as data, and what a source delivers them through
+* fl-input - the input boundary: events as data, what a source delivers them through, and the Linux embedder's key path
 * fl-input-script - scripted input source, for CI and tests
+* fl-platform-kms - the KMS platform through drmkit: so far its XKB keymap (links libxkbcommon)
 * fl-raster - dart:ui scenes drawn by emblema
 * fl-dart-cli - `fl-dart` binary
 * xtask - `cargo xtask bindgen`, `cargo xtask fetch-prebuilt`
@@ -37,7 +38,7 @@ Built from dart-lang/sdk at a pinned revision, consumed as a prebuilt static arc
 
 ## Build
 
-Toolchain is pinned in `rust-toolchain.toml` (1.94.1, Yocto wrynose). MSRV 1.85.
+Toolchain is pinned in `rust-toolchain.toml` (1.94.1, Yocto wrynose). MSRV 1.94.1, drmkit's.
 
 Fetching needs no token. If `GITHUB_TOKEN` (or `GH_TOKEN`) is set it is sent, which raises the GitHub API rate limit:
 

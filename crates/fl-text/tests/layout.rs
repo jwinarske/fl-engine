@@ -141,7 +141,7 @@ fn with_gsub(font: &[u8], gsub: &[u8]) -> Vec<u8> {
         out[rec + 8..rec + 12].copy_from_slice(&(at as u32).to_be_bytes());
         out[rec + 12..rec + 16].copy_from_slice(&(data.len() as u32).to_be_bytes());
         out.extend_from_slice(data);
-        while out.len() % 4 != 0 {
+        while !out.len().is_multiple_of(4) {
             out.push(0);
         }
         at = out.len();
