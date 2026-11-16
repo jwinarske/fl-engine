@@ -246,4 +246,6 @@ jobs:
           ci/annotate-on-fail.sh cargo test -p fl-raster --features aot --lib -- --ignored
           # A display as the target, over an output that is no card: the
           # ring of buffers, and its rebuilding when the output says so.
-          ci/annotate-on-fail.sh cargo test -p fl-raster --features aot,scanout --test scanout -- --ignored
+          # Skipped, saying so, until the runner's lavapipe exports dma-bufs
+          # (25.2 does not, 26.2 does); it runs on a developer's driver.
+          ci/annotate-on-fail.sh cargo test -p fl-raster --features aot,scanout --test scanout -- --ignored --nocapture

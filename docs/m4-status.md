@@ -282,7 +282,7 @@ Differences from the brief:
 * fl-platform-kms depends on emblema's `emblema-present-drm` and `emblema-hal`, for the trait, and on no rendering backend
 * **No frame is read back from a display**: `--png` and `--frames-dir` with `--kms` are refused
 
-Tests: the clock on a display's blanks (fl-shell); a mode's rate from its timings, the flips counted, a kernel timestamp as an `Instant` (fl-platform-kms); and the raster thread over an output that is no card, which takes the ring's buffers, loses them once as a retaken card does, and has every frame committed and every buffer given back (fl-raster's `scanout` test, in the app lane on lavapipe, which exports dma-bufs). KMS itself is the boards'.
+Tests: the clock on a display's blanks (fl-shell); a mode's rate from its timings, the flips counted, a kernel timestamp as an `Instant` (fl-platform-kms); and the raster thread over an output that is no card, which takes the ring's buffers, loses them once as a retaken card does, and has every frame committed and every buffer given back (fl-raster's `scanout` test). That last needs a driver that exports dma-bufs with modifiers: lavapipe at Mesa 26.2 does, and the hosted runner's 25.2 does not, so in the app lane it says it is skipped and checks nothing yet; it passes here on lavapipe 26 and on a hardware driver. KMS itself is the boards'.
 
 Open, for the rest of stage 6: the devices through drmkit-input under the same seat, with the keys that switch terminals; the cursor plane and `flutter/mousecursor`; hotplug; `kms` by default and the board kit's display check; the VisionFive 2. Then drmkit-input's gaps: touchpad gestures, and devices added and removed.
 
