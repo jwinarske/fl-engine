@@ -1,0 +1,36 @@
+# What test/keys_test.dart sends flutter_tester, key for key.
+# A letter. The app handles key A, and nothing else.
+key keyA
+# Shift held over a letter.
+key shiftLeft down
+key keyA
+key shiftLeft up
+# Caps Lock on, a letter, off, a letter.
+key capsLock
+key keyB
+key capsLock
+key keyB
+# A key held: its downs after the first are repeats.
+key keyC down
+key keyC down
+key keyC down
+key keyC up
+# The number pad with Num Lock on, and off.
+key numLock
+key numpad1
+key numLock
+key numpad1
+# A shortcut's keys.
+key controlLeft down
+key keyV
+key controlLeft up
+# Keys that type no character.
+key enter
+key arrowLeft
+key escape
+# Which keys the engine holds down, asked while two are.
+key shiftRight down
+key f1 down
+idle
+key f1 up
+key shiftRight up

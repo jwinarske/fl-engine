@@ -107,7 +107,7 @@ fn run_all(bytes: &[u8]) {
         width: (bytes.len() % 9) as u32,
         height: (bytes.first().copied().unwrap_or(0) % 7).into(),
         row_bytes: bytes.len() % 41,
-        bgra: bytes.len() % 2 == 0,
+        bgra: bytes.len().is_multiple_of(2),
     };
     let _ = from_raw(bytes, &raw, None, &limits);
 }

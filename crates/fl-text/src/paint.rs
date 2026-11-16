@@ -543,7 +543,7 @@ fn wave(x: f32, y: f32, width: f32, thickness: f32, color: u32) -> PaintOp {
     let mut count = 0usize;
     let mut x_start = 0.0f32;
     while x_start + q * 2.0 < width {
-        let dy = if count % 2 != 0 { q } else { -q };
+        let dy = if !count.is_multiple_of(2) { q } else { -q };
         let ctrl = [cur[0] + q, cur[1] + dy];
         let end = [cur[0] + q * 2.0, cur[1]];
         quads.push((ctrl, end));
@@ -553,7 +553,7 @@ fn wave(x: f32, y: f32, width: f32, thickness: f32, color: u32) -> PaintOp {
     }
     let remaining = width - x_start;
     if remaining > 0.0 {
-        let sign = if count % 2 == 0 { -1.0 } else { 1.0 };
+        let sign = if count.is_multiple_of(2) { -1.0 } else { 1.0 };
         let (x1, y1) = (
             f64::from(remaining) / 2.0,
             f64::from(remaining) / 2.0 * sign,

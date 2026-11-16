@@ -986,6 +986,139 @@ fn messages_are_answered_every_way() {
     assert_eq!(lines, want, "{out}");
 }
 
+/// Keys (brief M4 stage 3, exit criterion 3): a script's keys, resolved
+/// against an XKB keymap and sent as the Linux embedder sends them, reach
+/// both of the framework's keyboards as flutter_tester's reach them
+/// (apps/keys/test/*_events.txt, from `flutter test`), line for line: every
+/// `KeyEvent` and `RawKeyEvent`, the keys and locks held after each, and
+/// the engine's answer to `getKeyboardState`.
+#[cfg(feature = "kms")]
+#[test]
+#[ignore = "app lane: needs FLUTTER_ROOT and libxkbcommon with its layouts"]
+fn keys_match_the_stock_framework() {
+    let app = build_app("keys");
+    let run = |script: &std::path::Path, keymap: &str| {
+        let o = common::fl_dart(&[
+            "run-app".as_ref(),
+            app.as_os_str(),
+            "200x100".as_ref(),
+            "--input".as_ref(),
+            script.as_os_str(),
+            "--keymap".as_ref(),
+            keymap.as_ref(),
+        ]);
+        assert!(o.status.success(), "{o:?}");
+        String::from_utf8_lossy(&o.stdout).into_owned()
+    };
+    let dir = repo().join("apps/keys/test");
+    let mut outs = Vec::new();
+    for (name, keymap) in [("typing", "us"), ("french", "fr")] {
+        let out = run(&dir.join(format!("{name}.txt")), keymap);
+        let seen: Vec<&str> = out
+            .lines()
+            .filter(|l| ["key ", "raw ", "state "].iter().any(|p| l.starts_with(p)))
+            .collect();
+        let expected = std::fs::read_to_string(dir.join(format!("{name}_events.txt"))).unwrap();
+        let expected: Vec<&str> = expected.lines().collect();
+        assert_eq!(seen.len(), expected.len(), "{name}:\n{out}");
+        for (i, (a, b)) in seen.iter().zip(&expected).enumerate() {
+            assert!(
+                a == b || differs_by_the_simulator_s_raw_logical_key(a, b),
+                "{name} line {}:\n  fl-dart        {a}\n  flutter_tester {b}",
+                i + 1
+            );
+        }
+        outs.push(out);
+    }
+    let typing = &outs[0];
+    // The app handles key A: two taps, a down and an up each.
+    assert!(
+        typing.contains("\nkeys: events=40 handled=4 unhandled=36\n"),
+        "{typing}"
+    );
+    // The engine's own message, which flutter_tester does not send: GTK's
+    // shape, the keysym, the XKB keycode, the layout's logical key.
+    let data: Vec<&str> = typing.lines().filter(|l| l.starts_with("data ")).collect();
+    assert_eq!(data.len(), 40);
+    assert_eq!(
+        data[0],
+        "data toolkit=GtkKeyHelper keyCode=0x61 scanCode=0x26 modifiers=0x0 \
+         unicodeScalarValues=0x61 specifiedLogicalKey=0x61"
+    );
+    // Shift held over key A: its state bit, and the keysym it gives.
+    assert_eq!(
+        data[3],
+        "data toolkit=GtkKeyHelper keyCode=0x41 scanCode=0x26 modifiers=0x1 \
+         unicodeScalarValues=0x41 specifiedLogicalKey=0x61"
+    );
+    assert!(typing.contains("\nstate {0x7003a: 0x100000801, 0x700e5: 0x200000103}\n"));
+
+    // A dead key (us, intl): no character, and the logical key the key has
+    // on a US layout, since neither of its levels is Latin-1. Composing
+    // is text input's (stage 4).
+    let script = common::out_dir().join("apps/keys-dead.txt");
+    std::fs::write(&script, "key quote\nkey keyE\n").unwrap();
+    let out = run(&script, "us:intl");
+    let keys: Vec<&str> = out.lines().filter(|l| l.starts_with("key down")).collect();
+    assert_eq!(
+        keys,
+        [
+            "key down physical=0x70034 logical=0x22 character=- synthesized=false pressed=[0x22] locks=[]",
+            "key down physical=0x70008 logical=0x65 character=\"e\" synthesized=false pressed=[0x65] locks=[]",
+        ]
+    );
+    assert!(out.contains("data toolkit=GtkKeyHelper keyCode=0xfe51 scanCode=0x30 modifiers=0x0 unicodeScalarValues=0x0 specifiedLogicalKey=0x22"));
+}
+
+/// Whether two `raw down` lines differ only as flutter_tester's simulated
+/// event differs from a Linux embedder's: the simulator sends GLFW's
+/// message, whose logical key is the character typed (`A`, `&`), where
+/// GTK's carries the layout's (`a`, `1`), which is also what both give the
+/// `KeyEvent` beside it and the `raw up` after.
+#[cfg(feature = "kms")]
+fn differs_by_the_simulator_s_raw_logical_key(ours: &str, theirs: &str) -> bool {
+    if !ours.starts_with("raw down ") {
+        return false;
+    }
+    let (a, b): (Vec<&str>, Vec<&str>) = (ours.split(' ').collect(), theirs.split(' ').collect());
+    if a.len() != b.len() {
+        return false;
+    }
+    let character = a
+        .iter()
+        .find_map(|f| f.strip_prefix("character=\""))
+        .and_then(|c| c.chars().next());
+    a.iter().zip(&b).all(|(x, y)| {
+        x == y
+            || (x.starts_with("logical=")
+                && character.is_some_and(|c| *y == format!("logical={:#x}", c as u32)))
+    })
+}
+
+/// Without the KMS platform there is no keymap, and a script with keys is
+/// refused before the app starts, where the default build says why.
+#[cfg(not(feature = "kms"))]
+#[test]
+#[ignore = "app lane: needs FLUTTER_ROOT"]
+fn keys_need_the_kms_feature() {
+    let app = build_app("keys");
+    let script = repo().join("apps/keys/test/typing.txt");
+    let o = common::fl_dart(&[
+        "run-app".as_ref(),
+        app.as_os_str(),
+        "200x100".as_ref(),
+        "--input".as_ref(),
+        script.as_os_str(),
+    ]);
+    assert!(!o.status.success());
+    let err = String::from_utf8_lossy(&o.stderr);
+    assert!(
+        err.contains("need a keymap: build fl-dart with `--features kms`"),
+        "{err}"
+    );
+    assert!(o.stdout.is_empty(), "{o:?}");
+}
+
 /// Frames after the first (exit criterion 3): the ticker asks for each,
 /// each is begun at a vsync tick, and the animation runs on those ticks'
 /// times. 30 frames: the warm-up frame, then 29 at vsync.

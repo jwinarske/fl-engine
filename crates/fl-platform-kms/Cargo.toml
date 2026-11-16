@@ -1,0 +1,19 @@
+[package]
+name = "fl-platform-kms"
+description = "fl-engine on KMS, through drmkit: so far the XKB keymap its key events are resolved against"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+
+[dependencies]
+fl-input = { workspace = true }
+# The keymap alone: drmkit-input's libinput half, and with it libinput and
+# libudev, comes with the seat at stage 6. `xkb` links the system's
+# libxkbcommon; nothing is built.
+drmkit-input = { workspace = true, features = ["xkb"] }
+xkbcommon = { workspace = true }
+
+[lints]
+workspace = true

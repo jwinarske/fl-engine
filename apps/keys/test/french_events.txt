@@ -1,0 +1,24 @@
+raw down physical=0x70004 logical=0x71 character="q" repeat=false shift=false control=false alt=false meta=false
+key down physical=0x70004 logical=0x71 character="q" synthesized=false pressed=[0x71] locks=[]
+raw up physical=0x70004 logical=0x71 character=- repeat=false shift=false control=false alt=false meta=false
+key up physical=0x70004 logical=0x71 character=- synthesized=false pressed=[] locks=[]
+raw down physical=0x7001e logical=0x26 character="&" repeat=false shift=false control=false alt=false meta=false
+key down physical=0x7001e logical=0x31 character="&" synthesized=false pressed=[0x31] locks=[]
+raw up physical=0x7001e logical=0x31 character=- repeat=false shift=false control=false alt=false meta=false
+key up physical=0x7001e logical=0x31 character=- synthesized=false pressed=[] locks=[]
+raw down physical=0x700e1 logical=0x200000102 character=- repeat=false shift=true control=false alt=false meta=false
+key down physical=0x700e1 logical=0x200000102 character=- synthesized=false pressed=[0x200000102] locks=[]
+raw down physical=0x7001e logical=0x31 character="1" repeat=false shift=true control=false alt=false meta=false
+key down physical=0x7001e logical=0x31 character="1" synthesized=false pressed=[0x31,0x200000102] locks=[]
+raw up physical=0x7001e logical=0x31 character=- repeat=false shift=true control=false alt=false meta=false
+key up physical=0x7001e logical=0x31 character=- synthesized=false pressed=[0x200000102] locks=[]
+raw up physical=0x700e1 logical=0x200000102 character=- repeat=false shift=false control=false alt=false meta=false
+key up physical=0x700e1 logical=0x200000102 character=- synthesized=false pressed=[] locks=[]
+raw down physical=0x70033 logical=0x6d character="m" repeat=false shift=false control=false alt=false meta=false
+key down physical=0x70033 logical=0x6d character="m" synthesized=false pressed=[0x6d] locks=[]
+raw up physical=0x70033 logical=0x6d character=- repeat=false shift=false control=false alt=false meta=false
+key up physical=0x70033 logical=0x6d character=- synthesized=false pressed=[] locks=[]
+raw down physical=0x70010 logical=0x2c character="," repeat=false shift=false control=false alt=false meta=false
+key down physical=0x70010 logical=0x2c character="," synthesized=false pressed=[0x2c] locks=[]
+raw up physical=0x70010 logical=0x2c character=- repeat=false shift=false control=false alt=false meta=false
+key up physical=0x70010 logical=0x2c character=- synthesized=false pressed=[] locks=[]

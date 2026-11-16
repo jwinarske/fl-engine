@@ -59,7 +59,58 @@ Found on the way:
 * Idle cannot see a Dart timer: a long-press or double-tap timeout is a message yet to arrive. A script that needs one waits with `wait`
 * Moves are not merged per device within a frame (brief §15, "as the engine's dispatcher allows"): the default dispatcher does not, and resampling is the framework's. Only the limit drops any
 
-Open: keys (stage 3). Mouse, scroll, pan-zoom and more than one finger from the script are stage 5's; the converter and the packet already carry them.
+Open: mouse, scroll, pan-zoom and more than one finger from the script are stage 5's; the converter and the packet already carry them.
+
+## Stage 3: keys (2026-11-16)
+
+Done: a script's keys, resolved against an XKB keymap and sent as the Linux embedder sends them, reach both of the framework's keyboards as flutter_tester's reach them. Exit criterion 3, keys.
+
+    cargo build -p fl-dart-cli --features kms
+    tools/flutter-app/build.sh $FLUTTER_ROOT apps/keys out
+    fl-dart run-app out/keys.so 200x100 --input apps/keys/test/typing.txt
+    raw down physical=0x70004 logical=0x61 character="a" repeat=false shift=false control=false alt=false meta=false
+    data toolkit=GtkKeyHelper keyCode=0x61 scanCode=0x26 modifiers=0x0 unicodeScalarValues=0x61 specifiedLogicalKey=0x61
+    key down physical=0x70004 logical=0x61 character="a" synthesized=false pressed=[0x61] locks=[]
+    ...
+    keys: events=40 handled=4 unhandled=36
+
+* `fl_input::KeyData`, `embedder.h`'s `FlutterKeyEvent`, and `KeyEvent`, one native key event as the framework is to be told it (D2, D8): its `KeyData` in order, the synthesized first, and its message for `flutter/keyevent`. `EventSink::key_event` delivers one
+* `fl_input::xkb`, the Linux embedder's key path below GDK, ported, with no keymap linked (D7). A source resolves a key into an `XkbKey`, GDK's `GdkEventKey` (keycode, keysym, its character, the state before the event, the group), and `Keys::handle` makes the `KeyEvent`:
+  * `Tracker`: `fl_key_embedder_responder`. Which keys the framework has been told are down, repeats, an up with no down, and synthesized events where the state's modifiers and locks disagree with what was sent
+  * `Layout`: `fl_keyboard_manager`'s `guarantee_layout`. Every letter and digit is some key's logical key on any layout: the key that types it, else the key that has it on a US layout
+  * `RawChannel`: `fl_key_channel_responder` and `fl_key_event_channel`, the legacy message in GTK's shape, in one module (D2)
+  * the tables of `fl_key_mapping.g.cc`, generated: 217 XKB keycodes to USB HID usages, 171 keysyms to logical keys, 49 layout goals. The XKB keycode is the evdev code plus 8, so the table serves a board's devices as it is
+* Ported with their unit tests, case for case under their names: 16 of `fl_key_embedder_responder_test.cc`'s 17, converted by script (433 of its checks; the rest are of the mock's struct size); `fl_keyboard_manager_test.cc`'s layouts on its French and Russian data, modifiers and pressed state; `fl_key_channel_responder_test.cc`'s messages; `fl_key_mapping_test.cc`. The sources are the pin's: `.flutter/engine` holds the same files
+* `fl_ui::key`: the `KeyDataPacket` as `_unpackKeyData` reads it; the two answers, one byte on `flutter/keydata` and `{"handled":true}` on `flutter/keyevent`; and `flutter/keyboard`'s `getKeyboardState`, a standard-codec map of physical to logical key
+* The loop takes key events in their place among the pointer events, never dropped, and sends each as `fl_keyboard_manager` does: every `KeyData` on `flutter/keydata`, then the message on `flutter/keyevent`, each with its microtasks. Pointer events between two keys still go as one packet
+* Handled if either answer says so, once both are in; an event with no `KeyData` of a real key, a release with no press, is handled as it stands. `Wake::keys` counts events, handled and unhandled; an answer that never comes is the loop's end. `fl_keyboard_manager_test.cc`'s eight cases of who answered are fl-shell's test
+* `fl-platform-kms`, new: `XkbKeymap`, drmkit-input's `Keyboard` behind `fl_input::xkb::Keymap` (D3). `from_layout` names rules, model, layout and variant in full, so `XKB_DEFAULT_*` change nothing. Tested on the system's `us`, `fr` and `ru`
+* The script: `key <name> down`, `up`, or neither for both; a key is named as Flutter names its place (`keyA`, `shiftLeft`, `numpad1`). A second down is a repeat. `run-app --keymap LAYOUT[:VARIANT]`, `us` by default; the keymap is made on the script's thread, which it does not leave (xkbcommon's state is not `Send`), and once before the app starts, so one that cannot be had is no run
+* `apps/keys`: logs every `KeyEvent` and `RawKeyEvent` with the keys and locks the framework holds after each, handles key A, and asks `getKeyboardState` when F1 goes down. `keys_match_the_stock_framework` holds its lines against `test/typing_events.txt` and `test/french_events.txt`, which `flutter test` records for the same keys: 81 lines and 24, both modes
+* ci.yml: the app lane installs `libxkbcommon-dev` and `xkb-data`, runs the apps with `--features kms` and fl-platform-kms's tests; no-vm lints fl-dart with the feature
+
+Decided here:
+
+* **The tracker runs in the source, not on the UI thread.** D8's boundary is the embedder API's shape, so what crosses it is `FlutterKeyEvent`s, and a platform with another keyboard model brings its own tracker with no change above `fl-input`. Brief §6 had the UI thread make key messages; it sends and awaits them
+* **`getKeyboardState` is answered from what was dispatched**, not from the tracker: a down adds its key, an up removes it. The same map once the queue is empty, and never ahead of what the framework has seen
+* **`kms` is a feature of fl-dart, off by default.** It links libxkbcommon, which the cross lanes' sysroots do not have. Without it a script with keys is refused before the app starts, saying so. On by default when the boards come through it (stage 6)
+* **Rust floor 1.85 to 1.94.1**, as the brief has it (§7): drmkit's, and the pinned toolchain's
+* **The logo key is `GDK_META_MASK`** (and Mod4, and `GDK_SUPER_MASK`) in the state a source reports. The embedder checks `GDK_META_MASK` for its Meta keys, which are the logo keys; the framework's GTK helper reads Meta from `GDK_SUPER_MASK`. What GDK itself sets for a held logo key on Wayland was not measured (D5: no recordings)
+
+Differences from the embedder, each for its intent:
+
+* The Caps Lock inference (`caps_lock_state_logic_inferrence`) is not ported, as D7 has it, nor its test, `TapLetterKeysBetweenCapsLockEventsReversed`. A source reads the state before the event from its keymap, which is the embedder's normal logic: xkbcommon locks on the first press and unlocks on the second release, and the tracker's stages follow with no synthesized event (fl-platform-kms's tests)
+* A modifier down on two keys, the later let go, then gone from the state: the embedder releases the key it last went down on, already up, and the first stays down for good. Here the key still down comes up (brief §15, key state). A test of its own
+* The embedder records the physical key of every logical key and reads back only the modifiers' and locks'. Only those are kept, so a source's keysyms cannot grow the tracker
+
+Found on the way:
+
+* flutter_tester sends the framework GLFW's message for Linux, not GTK's, and GLFW's logical key is the character typed: `A` for Shift and key A, `&` for digit 1 on a French layout. GTK's carries the layout's logical key (`specifiedLogicalKey`). So three `raw down` lines differ, in `logical` alone, and the test allows exactly that; the `KeyEvent` beside each and the `raw up` after agree
+* drmkit-input's `Keyboard` does not say which layout of a keymap is in effect, and has no compose table. The group is 0, right for the one-layout keymaps `from_layout` makes; a keymap of several layouts, and dead keys for stage 4, need them from drmkit or from xkbcommon beside it
+* A dead key (`us:intl`, the quote key) types no character and is logical key `"`, its US key: neither of its levels is Latin-1. Composing is text input's
+* Enter and Escape carry a character, U+000D and U+001B: `gdk_keyval_to_unicode` gives one, and the embedder sends it
+
+Open: text input (stage 4), which is where an unhandled key goes next. Keys held as a device goes or the focus does (brief §8, §15) need a device to go: stage 6. The script's keys are not in the soak yet (stage 7).
 
 ## Decisions taken 2026-11-16
 

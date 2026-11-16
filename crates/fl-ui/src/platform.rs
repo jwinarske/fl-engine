@@ -74,7 +74,7 @@ pub(crate) extern "C" fn send_channel_update(_name: sys::Dart_Handle, _listening
 /// `Handle Function(Handle name, Handle callback, Handle data)`. Null is
 /// success; a returned String is thrown as an error.
 ///
-/// Two channels are answered:
+/// Three channels are answered:
 /// * `flutter/assets`: the data is an asset key as UTF-8; the answer is the
 ///   asset's bytes from the bundle [`crate::set_asset_bundle`] set, or null,
 ///   which the framework reads as not found. Every request is answered,
@@ -83,6 +83,9 @@ pub(crate) extern "C" fn send_channel_update(_name: sys::Dart_Handle, _listening
 ///   first frame when it has a restoration scope. The answer is a successful
 ///   method result of null, no restoration data; an empty reply would mean
 ///   no handler, and the framework would throw
+/// * `flutter/keyboard` `getKeyboardState`, which `HardwareKeyboard` asks
+///   as the binding starts: the keys the framework has been told are down
+///   ([`crate::key`]), a map of physical key to logical key
 ///
 /// Every other message is dropped: nothing on the path so far awaits one,
 /// and an unanswered request never completes rather than failing.
@@ -112,6 +115,11 @@ pub(crate) extern "C" fn send_platform_message(
                 if bytes.as_deref().and_then(method_name) == Some("get") =>
             {
                 Some(ReplyArg::Bytes(RESULT_NULL.to_vec()))
+            }
+            Some("flutter/keyboard")
+                if bytes.as_deref().and_then(method_name) == Some("getKeyboardState") =>
+            {
+                Some(ReplyArg::Bytes(crate::key::keyboard_state_reply()))
             }
             _ => None,
         };

@@ -1,0 +1,11 @@
+name: keys
+description: fl-engine test program. Every key event the framework sees, on both of its keyboards (docs/m4-input.md stage 3).
+publish_to: none
+environment:
+  sdk: ^3.13.0
+dependencies:
+  flutter:
+    sdk: flutter
+dev_dependencies:
+  flutter_test:
+    sdk: flutter

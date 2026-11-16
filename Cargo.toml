@@ -5,10 +5,10 @@ members = ["crates/*", "xtask"]
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
-# Same floor as emblema, and for the same reason: the two workspaces meet at M2,
-# and a floor lower than the one emblema can actually build on would be a promise
-# nothing here can keep once they do.
-rust-version = "1.85"
+# drmkit's floor (brief M4 D8), which is also the pinned toolchain
+# (rust-toolchain.toml) and what Yocto's wrynose ships. It was emblema's 1.85
+# until fl-platform-kms brought drmkit in.
+rust-version = "1.94.1"
 publish = false
 # Matches the Flutter Engine and the Dart SDK, whose embedding API this binds.
 license = "BSD-3-Clause"
@@ -29,6 +29,10 @@ unimplemented = "deny"
 
 [workspace.dependencies]
 thiserror = "1"
+# drmkit (brief M4 D3, D9), with its C libraries as they are: linked from the
+# system, never built. Only fl-platform-kms depends on it.
+drmkit-input = { version = "0.1.3", default-features = false }
+xkbcommon = { version = "0.9", default-features = false }
 trybuild = "1"
 
 fl-dart-sys = { path = "crates/fl-dart-sys", version = "0.1.0", default-features = false }
@@ -41,4 +45,5 @@ fl-assets = { path = "crates/fl-assets", version = "0.1.0" }
 fl-image = { path = "crates/fl-image", version = "0.1.0" }
 fl-input = { path = "crates/fl-input", version = "0.1.0" }
 fl-input-script = { path = "crates/fl-input-script", version = "0.1.0" }
+fl-platform-kms = { path = "crates/fl-platform-kms", version = "0.1.0" }
 fl-text = { path = "crates/fl-text", version = "0.1.0" }
