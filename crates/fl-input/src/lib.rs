@@ -168,3 +168,25 @@ pub trait EventSink: Send + Sync {
     /// Whether the loop has ended: nothing delivered from now on is seen.
     fn is_closed(&self) -> bool;
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// What a source builds on its own thread crosses to the loop's (brief
+    /// M4 §6, exit criterion 6): events are data, and `Send`. The packet
+    /// converter, which is not, has its compile-fail case in fl-ui.
+    #[test]
+    fn events_cross_threads() {
+        fn sent<T: Send + 'static>() {}
+        sent::<PointerEvent>();
+        sent::<KeyEvent>();
+        sent::<KeyData>();
+        sent::<xkb::XkbKey>();
+        sent::<Box<dyn text::InputMethod>>();
+        sent::<Box<dyn text::Clipboard>>();
+        // A sink is shared with the source's thread.
+        fn shared<T: Send + Sync + ?Sized>() {}
+        shared::<dyn EventSink>();
+    }
+}

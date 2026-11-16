@@ -18,6 +18,8 @@ use fl_dart_ffi::{lookup, Symbol};
 mod buffer;
 mod clipboard;
 mod compositing;
+#[cfg(test)]
+mod fuzz;
 mod gradient;
 mod image;
 mod json;

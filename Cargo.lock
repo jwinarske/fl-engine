@@ -403,6 +403,7 @@ dependencies = [
  "fl-image",
  "fl-input",
  "fl-text",
+ "trybuild",
 ]
 
 [[package]]

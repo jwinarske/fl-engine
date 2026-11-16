@@ -224,6 +224,9 @@ fn app_cycle(path: &str, n: u32, app: AppArgs) -> Result<(), Failure> {
     let tenth = (n / 10).max(1);
     let (mut warm, mut mid, mut frames) = (None, None, 0u64);
     let mut builds: Vec<u64> = Vec::new();
+    // What `--input` did, over every cycle.
+    let mut latency: Vec<u64> = Vec::new();
+    let (mut dropped, mut keys) = (0u64, fl_shell::KeyCounts::default());
     let mut tenths = Vec::with_capacity(10);
     let mut kinds = Vec::with_capacity(10);
     let mut threads = Vec::with_capacity(10);
@@ -244,6 +247,12 @@ fn app_cycle(path: &str, n: u32, app: AppArgs) -> Result<(), Failure> {
         let run = app_once(&vm, &program, path, &app, raster.as_ref(), false)?;
         frames += run.rendered;
         builds.extend(run.builds_us);
+        latency.extend(run.report.input_latency_us);
+        dropped += run.input_dropped;
+        keys.events += run.keys.events;
+        keys.handled += run.keys.handled;
+        keys.unhandled += run.keys.unhandled;
+        keys.text += run.keys.text;
         if i == 0 {
             warm = Some(usage());
         }
@@ -268,7 +277,7 @@ fn app_cycle(path: &str, n: u32, app: AppArgs) -> Result<(), Failure> {
     let mid = mid.unwrap_or(end);
     let gpu = finish_raster(raster, &app)?;
     println!(
-        "cycles={n} frames={frames} rss_warm_kb={} rss_tenth_kb={} rss_end_kb={} rss_tenths_kb={} {} threads_tenths={} faces_tenths={} {} {} fds_warm={} fds_end={} persistent_handles={} gpu_images={} gpu_kb={} atlas_side={} atlas_glyphs={} atlas_placements={} atlas_uploads={}",
+        "cycles={n} frames={frames} rss_warm_kb={} rss_tenth_kb={} rss_end_kb={} rss_tenths_kb={} {} threads_tenths={} faces_tenths={} {} {} fds_warm={} fds_end={} persistent_handles={} gpu_images={} gpu_kb={} atlas_side={} atlas_glyphs={} atlas_placements={} atlas_uploads={} {}",
         warm.0,
         mid.0,
         end.0,
@@ -287,6 +296,7 @@ fn app_cycle(path: &str, n: u32, app: AppArgs) -> Result<(), Failure> {
         gpu.atlas_glyphs,
         gpu.atlas_placements,
         gpu.atlas_uploads,
+        input_report(&mut latency, dropped, keys),
     );
     Ok(())
 }
@@ -997,6 +1007,30 @@ fn builds_report(builds: &mut [u64]) -> String {
         at(50).copied().unwrap_or(0),
         at(99).copied().unwrap_or(0),
         builds.last().copied().unwrap_or(0),
+    )
+}
+
+/// What a script of input did over an `app-cycle`: the frames input asked
+/// for and how long each took to show it, from its oldest event to the end
+/// of its `_drawFrame` (brief M4 §15), the motion dropped, and the keys.
+/// All zero with no `--input`.
+fn input_report(latency_us: &mut [u64], dropped: u64, keys: fl_shell::KeyCounts) -> String {
+    latency_us.sort_unstable();
+    let at = |q: usize| {
+        let i = (latency_us.len() * q / 100).min(latency_us.len().saturating_sub(1));
+        latency_us.get(i).copied().unwrap_or(0)
+    };
+    format!(
+        "input_frames={} input_latency_us_p50={} input_latency_us_p90={} input_latency_us_max={} \
+         input_dropped={dropped} keys_events={} keys_handled={} keys_unhandled={} keys_text={}",
+        latency_us.len(),
+        at(50),
+        at(90),
+        latency_us.last().copied().unwrap_or(0),
+        keys.events,
+        keys.handled,
+        keys.unhandled,
+        keys.text,
     )
 }
 

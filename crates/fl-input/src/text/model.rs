@@ -230,6 +230,7 @@ impl TextInputModel {
         if self.composing {
             self.composing_range = self.selection;
         }
+        self.settle();
         true
     }
 
@@ -264,6 +265,7 @@ impl TextInputModel {
         let position = self.selection.position().min(self.text.len());
         self.text.splice(position..position, text.iter().copied());
         self.selection = TextRange::at(position + text.len());
+        self.settle();
     }
 
     /// The units of the character before `position`, which is past
@@ -298,6 +300,7 @@ impl TextInputModel {
                 let end = self.composing_range.end().saturating_sub(count);
                 self.composing_range.set_end(end);
             }
+            self.settle();
             return true;
         }
         false
@@ -317,6 +320,7 @@ impl TextInputModel {
                 let end = self.composing_range.end().saturating_sub(count);
                 self.composing_range.set_end(end);
             }
+            self.settle();
             return true;
         }
         false
@@ -371,6 +375,7 @@ impl TextInputModel {
             let end = self.composing_range.end().saturating_sub(deleted);
             self.composing_range.set_end(end);
         }
+        self.settle();
         true
     }
 
@@ -480,6 +485,16 @@ impl TextInputModel {
         } else {
             self.text_range()
         }
+    }
+
+    /// Holds both ranges inside the text after it has changed. The
+    /// original leaves the composing range as it was while nothing is
+    /// being composed, and an input method whose signals come out of
+    /// order (text composed with no start, then replaced by less) leaves
+    /// it past the text's end, to be told to the framework as it is.
+    fn settle(&mut self) {
+        self.selection = self.held(self.selection);
+        self.composing_range = self.held(self.composing_range);
     }
 
     /// A range's start and end, held inside the text.

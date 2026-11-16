@@ -18,5 +18,8 @@ fl-input = { workspace = true }
 fl-text = { workspace = true }
 fl-dart-ffi = { workspace = true }
 
+[dev-dependencies]
+trybuild = { workspace = true }
+
 [lints]
 workspace = true

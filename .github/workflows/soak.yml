@@ -40,7 +40,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { mode: aot, features: "" }
+          # With the KMS platform's keymap: the soak types (brief M4 §15).
+          - { mode: aot, features: "--features kms" }
           - { mode: jit, features: "--no-default-features --features jit" }
     steps:
       - uses: actions/checkout@v4
@@ -67,9 +68,9 @@ jobs:
           [[ "$head" == "$FLUTTER_COMMIT" ]] || { echo "Flutter is at $head, not $FLUTTER_COMMIT"; exit 1; }
           "$FLUTTER_ROOT/bin/flutter" --disable-analytics >/dev/null
           "$FLUTTER_ROOT/bin/flutter" precache --linux --no-android --no-ios --no-web --no-macos --no-windows --no-fuchsia
-      - name: lavapipe
+      - name: lavapipe and libxkbcommon
         if: matrix.mode == 'aot'
-        run: sudo apt-get install -y -qq mesa-vulkan-drivers
+        run: sudo apt-get install -y -qq mesa-vulkan-drivers libxkbcommon-dev xkb-data libx11-data
       - name: Fetch the prebuilt VM
         env:
           GITHUB_TOKEN: ${{ github.token }}

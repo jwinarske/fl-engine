@@ -99,6 +99,138 @@ fn report(args: &[&std::ffi::OsStr]) -> Report {
     Report { line, values }
 }
 
+/// Two frames at 60 Hz (brief M4 §15, latency): from an input event to
+/// the end of the frame that shows it.
+#[cfg(feature = "aot")]
+const INPUT_LATENCY_LIMIT_US: u64 = 33_334;
+
+/// Input in the soak (brief M4 §10, §15, exit criterion 7): apps cycled
+/// with a script of input each lifecycle, its own thread started and
+/// joined each time, held to the bounds of [`app_cycles_stay_flat`]. Every
+/// key's two answers leave no persistent handle behind, and no motion is
+/// dropped.
+///
+/// * counter: three taps a cycle at 60 Hz, each tap's ripple run to its
+///   end; nine tenths of the frames input asked for show it within two
+///   frames of its event. The UI side only: the latency is the UI
+///   thread's, and drawn, the glyph atlas is still filling at 20 cycles
+///   (the counter's own soak is the one that draws, 300 times)
+/// * pointer: a mouse, its wheel, two fingers and a touchpad's gestures,
+///   300 times over
+/// * scroll: the wheel, a drag, a fling and a pan each cycle, the fling's
+///   frames among them
+/// * with the KMS platform's keymap, keys: 40 key events a cycle through
+///   the tracker and both of the framework's keyboards; and text_field
+///   typed into, 100 characters a cycle and 10,000 in all, each an
+///   editing state told to the framework and a frame laid out anew within
+///   M3's 4 ms a frame; every ten, the field is selected and cleared, by
+///   keys the framework handles
+#[cfg(feature = "aot")]
+#[test]
+#[ignore = "soak lane: needs FLUTTER_ROOT"]
+fn input_cycles_stay_flat() {
+    let fonts = material_fonts();
+    let fonts: Vec<&str> = fonts.iter().map(String::as_str).collect();
+    let apps = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../apps");
+    let script =
+        |app: &str, name: &str| apps.join(app).join("test").join(name).display().to_string();
+    let taps = script("counter", "taps.txt");
+    let pointers = script("pointer", "pointers.txt");
+    let scroll = script("scroll", "scroll.txt");
+    let mut counter = vec!["1200x900@3", "--input", &taps];
+    counter.extend(fonts.iter().copied());
+    #[allow(unused_mut)]
+    let mut runs: Vec<(&str, u32, Vec<&str>)> = vec![
+        ("counter", 20, counter),
+        ("pointer", 300, vec!["400x300", "--input", &pointers]),
+        ("scroll", 20, vec!["1200x900@3", "--input", &scroll]),
+    ];
+    // A hundred characters, a frame for each: the field is asked where it
+    // is, told the new text, and laid out again, a key at a time. Ten at
+    // a time, then all selected and deleted, so the text stays inside the
+    // field: past its edge every key starts a 100 ms scroll to the caret,
+    // 100 frames at 1 kHz, and the run is those frames and not the typing.
+    #[cfg(feature = "kms")]
+    let (typing, typed) = {
+        let typed = common::out_dir().join("apps/text_field-soak.txt");
+        let mut text = String::new();
+        for i in 0..100 {
+            let key = ["keyF", "keyL", "keyU", "keyT", "keyE", "keyR", "space"][i % 7];
+            text.push_str(&format!("key {key}\nidle\n"));
+            if i % 10 == 9 {
+                text.push_str(
+                    "key controlLeft down\nkey keyA\nkey controlLeft up\nkey backspace\nidle\n",
+                );
+            }
+        }
+        std::fs::write(&typed, text).unwrap();
+        (script("keys", "typing.txt"), typed.display().to_string())
+    };
+    #[cfg(feature = "kms")]
+    {
+        runs.push(("keys", 300, vec!["200x100", "--input", &typing]));
+        let mut field = vec!["1200x900@3", "--input", &typed, "--hz", "1000"];
+        field.extend(fonts.iter().copied());
+        runs.push(("text_field", 100, field));
+    }
+    for (name, n, opts) in runs {
+        let app = common::build_app(name);
+        let n_str = n.to_string();
+        let mut args: Vec<&std::ffi::OsStr> =
+            vec!["app-cycle".as_ref(), app.as_os_str(), n_str.as_ref()];
+        args.extend(opts.iter().map(std::ffi::OsStr::new));
+        let r = report(&args);
+        let n = u64::from(n);
+        assert!(r["frames"] >= n, "{name}: {r:?}");
+        let growth = r["rss_end_kb"].saturating_sub(r["rss_tenth_kb"]);
+        assert!(
+            growth <= RSS_GROWTH_LIMIT_KB,
+            "{name}: RSS grew {growth} kB over the last nine tenths of {n} cycles: {r:?}"
+        );
+        assert_eq!(
+            r["fds_end"], r["fds_warm"],
+            "{name}: descriptors leaked: {r:?}"
+        );
+        // A key's two answers, and a message's, are kept by id until the
+        // framework responds or the isolate goes: none outlives it.
+        assert_eq!(r["persistent_handles"], 0, "{name}: {r:?}");
+        assert_eq!(r["gpu_images"], 0, "{name}: {r:?}");
+        assert_eq!(r["input_dropped"], 0, "{name}: {r:?}");
+        match name {
+            "counter" => {
+                // Each tap asked for a frame.
+                assert_eq!(r["input_frames"], 3 * n, "{name}: {r:?}");
+                assert!(
+                    r["input_latency_us_p90"] <= INPUT_LATENCY_LIMIT_US,
+                    "{name}: input took {} us to show, over two frames: {r:?}",
+                    r["input_latency_us_p90"]
+                );
+            }
+            "scroll" => assert!(r["frames"] >= 30 * n, "{name}: {r:?}"),
+            "keys" => {
+                assert_eq!(r["keys_events"], 40 * n, "{name}: {r:?}");
+                assert_eq!(
+                    r["keys_handled"] + r["keys_unhandled"],
+                    40 * n,
+                    "{name}: {r:?}"
+                );
+            }
+            "text_field" => {
+                assert_eq!(r["keys_text"], 100 * n, "{name}: {r:?}");
+                assert!(r["frames"] >= 100 * n, "{name}: {r:?}");
+                assert!(
+                    r["build_us_mean"] <= CHURN_BUILD_BUDGET_US,
+                    "{name}: frames took {} us to build on average, over the {} us budget: {r:?}",
+                    r["build_us_mean"],
+                    CHURN_BUILD_BUDGET_US
+                );
+            }
+            _ => {}
+        }
+        println!("{name}: {r:?}");
+    }
+}
+
 #[test]
 #[ignore = "soak lane: cargo test --release -p fl-dart-cli --test soak -- --ignored"]
 fn isolate_cycles_stay_flat() {
@@ -393,7 +525,22 @@ fn apps_under_a_sanitizer() {
         .into_iter()
         .chain(fonts.iter().copied())
         .collect();
-    let runs: [(&str, &[&str]); 9] = [
+    let apps = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../apps");
+    let script =
+        |app: &str, name: &str| apps.join(app).join("test").join(name).display().to_string();
+    let (taps, pointers, scroll) = (
+        script("counter", "taps.txt"),
+        script("pointer", "pointers.txt"),
+        script("scroll", "scroll.txt"),
+    );
+    let tapped: Vec<&str> = ["2", "1200x900@3", "--input", &taps]
+        .into_iter()
+        .chain(fonts.iter().copied())
+        .collect();
+    let pointed = ["3", "400x300", "--input", &pointers];
+    let scrolled = ["2", "1200x900@3", "--input", &scroll];
+    #[allow(unused_mut)]
+    let mut runs: Vec<(&str, &[&str])> = vec![
         ("colored_box", &["3"]),
         ("shapes", &["3", "--frames", "2"]),
         ("material", &["3"]),
@@ -409,7 +556,45 @@ fn apps_under_a_sanitizer() {
         // An animation's frames, decoded in turn on the decode thread.
         ("gif", &["2", "400x300", "--frames", "8"]),
         ("text_churn", &churn),
+        // A script of input on its own thread, delivering to the loop:
+        // the queue, the idle wait, the packets (brief M4 §10).
+        ("counter", &tapped),
+        ("pointer", &pointed),
+        ("scroll", &scrolled),
     ];
+    // With the KMS platform's keymap: keys through the tracker to both of
+    // the framework's keyboards, and a field typed into, composed in,
+    // selected in, copied from and pasted into.
+    #[cfg(feature = "kms")]
+    let (typing, edit) = {
+        let edit = common::out_dir().join("apps/text_field-sanitizer.txt");
+        let parts = ["typed", "selected", "pasted", "submitted"].map(|p| {
+            std::fs::read_to_string(apps.join(format!("text_field/test/{p}.txt"))).unwrap()
+        });
+        std::fs::write(&edit, parts.concat()).unwrap();
+        (script("keys", "typing.txt"), edit.display().to_string())
+    };
+    #[cfg(feature = "kms")]
+    let keyed = ["3", "200x100", "--input", &typing];
+    #[cfg(feature = "kms")]
+    let edited: Vec<&str> = [
+        "2",
+        "1200x900@3",
+        "--input",
+        &edit,
+        "--keymap",
+        "us:intl",
+        "--compose",
+        "en_US.UTF-8",
+    ]
+    .into_iter()
+    .chain(fonts.iter().copied())
+    .collect();
+    #[cfg(feature = "kms")]
+    {
+        runs.push(("keys", &keyed));
+        runs.push(("text_field", &edited));
+    }
     for (name, args) in runs {
         let app = common::build_app(name);
         let mut a: Vec<&std::ffi::OsStr> = vec!["app-cycle".as_ref(), app.as_os_str()];
