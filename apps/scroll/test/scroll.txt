@@ -1,0 +1,55 @@
+# A 1200x900 view at three pixels to a logical one: a 400x300 list of rows
+# 50 high. test/scroll_test.dart sends the framework the same, with the
+# same times between.
+
+# The wheel, three notches down: 53 logical pixels each.
+scroll 600 450 0 3
+idle
+
+# A finger drags the list up 100 logical pixels and rests before it
+# lifts, so nothing is flung.
+down 600 600
+wait 16
+move 600 540
+wait 16
+move 600 480
+wait 16
+move 600 420
+wait 16
+move 600 360
+wait 16
+move 600 300
+wait 200
+up 600 300
+idle
+
+# A finger flings it: 60 logical pixels in 40 ms, lifted moving.
+down 600 700
+wait 8
+move 600 664
+wait 8
+move 600 628
+wait 8
+move 600 592
+wait 8
+move 600 556
+wait 8
+move 600 520
+up 600 520
+idle
+wait 100
+idle
+
+# Two fingers on a touchpad: the content follows them, back up.
+pan 600 450 0 0.5
+wait 16
+pan 600 450 0 0.5
+wait 16
+pan 600 450 0 1
+wait 200
+pan end 600 450
+idle
+
+# The wheel, a notch back.
+scroll 600 450 0 -1
+idle

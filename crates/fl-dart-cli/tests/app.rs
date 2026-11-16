@@ -1070,6 +1070,76 @@ fn keys_match_the_stock_framework() {
     assert!(out.contains("data toolkit=GtkKeyHelper keyCode=0xfe51 scanCode=0x30 modifiers=0x0 unicodeScalarValues=0x0 specifiedLogicalKey=0x22"));
 }
 
+/// Pointers (brief M4 stage 5, exit criterion 3): a script's mouse, wheel,
+/// fingers and touchpad, sent as the Linux embedder's managers send them
+/// and through the engine's packet converter, reach the framework as the
+/// events flutter_tester is sent for the same (apps/pointer/test/
+/// pointers_events.txt, from `flutter test`), line for line: the adds,
+/// hovers and removes the converter synthesizes among them.
+#[test]
+#[ignore = "app lane: needs FLUTTER_ROOT"]
+fn pointers_match_the_stock_framework() {
+    let app = build_app("pointer");
+    let dir = repo().join("apps/pointer/test");
+    let script = dir.join("pointers.txt");
+    let o = common::fl_dart(&[
+        "run-app".as_ref(),
+        app.as_os_str(),
+        "400x300".as_ref(),
+        "--input".as_ref(),
+        script.as_os_str(),
+    ]);
+    assert!(o.status.success(), "{o:?}");
+    let out = String::from_utf8_lossy(&o.stdout);
+    let seen: Vec<&str> = out.lines().filter(|l| l.starts_with("Pointer")).collect();
+    let expected = std::fs::read_to_string(dir.join("pointers_events.txt")).unwrap();
+    let expected: Vec<&str> = expected.lines().collect();
+    assert_eq!(seen, expected, "{out}");
+    assert!(out.contains(" dropped=0\n"), "{out}");
+}
+
+/// Scrolling (brief M4 stage 5, exit criterion 4): a list scrolled by the
+/// wheel, dragged and flung by a finger, and panned on a touchpad comes to
+/// rest where flutter_tester's does for the same events at the same times
+/// (apps/scroll/test/scroll_settled.txt), each within a logical pixel.
+#[test]
+#[ignore = "app lane: needs FLUTTER_ROOT"]
+fn scroll_settles_where_the_stock_framework_does() {
+    let app = build_app("scroll");
+    let dir = repo().join("apps/scroll/test");
+    let script = dir.join("scroll.txt");
+    let o = common::fl_dart(&[
+        "run-app".as_ref(),
+        app.as_os_str(),
+        "1200x900@3".as_ref(),
+        "--input".as_ref(),
+        script.as_os_str(),
+    ]);
+    assert!(o.status.success(), "{o:?}");
+    let out = String::from_utf8_lossy(&o.stdout);
+    let settled = |text: &str| -> Vec<f64> {
+        text.lines()
+            .filter_map(|l| l.strip_prefix("settled ")?.parse().ok())
+            .collect()
+    };
+    let ours = settled(&out);
+    let theirs = settled(&std::fs::read_to_string(dir.join("scroll_settled.txt")).unwrap());
+    // The wheel, the drag, the fling, the pan, the wheel back.
+    assert_eq!(theirs.len(), 5);
+    assert_eq!(ours.len(), theirs.len(), "{ours:?}\n{out}");
+    for (i, (a, b)) in ours.iter().zip(&theirs).enumerate() {
+        assert!(
+            (a - b).abs() <= 1.0,
+            "scroll {}: {a}, the stock framework {b}",
+            i + 1
+        );
+    }
+    // The fling went on after the finger lifted, in frames of its own.
+    assert!(theirs[2] - theirs[1] > 300.0, "{theirs:?}");
+    let moved = out.lines().filter(|l| l.starts_with("offset ")).count();
+    assert!(moved > 30, "{moved} offsets: {out}");
+}
+
 /// Text input (brief M4 stage 4, exit criterion 2): a `TextField` typed
 /// into from a script's keys, a dead key's character composed in it, a
 /// word selected with the mouse, copied and pasted, and Return. Its frame

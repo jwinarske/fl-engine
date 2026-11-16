@@ -21,11 +21,15 @@
 //! so a sender never waits forever.
 //!
 //! Pointer events ([`Wake::input`], brief M4 §2, §4) are queued from any
-//! thread and dispatched together, all that have arrived, as one packet:
-//! made `PointerData`, put through the engine's converter, whose state is
-//! this thread's, and given to `_dispatchPointerDataPacket`. Nothing asks
-//! for a frame on their account: the framework does, if what they did
-//! shows. Past [`INPUT_LIMIT`] queued, motion is dropped first.
+//! thread and dispatched in the packets they were delivered in, one for
+//! each call of [`EventSink::pointer_events`], as the engine dispatches
+//! one for each `FlutterEngineSendPointerEvent`: made `PointerData`, put
+//! through the engine's converter, whose state is this thread's, and
+//! given to `_dispatchPointerDataPacket`, then the microtasks that
+//! queued. The framework resolves a gesture's arena in a microtask, so
+//! where one packet ends and the next begins shows. Nothing asks for a
+//! frame on their account: the framework does, if what they did shows.
+//! Past [`INPUT_LIMIT`] queued, motion is dropped first.
 //!
 //! Key events (brief M4 §2, D2) come the same way, in their place among
 //! the pointer events, and are never dropped. Each is sent as the Linux
@@ -76,14 +80,15 @@ const IDLE_AT_LEAST: Duration = Duration::from_millis(1);
 
 /// One input event waiting for the loop.
 enum Event {
-    Pointer(PointerEvent),
+    /// A pointer event, and the packet it was delivered in.
+    Pointer(PointerEvent, u64),
     Key(KeyEvent),
 }
 
 impl Event {
     fn timestamp(&self) -> Duration {
         match self {
-            Event::Pointer(e) => e.timestamp,
+            Event::Pointer(e, _) => e.timestamp,
             Event::Key(e) => e.timestamp(),
         }
     }
@@ -178,6 +183,8 @@ struct Pending {
     closed: bool,
     /// Pointer and key events, oldest first.
     input: VecDeque<Event>,
+    /// Pointer packets delivered so far: the last one's number.
+    packets: u64,
     /// Key events so far.
     keys: KeyCounts,
     /// Motion dropped with the queue at its limit.
@@ -225,11 +232,13 @@ impl EventSink for Input {
         if p.closed {
             return;
         }
+        p.packets += 1;
+        let packet = p.packets;
         for e in events {
             if p.input.len() >= INPUT_LIMIT && e.is_motion() {
                 p.input_dropped += 1;
             } else {
-                p.input.push_back(Event::Pointer(*e));
+                p.input.push_back(Event::Pointer(*e, packet));
             }
         }
         p.idle = false;
@@ -561,12 +570,20 @@ fn run_steps(
             }
             Step::Input(events) => {
                 let oldest = events.iter().map(Event::timestamp).min();
-                // Pointer events between two keys go as one packet.
+                // Pointer events go in the packets they came in.
                 let mut run = Vec::new();
+                let mut run_packet = 0;
                 let mut dispatched = false;
                 for event in events {
                     match event {
-                        Event::Pointer(e) => run.push(e),
+                        Event::Pointer(e, packet) => {
+                            if packet != run_packet {
+                                dispatched |=
+                                    dispatch_pointer_run(isolate, &mut pointers, &mut run)?;
+                                run_packet = packet;
+                            }
+                            run.push(e);
+                        }
                         Event::Key(e) => {
                             dispatch_pointer_run(isolate, &mut pointers, &mut run)?;
                             dispatch_key(isolate, inner, &e)?;
@@ -1001,7 +1018,7 @@ mod tests {
 
     fn pointer(e: &Event) -> Option<&PointerEvent> {
         match e {
-            Event::Pointer(e) => Some(e),
+            Event::Pointer(e, _) => Some(e),
             Event::Key(_) => None,
         }
     }
@@ -1184,6 +1201,38 @@ mod tests {
         assert_eq!((w.keys().unhandled, w.keys().text), (5, 1));
         assert!(w.inner.lock().outbound.is_empty());
         fl_ui::text_input::reset();
+    }
+
+    /// Each delivery is a packet, as each `FlutterEngineSendPointerEvent`
+    /// is: the queue keeps which events came together.
+    #[test]
+    fn pointer_events_keep_the_packets_they_came_in() {
+        let w = Wake::default();
+        let input = w.input();
+        input.pointer_events(&[motion(1.0), motion(2.0)]);
+        input.pointer_events(&[motion(3.0)]);
+        input.key_event(key_down());
+        input.pointer_events(&[]);
+        input.pointer_events(&[motion(4.0)]);
+        let p = w.inner.lock();
+        let packets: Vec<Option<(f64, u64)>> = p
+            .input
+            .iter()
+            .map(|e| match e {
+                Event::Pointer(e, packet) => Some((e.x, *packet)),
+                Event::Key(_) => None,
+            })
+            .collect();
+        assert_eq!(
+            packets,
+            [
+                Some((1.0, 1)),
+                Some((2.0, 1)),
+                Some((3.0, 2)),
+                None,
+                Some((4.0, 4))
+            ]
+        );
     }
 
     #[test]

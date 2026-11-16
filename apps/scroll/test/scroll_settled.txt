@@ -1,0 +1,5 @@
+settled 159.0
+settled 259.0
+settled 711.9
+settled 817.9
+settled 764.9

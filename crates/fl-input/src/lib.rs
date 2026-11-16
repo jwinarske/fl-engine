@@ -8,6 +8,7 @@
 //! the same for every source.
 
 mod key;
+pub mod pointer;
 pub mod text;
 pub mod xkb;
 
@@ -145,9 +146,13 @@ pub trait EventSink: Send + Sync {
     /// with.
     fn now(&self) -> Duration;
 
-    /// Delivers pointer events, in order. They reach the framework together,
-    /// before the next frame. Events arriving faster than they are taken
-    /// are bounded by dropping motion ([`PointerEvent::is_motion`]) first.
+    /// Delivers pointer events, in order, as one packet: what one call of
+    /// the embedder API's `FlutterEngineSendPointerEvent` is. The
+    /// framework is given a packet whole, and settles what it did (its
+    /// microtasks) before the next. The Linux embedder sends each event in
+    /// a packet of its own, and so does a source that would be seen as it
+    /// is. Events arriving faster than they are taken are bounded by
+    /// dropping motion ([`PointerEvent::is_motion`]) first.
     fn pointer_events(&self, events: &[PointerEvent]);
 
     /// Delivers one key event, after everything delivered before it. Key

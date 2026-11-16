@@ -17,7 +17,7 @@ Status: milestone 1 (Dart VM hosted from Rust).
 * fl-dart-ffi - native binding layer: symbol tables, peers on native-field wrappers
 * fl-ui - dart:ui natives
 * fl-shell - embedder: views and the runtime hooks a framework isolate needs
-* fl-input - the input boundary: events as data, what a source delivers them through, and the Linux embedder's key path and text input, with the platform's input method and clipboard behind traits
+* fl-input - the input boundary: events as data, what a source delivers them through, and the Linux embedder's pointer managers, key path and text input, with the platform's input method and clipboard behind traits
 * fl-input-script - scripted input source, for CI and tests
 * fl-platform-kms - the KMS platform through drmkit: so far its XKB keymap and its compose tables for dead keys (links libxkbcommon)
 * fl-raster - dart:ui scenes drawn by emblema
