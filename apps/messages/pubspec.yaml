@@ -1,0 +1,8 @@
+name: messages
+description: fl-engine test program. Messages the engine sends the framework, and its responses.
+publish_to: none
+environment:
+  sdk: ^3.13.0
+dependencies:
+  flutter:
+    sdk: flutter

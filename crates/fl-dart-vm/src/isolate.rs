@@ -543,6 +543,11 @@ impl<'s> HandleScope<'s> {
         self.wrap(unsafe { sys::Dart_NewBoolean(v) })
     }
 
+    /// A `ByteData` holding a copy of `bytes`.
+    pub fn new_byte_data(&mut self, bytes: &[u8]) -> Result<Handle<'s>, DartError> {
+        self.typed_list(sys::Dart_TypedData_Type::Dart_TypedData_kByteData, bytes)
+    }
+
     /// A `Float64List`, which is a `List<double>`.
     pub fn new_f64_list(&mut self, items: &[f64]) -> Result<Handle<'s>, DartError> {
         self.typed_list(sys::Dart_TypedData_Type::Dart_TypedData_kFloat64, items)

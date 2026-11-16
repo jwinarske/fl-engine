@@ -123,6 +123,43 @@ pub(crate) extern "C" fn send_platform_message(
     })
 }
 
+type ResponseSink = Box<dyn Fn(i64, Option<Vec<u8>>) + Send>;
+
+/// Where the framework's responses to the engine's messages go: the shell,
+/// which owns the response ids.
+static RESPONSE_SINK: Mutex<Option<ResponseSink>> = Mutex::new(None);
+
+/// Sets what takes the framework's response to a message the engine sent
+/// with `_dispatchPlatformMessage`: the message's response id, and the
+/// response's bytes, `None` for a null response. The sink runs on the UI
+/// thread, inside the `RespondToPlatformMessage` native, and must not call
+/// this again (the slot is locked).
+pub fn set_response_sink(sink: impl Fn(i64, Option<Vec<u8>>) + Send + 'static) {
+    *RESPONSE_SINK.lock().unwrap_or_else(|e| e.into_inner()) = Some(Box::new(sink));
+}
+
+/// `Void Function(IntPtr responseId, Handle data)`: the framework's answer
+/// to a message the engine dispatched. Id 0 is a message that wanted none,
+/// as the engine's `RespondToPlatformMessage` reads it; null data is an
+/// empty response (`CompleteEmpty`), not the same as no bytes.
+pub(crate) extern "C" fn respond_to_platform_message(response_id: isize, data: sys::Dart_Handle) {
+    guard((), || {
+        if response_id == 0 {
+            return;
+        }
+        // SAFETY: a native with a Handle parameter runs with an isolate
+        // current and a scope open; data is a live handle.
+        let bytes = unsafe { args::bytes(data) };
+        if let Some(sink) = RESPONSE_SINK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .as_ref()
+        {
+            sink(response_id as i64, bytes);
+        }
+    });
+}
+
 /// A `StandardMethodCodec` success envelope holding null: the result byte 0,
 /// then `StandardMessageCodec`'s null.
 const RESULT_NULL: [u8; 2] = [0, 0];
