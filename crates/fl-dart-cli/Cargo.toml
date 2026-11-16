@@ -19,11 +19,12 @@ path = "src/main.rs"
 default = ["aot"]
 jit = ["fl-dart-vm/jit", "fl-shell/jit", "fl-raster/jit"]
 aot = ["fl-dart-vm/aot", "fl-shell/aot", "fl-raster/aot"]
-# The KMS platform (brief M4 D9). So far its XKB keymap, which a script's key
-# steps are resolved against, so `--input` with keys needs it. It links the
-# system's libxkbcommon, which a cross sysroot may lack: off by default
-# until the boards' display and devices come through it (stage 6).
-kms = ["dep:fl-platform-kms"]
+# The KMS platform (brief M4 D9): the XKB keymap a script's key steps are
+# resolved against, so `--input` with keys needs it, and the seat and the
+# display `--kms` draws to. It links the system's libxkbcommon and libseat,
+# which a cross sysroot may lack: off by default until the boards' devices
+# come through it too (stage 6).
+kms = ["dep:fl-platform-kms", "fl-raster/scanout"]
 
 [dependencies]
 fl-assets = { workspace = true }

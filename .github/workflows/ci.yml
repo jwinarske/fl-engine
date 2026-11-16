@@ -39,6 +39,12 @@ jobs:
       # Installs the rust-toolchain.toml pin.
       - run: rustup show
       - run: cargo fmt --all --check
+      # The KMS platform holds its devices through libseat (brief M4 §4):
+      # found with pkg-config, linked from the system, never built.
+      - name: libseat
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libseat-dev
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo clippy -p fl-dart-cli --no-default-features --features jit --all-targets -- -D warnings
       # The KMS platform's half of fl-dart. Checked, not linked: libxkbcommon
@@ -156,10 +162,11 @@ jobs:
       # libxkbcommon and its layouts (xkb-data) are what a script's keys are
       # resolved against (brief M4 D3): linked from the system, never built.
       # The compose tables its dead keys compose by are libX11's data (D6).
-      - name: lavapipe and libxkbcommon
+      # libseat is what the KMS platform holds its devices through.
+      - name: lavapipe, libxkbcommon and libseat
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq mesa-vulkan-drivers libxkbcommon-dev xkb-data libx11-data
+          sudo apt-get install -y -qq mesa-vulkan-drivers libxkbcommon-dev xkb-data libx11-data libseat-dev
       - name: Fetch the prebuilt VM
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -237,3 +244,6 @@ jobs:
         run: |
           ci/annotate-on-fail.sh cargo test -p fl-text -- --ignored
           ci/annotate-on-fail.sh cargo test -p fl-raster --features aot --lib -- --ignored
+          # A display as the target, over an output that is no card: the
+          # ring of buffers, and its rebuilding when the output says so.
+          ci/annotate-on-fail.sh cargo test -p fl-raster --features aot,scanout --test scanout -- --ignored

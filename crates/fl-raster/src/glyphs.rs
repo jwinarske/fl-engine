@@ -754,11 +754,11 @@ mod tests {
         // At x 20, a whole pixel: quarter zero.
         let key = GlyphKey::new(font_key(&crowd), crowd.glyphs[last], 250);
         assert!(
-            target.glyphs.page_of(key).is_some_and(|p| p > 0),
+            target.device.glyphs.page_of(key).is_some_and(|p| p > 0),
             "the glyph is not on an overflow page"
         );
         let (reference, target) = frame(Arc::new(alone));
-        assert_eq!(target.glyphs.page_of(key), Some(0));
+        assert_eq!(target.device.glyphs.page_of(key), Some(0));
         assert!(reference.chunks(4).any(|p| p[3] > 0), "nothing drawn");
         assert!(crowded == reference, "the overflow page drew differently");
     }
