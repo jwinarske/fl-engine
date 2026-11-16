@@ -47,6 +47,8 @@ jobs:
       - run: cargo test -p fl-dart-vm --features aot --lib --test compile_fail
       - run: cargo test -p fl-raster --features aot --test compile_fail
       - run: cargo test -p fl-dart-ffi --features aot --test compile_fail
+      # The packet converter stays on the UI thread (brief M4 exit criterion 6).
+      - run: cargo test -p fl-ui --features aot --test compile_fail
       - run: cargo test -p fl-text -p fl-image -p fl-assets -p fl-input -p fl-input-script
       # The input boundary (brief M4 D8): nothing above fl-input names a
       # backend, and fl-input itself depends on nothing.
@@ -61,6 +63,9 @@ jobs:
             || { echo "fl-input has dependencies"; exit 1; }
       # The decoder fuzz target, a short run; the ASan lane runs it long.
       - run: cargo test -p fl-image --test fuzz -- --ignored
+      # The script, and the input boundary's state: keys, pointers, the text
+      # input handler (brief M4 §15). Short runs, as the decoder's.
+      - run: cargo test -p fl-input -p fl-input-script --test fuzz -- --ignored
       - run: RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
 
   l2:
@@ -217,6 +222,10 @@ jobs:
         run: ci/annotate-on-fail.sh cargo test -p fl-dart-cli --no-default-features --features jit,kms --test app -- --ignored
       - name: dart:ui and shell unit tests
         run: ci/annotate-on-fail.sh cargo test -p fl-dart-ffi -p fl-ui -p fl-raster -p fl-shell --features aot --lib
+      # The channel decoders' fuzz target, a short run: in fl-ui's own tests,
+      # where the decoders are.
+      - name: Channel decoder fuzz
+        run: ci/annotate-on-fail.sh cargo test -p fl-ui --features aot --lib -- --ignored fuzz
       # The XKB keymap against the system's layouts: us, fr, ru; and the
       # compose table of en_US.UTF-8.
       - name: Keymap and compose tests

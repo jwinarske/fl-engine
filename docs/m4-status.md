@@ -215,6 +215,37 @@ Found on the way:
 
 Open: the boards' devices behind the same managers, with the cursor and `flutter/mousecursor`, are stage 6. A wheel's high-resolution steps and a touchpad's kinetic scrolling are libinput's to report there.
 
+## Stage 7: lanes (2026-11-16)
+
+Taken before stage 6: no board was to hand (the Pi 5 off the network, the RK3566 with no panel on its HDMI and a Vulkan driver that does not draw, the VisionFive 2 with no login), and the lanes need none. Exit criteria 6 and 7, and 8 as far as the scripted source goes; the lanes take the boards' devices when stage 6 brings them.
+
+* **Soak with input** (`input_cycles_stay_flat`, soak.yml's AOT leg, now built with `--features kms`): apps cycled in one VM with a script of input each lifecycle, its thread started and joined each time, held to the app soak's bounds: RSS over the last nine tenths within 512 kB, descriptors the same, no persistent handle left by a key's two answers or a message's, no motion dropped
+  * counter, three taps a cycle at 60 Hz, 20 cycles: the 60 frames input asked for show it in 16,989 us at the 90th percentile, 17,056 at most, against the brief's two frames (33,334)
+  * pointer, 300 cycles of every device kind; scroll, 20 cycles of wheel, drag, fling and pan
+  * keys, 300 cycles: 12,000 key events through the tracker and both of the framework's keyboards
+  * text_field, 100 cycles: 10,000 characters typed, a frame each, frames built in 891 us on average against M3's 4,000
+* `app-cycle` reports what `--input` did over all its cycles: the frames input asked for and the latency's median, 90th percentile and longest, the motion dropped, and the keys by how they were answered
+* **Fuzz**, three targets in the decoders' style (a seeded generator, pure Rust, no libFuzzer), short in ci.yml and long under ASan in sanitize.yml:
+  * fl-input-script: the apps' scripts and one of every step, mutated. What parses is played, its waits taken out, into a sink that holds every position, distance and device to the script's bounds; what does not is an error naming a line of the text
+  * fl-input: the text input handler given editing states, keys and an input method's signals in any order, its ranges inside its text after each and in what it tells the framework; and the key path and the three pointer managers given keys no keymap gives and positions no device reports, more fingers than ids among them
+  * fl-ui, in the crate, where the decoders are: the framework's calls on `flutter/textinput` and the clipboard's on `flutter/platform`, mutated, and calls made up of JSON of any shape under the methods' names. Each is answered with a reply that is itself an envelope, or is no call; a key is typed after each on whatever it left
+* **Sanitizers** (sanitize.yml, ASan and TSan, now with `--features jit,kms`): counter tapped, pointer, scroll, keys and text_field's whole edit under `app-cycle`, the script's thread delivering to the loop's queue and waiting on its idle
+* **Compile-fail** (exit criterion 6): `fl_ui::pointer::Converter` cannot be given to another thread (fl-ui's first trybuild case, in the no-vm lane); and fl-input holds its events, an `InputMethod`, a `Clipboard` and an `EventSink` to `Send`, in a test that is its bounds
+* **Every limit crossed** (exit criterion 7, brief §15): the queue's 4,096 (fl-shell), the script's megabyte, waits, positions, notches and fingers (fl-input-script), JSON's depth of 32 (fl-ui), the 128 touch ids (fl-input); offsets outside a text refused (fl-input, fl-ui)
+
+Found on the way:
+
+* **The fuzzer found one.** An input method that composes text with no start signal, then replaces it with less, left the model's composing range past the end of the text, and the handler would have told the framework that range as it was. The original has the same, reachable only by signals out of order, which GTK's do not come in. The model now holds both ranges inside the text after every change; the 154 ported cases are unchanged by it
+* A text field whose text is wider than it is scrolls to its caret after every key, an animation of 100 ms: 100 frames at 1 kHz. Typing 100 characters into the soak's field drew 7,900 frames a cycle and took 10 s (941 s for the run), and `app-cycle`'s own list of build times, eight bytes a frame, was the 6 MB the run grew by. The soak clears the field every ten characters, by Ctrl+A and Backspace, which the framework handles
+* Drawn, the tapped counter's glyph atlas is still filling at 20 cycles, as its own soak's is over its first thirty; the input run is the UI side only
+
+Differences from the brief:
+
+* **Exit criterion 6 reads "the converter and editing state are not `Send`".** The converter is not. The editing state is: the handler sits behind fl-ui's mutex with the channel that changes it (stage 4), so it is the UI thread's by where it is called from, not by its type. Its input method must be `Send` to be put there
+* **The latency bound is on the 90th percentile**, not on every frame: one late wake of a shared runner's thread would fail the lane for nothing the engine did. The longest is reported
+
+Open: stage 6, the boards. With it the lanes get the devices' thread under TSan, hotplug, and tap-to-frame latency on the Pi 5.
+
 ## Decisions taken 2026-11-16
 
 D1 (devices and a script, no window), D4 (clipboard in the process), D5 and D6 (no system IME), each with what the stock Linux embedder does in its place (brief §13). D5 as taken: no recordings from the stock embedder; the engine's unit tests ported for each layer, and the same scripted input given to `flutter_tester` and to fl-dart end to end.
