@@ -1,0 +1,12 @@
+# Typed on a US international keyboard (`--keymap us:intl`): letters, a
+# space, and the dead acute before an e, which composes.
+key keyC
+key keyA
+key keyF
+key quote
+key keyE
+key space
+key keyB
+key keyA
+key keyR
+idle

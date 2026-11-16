@@ -3,7 +3,7 @@
 //! ```text
 //! fl-dart run hello.dill [args...]       # JIT, dev hosts (--features jit)
 //! fl-dart run-aot hello.aot [args...]    # precompiled runtime, every target
-//! fl-dart run-app libapp.so [WxH[@dpr]] [--assets DIR] [--png out.png] [--frames-dir DIR] [--ops] [--natives] [--styles] [--font FAMILY=PATH]... [--message CHANNEL[=TEXT]]... [--input SCRIPT] [--keymap LAYOUT[:VARIANT]] [--frames N] [--hz H]
+//! fl-dart run-app libapp.so [WxH[@dpr]] [--assets DIR] [--png out.png] [--frames-dir DIR] [--ops] [--natives] [--styles] [--font FAMILY=PATH]... [--message CHANNEL[=TEXT]]... [--input SCRIPT] [--keymap LAYOUT[:VARIANT]] [--compose LOCALE] [--frames N] [--hz H]
 //!                                       # a Flutter app, through dart:ui (M2);
 //!                                       # JIT takes the app's kernel instead
 //! fl-dart app-cycle libapp.so <n> [run-app options]
@@ -109,7 +109,7 @@ fn usage() -> ExitCode {
         "libapp.so"
     };
     eprintln!(
-        "       fl-dart run-app <{app}> [WxH[@dpr]] [--assets DIR] [--png out.png] [--frames-dir DIR] [--ops] [--natives] [--styles] [--font FAMILY=PATH]... [--message CHANNEL[=TEXT]]... [--input SCRIPT] [--keymap LAYOUT[:VARIANT]] [--frames N] [--hz H]\n       fl-dart app-cycle <{app}> <n> [run-app options]\n       fl-dart prepare"
+        "       fl-dart run-app <{app}> [WxH[@dpr]] [--assets DIR] [--png out.png] [--frames-dir DIR] [--ops] [--natives] [--styles] [--font FAMILY=PATH]... [--message CHANNEL[=TEXT]]... [--input SCRIPT] [--keymap LAYOUT[:VARIANT]] [--compose LOCALE] [--frames N] [--hz H]\n       fl-dart app-cycle <{app}> <n> [run-app options]\n       fl-dart prepare"
     );
     ExitCode::from(64)
 }
@@ -367,6 +367,9 @@ fn app_once(
     let keymap = match &script {
         Some(script) if script.has_keys() => {
             keymap_for(app.keymap.as_ref())?;
+            // What the keys type, where the framework leaves them to text
+            // input: the handler starts over with its input method.
+            set_input_method(app.compose.as_deref())?;
             Some(app.keymap.clone())
         }
         _ => None,
@@ -506,14 +509,45 @@ fn input_line(latency_us: &[u64], dropped: u64) -> String {
     )
 }
 
-/// `keys: events=… handled=… unhandled=…`: the key events the script
-/// delivered, those the framework said it handled on either channel, and
-/// those it did not.
+/// `keys: events=… handled=… unhandled=… text=…`: the key events the
+/// script delivered, those the framework said it handled on either
+/// channel, those it did not, and of those the ones text input took.
 fn keys_line(keys: fl_shell::KeyCounts) -> String {
     format!(
-        "keys: events={} handled={} unhandled={}",
-        keys.events, keys.handled, keys.unhandled
+        "keys: events={} handled={} unhandled={} text={}",
+        keys.events, keys.handled, keys.unhandled, keys.text
     )
+}
+
+/// The input method a script's keys type through: xkbcommon's compose
+/// table for `--compose`'s locale, or the environment's (brief M4 D6). A
+/// locale named and not to be had is no run; the environment's is done
+/// without, with a word on stderr, and dead keys then compose nothing.
+#[cfg(feature = "kms")]
+fn set_input_method(locale: Option<&str>) -> Result<(), Failure> {
+    use fl_platform_kms::Compose;
+    let compose = match locale {
+        Some(locale) => {
+            Compose::from_locale(locale).map_err(|e| Failure::Other(format!("--compose: {e}")))?
+        }
+        None => match Compose::from_locale(&Compose::locale_from_env()) {
+            Ok(compose) => compose,
+            Err(e) => {
+                eprintln!("fl-dart: {e}; keys type with no dead keys or compose sequences");
+                fl_ui::text_input::set_input_method(Box::new(fl_input::text::Direct));
+                return Ok(());
+            }
+        },
+    };
+    fl_ui::text_input::set_input_method(Box::new(compose));
+    Ok(())
+}
+
+/// Without the KMS platform there are no keys to type with: `keymap_for`
+/// has refused the script already.
+#[cfg(not(feature = "kms"))]
+fn set_input_method(_locale: Option<&str>) -> Result<(), Failure> {
+    Ok(())
 }
 
 /// The keymap a script's keys are resolved against: `--keymap`'s layout and
@@ -696,10 +730,13 @@ struct AppArgs {
     /// `--keymap`: the XKB layout and variant a script's keys are resolved
     /// against.
     keymap: Option<(String, String)>,
+    /// `--compose`: the locale whose compose table the script's keys
+    /// compose by; the environment's if not given.
+    compose: Option<String>,
     frames: Option<u64>,
 }
 
-/// `[WxH[@dpr]] [--assets DIR] [--png out.png] [--frames-dir DIR] [--ops] [--natives] [--styles] [--font FAMILY=PATH]... [--message CHANNEL[=TEXT]]... [--input SCRIPT] [--keymap LAYOUT[:VARIANT]] [--frames N] [--hz H]`,
+/// `[WxH[@dpr]] [--assets DIR] [--png out.png] [--frames-dir DIR] [--ops] [--natives] [--styles] [--font FAMILY=PATH]... [--message CHANNEL[=TEXT]]... [--input SCRIPT] [--keymap LAYOUT[:VARIANT]] [--compose LOCALE] [--frames N] [--hz H]`,
 /// in any order; no size is the default view. Sizes are physical pixels.
 /// `--assets` names the app's asset bundle; without it, `<app>.assets` beside
 /// the program is used if it is there, as `tools/flutter-app/build.sh` puts
@@ -747,6 +784,7 @@ fn app_args(args: &[&str]) -> Option<AppArgs> {
                 }
                 app.keymap = Some((layout.to_owned(), variant.to_owned()));
             }
+            "--compose" => app.compose = Some(it.next().filter(|l| !l.is_empty())?.to_string()),
             "--frames" => app.frames = Some(it.next()?.parse().ok().filter(|n| *n > 0)?),
             "--hz" => app.view.refresh_rate = it.next()?.parse().ok().filter(|v: &f64| *v > 0.0)?,
             _ => {

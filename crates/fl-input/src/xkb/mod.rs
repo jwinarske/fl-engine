@@ -153,6 +153,7 @@ impl Keys {
         KeyEvent {
             data,
             raw: Some(self.raw.message(key, specified)),
+            native: Some(*key),
         }
     }
 
@@ -163,7 +164,11 @@ impl Keys {
     pub fn sync_modifiers(&mut self, state: u32, time: Duration) -> Option<KeyEvent> {
         let mut data = Vec::new();
         self.tracker.sync_modifiers(state, time, &mut data);
-        (!data.is_empty()).then_some(KeyEvent { data, raw: None })
+        (!data.is_empty()).then_some(KeyEvent {
+            data,
+            raw: None,
+            native: None,
+        })
     }
 
     /// The layout was changed: every derived logical key is forgotten

@@ -35,6 +35,12 @@
 //! (`fl_keyboard_manager`), and counted ([`Wake::keys`]). An answer that
 //! never comes is the loop's end, and not handled.
 //!
+//! A key the framework did not handle is offered to text input (brief M4
+//! §2, `fl_view`'s redispatch): the input method first, then the handler's
+//! own keys. What that tells the framework goes on `flutter/textinput`
+//! ahead of the next key, so the framework sees each key's text before the
+//! key after it.
+//!
 //! Vsync here is a fixed-interval clock: ticks `period` apart from when the
 //! `Wake` was made, the frame clock's zero. On KMS the flip event will take its place (stage 6).
 //!
@@ -51,9 +57,11 @@ use std::sync::{Arc, Condvar, Mutex, MutexGuard, Weak};
 use std::time::{Duration, Instant};
 
 use fl_dart_vm::{DartError, HandleScope, IsolateScope, MessageNotify};
+use fl_input::xkb::XkbKey;
 use fl_input::{EventSink, KeyEvent, PointerEvent};
 use fl_ui::key::{KEY_DATA_CHANNEL, KEY_EVENT_CHANNEL};
 use fl_ui::pointer::{Converter, PointerData};
+use fl_ui::text_input::TEXT_INPUT_CHANNEL;
 
 /// `Animator`'s `kNotifyIdleTaskWaitTime`: a tad more than three frames at
 /// 60 Hz with none asked for before the loop counts itself idle.
@@ -90,9 +98,12 @@ pub struct KeyCounts {
     pub events: u64,
     /// The framework handled it, on either channel.
     pub handled: u64,
-    /// Neither answer said so: the key is for whatever comes after the
-    /// framework, text input first (stage 4).
+    /// Neither answer said so: the key was for whatever comes after the
+    /// framework, text input first.
     pub unhandled: u64,
+    /// Of the unhandled, those text input took: typed into a text field,
+    /// or part of what is being composed.
+    pub text: u64,
 }
 
 /// How many input events wait for the loop before motion is dropped
@@ -463,8 +474,9 @@ pub(crate) fn connect(wake: &Wake) {
     fl_ui::set_reply_waker(move || replies.reply_arrived());
     let responses = wake.clone();
     fl_ui::set_response_sink(move |id, data| responses.respond(id, data));
-    // A new isolate has been told of no key.
+    // A new isolate has been told of no key, and has no text field.
     fl_ui::key::reset_keyboard_state();
+    fl_ui::text_input::reset();
 }
 
 fn run_steps(
@@ -558,6 +570,9 @@ fn run_steps(
                         Event::Key(e) => {
                             dispatch_pointer_run(isolate, &mut pointers, &mut run)?;
                             dispatch_key(isolate, inner, &e)?;
+                            // What text input made of it, before the
+                            // next key.
+                            dispatch_outbound(isolate, inner)?;
                             dispatched = true;
                         }
                     }
@@ -676,6 +691,18 @@ fn dispatch(
     s.run_microtasks()
 }
 
+/// Every message waiting for the framework, now, oldest first: what a
+/// step would have dispatched one at a time before any more input.
+fn dispatch_outbound(isolate: &mut IsolateScope<'_>, inner: &Arc<Inner>) -> Result<(), DartError> {
+    loop {
+        let Some(m) = inner.lock().outbound.pop_front() else {
+            return Ok(());
+        };
+        let id = m.respond.map_or(0, |r| inner.await_response(r));
+        isolate.with(|s| dispatch(s, &m.channel, m.data.as_deref(), id))?;
+    }
+}
+
 /// The pointer events of `run`, emptied, as one packet: made `PointerData`,
 /// put through the converter, and dispatched if anything is left. Whether
 /// anything was.
@@ -699,18 +726,22 @@ fn dispatch_pointer_run(
 }
 
 /// What the framework says of one key event: handled if either of its
-/// answers says so, counted once both are in.
+/// answers says so, counted once both are in, and offered to text input
+/// if neither did.
 struct KeyAnswer {
     inner: Weak<Inner>,
     /// Answers still to come, and whether one has said handled.
     state: Mutex<(u8, bool)>,
+    /// The key, for text input.
+    native: Option<XkbKey>,
 }
 
 impl KeyAnswer {
-    fn new(inner: &Arc<Inner>, awaited: u8) -> Arc<KeyAnswer> {
+    fn new(inner: &Arc<Inner>, awaited: u8, native: Option<XkbKey>) -> Arc<KeyAnswer> {
         Arc::new(KeyAnswer {
             inner: Arc::downgrade(inner),
             state: Mutex::new((awaited, false)),
+            native,
         })
     }
 
@@ -722,14 +753,45 @@ impl KeyAnswer {
             state.1 |= handled;
             (state.0 == 0).then_some(state.1)
         };
-        if let (Some(handled), Some(inner)) = (done, self.inner.upgrade()) {
+        let (Some(handled), Some(inner)) = (done, self.inner.upgrade()) else {
+            return;
+        };
+        if handled {
+            inner.lock().keys.handled += 1;
+            return;
+        }
+        // The loop has ended, and this is its unanswered keys being let
+        // go: there is no framework to type into.
+        {
             let mut p = inner.lock();
-            if handled {
-                p.keys.handled += 1;
-            } else {
+            if p.closed {
                 p.keys.unhandled += 1;
+                return;
             }
         }
+        // `fl_view`'s redispatch: text input is offered the key. This is
+        // the UI thread, inside the framework's response, as the handler's
+        // state wants; its messages wait their turn like any other.
+        let (taken, messages) = match &self.native {
+            Some(key) => fl_ui::text_input::filter_key(key),
+            None => (false, Vec::new()),
+        };
+        let mut p = inner.lock();
+        p.keys.unhandled += 1;
+        p.keys.text += u64::from(taken);
+        if p.closed || messages.is_empty() {
+            return;
+        }
+        for data in messages {
+            p.outbound.push_back(Outbound {
+                channel: TEXT_INPUT_CHANNEL.to_owned(),
+                data: Some(data),
+                respond: None,
+            });
+        }
+        p.idle = false;
+        drop(p);
+        inner.changed.notify_one();
     }
 }
 
@@ -747,7 +809,11 @@ fn dispatch_key(
 ) -> Result<(), DartError> {
     let answered = event.answered();
     let answer = match answered {
-        Some(_) => Some(KeyAnswer::new(inner, 1 + u8::from(event.raw.is_some()))),
+        Some(_) => Some(KeyAnswer::new(
+            inner,
+            1 + u8::from(event.raw.is_some()),
+            event.native,
+        )),
         None => {
             inner.lock().keys.handled += 1;
             None
@@ -949,6 +1015,7 @@ mod tests {
                 ..KeyData::default()
             }],
             raw: Some(b"{}".to_vec()),
+            native: None,
         }
     }
 
@@ -986,7 +1053,7 @@ mod tests {
             (false, false, false),
         ] {
             let before = w.keys();
-            let answer = KeyAnswer::new(&w.inner, 2);
+            let answer = KeyAnswer::new(&w.inner, 2, None);
             let (first, second) = if engine_first {
                 (engine, channel)
             } else {
@@ -1003,7 +1070,7 @@ mod tests {
         // `EngineNoResponseChannelHandled`: with no answer from one, the
         // key is still waiting.
         let before = w.keys();
-        let answer = KeyAnswer::new(&w.inner, 2);
+        let answer = KeyAnswer::new(&w.inner, 2, None);
         answer.answer(true);
         assert_eq!(w.keys(), before);
         // An answer after the wake is gone is counted nowhere, and harms
@@ -1043,6 +1110,80 @@ mod tests {
                 .map(|e| e.phase),
             Some(PointerPhase::Up)
         );
+    }
+
+    /// A key the framework did not handle is offered to text input, and
+    /// what it typed waits for the framework like any message (`fl_view`'s
+    /// redispatch). The one test here that gives the handler a client: it
+    /// is the process's.
+    #[test]
+    fn an_unhandled_key_is_offered_to_text_input() {
+        let typed = |c: char| XkbKey {
+            pressed: true,
+            keyval: c as u32,
+            unicode: c as u32,
+            ..XkbKey::default()
+        };
+        let w = Wake::default();
+        fl_ui::text_input::set_input_method(Box::new(fl_input::text::Direct));
+
+        // No text field has the keyboard: unhandled, and that is all.
+        KeyAnswer::new(&w.inner, 1, Some(typed('a'))).answer(false);
+        assert_eq!((w.keys().unhandled, w.keys().text), (1, 0));
+        assert!(w.inner.lock().outbound.is_empty());
+
+        let call = br#"{"method":"TextInput.setClient","args":[5,{}]}"#;
+        assert!(fl_ui::text_input::handle_call(Some(call)).is_some());
+        // Handled by the framework: not text input's.
+        KeyAnswer::new(&w.inner, 1, Some(typed('a'))).answer(true);
+        assert_eq!((w.keys().handled, w.keys().text), (1, 0));
+        // An event that is no key's, and a release.
+        KeyAnswer::new(&w.inner, 1, None).answer(false);
+        let release = XkbKey {
+            pressed: false,
+            ..typed('a')
+        };
+        KeyAnswer::new(&w.inner, 1, Some(release)).answer(false);
+        assert_eq!((w.keys().unhandled, w.keys().text), (3, 0));
+        assert!(w.inner.lock().outbound.is_empty());
+
+        // Both answers in, neither handled: typed.
+        let answer = KeyAnswer::new(&w.inner, 2, Some(typed('b')));
+        answer.answer(false);
+        assert!(w.inner.lock().outbound.is_empty(), "one answer to come");
+        answer.answer(false);
+        assert_eq!((w.keys().unhandled, w.keys().text), (4, 1));
+        {
+            let p = w.inner.lock();
+            assert!(!p.idle);
+            let sent: Vec<(&str, String)> = p
+                .outbound
+                .iter()
+                .map(|m| {
+                    let data = m.data.as_deref().unwrap_or_default();
+                    (
+                        m.channel.as_str(),
+                        String::from_utf8_lossy(data).into_owned(),
+                    )
+                })
+                .collect();
+            assert_eq!(sent.len(), 1);
+            assert_eq!(sent[0].0, "flutter/textinput");
+            assert!(
+                sent[0].1.starts_with(
+                    r#"{"method":"TextInputClient.updateEditingState","args":[5,{"text":"b","#
+                ),
+                "{sent:?}"
+            );
+            assert!(p.outbound[0].respond.is_none());
+        }
+
+        // The loop ended: counted, and nothing queued for no one.
+        w.inner.close();
+        KeyAnswer::new(&w.inner, 1, Some(typed('c'))).answer(false);
+        assert_eq!((w.keys().unhandled, w.keys().text), (5, 1));
+        assert!(w.inner.lock().outbound.is_empty());
+        fl_ui::text_input::reset();
     }
 
     #[test]

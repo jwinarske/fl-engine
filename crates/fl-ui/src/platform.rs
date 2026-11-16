@@ -74,7 +74,7 @@ pub(crate) extern "C" fn send_channel_update(_name: sys::Dart_Handle, _listening
 /// `Handle Function(Handle name, Handle callback, Handle data)`. Null is
 /// success; a returned String is thrown as an error.
 ///
-/// Three channels are answered:
+/// Five channels are answered:
 /// * `flutter/assets`: the data is an asset key as UTF-8; the answer is the
 ///   asset's bytes from the bundle [`crate::set_asset_bundle`] set, or null,
 ///   which the framework reads as not found. Every request is answered,
@@ -86,6 +86,11 @@ pub(crate) extern "C" fn send_channel_update(_name: sys::Dart_Handle, _listening
 /// * `flutter/keyboard` `getKeyboardState`, which `HardwareKeyboard` asks
 ///   as the binding starts: the keys the framework has been told are down
 ///   ([`crate::key`]), a map of physical key to logical key
+/// * `flutter/textinput`, the text input handler's ([`crate::text_input`]):
+///   which field has the keyboard, what is in it, where it is. A method
+///   the Linux embedder does not implement is answered with null, which
+///   the framework's optional channel reads as no such method
+/// * `flutter/platform`'s clipboard methods ([`crate::clipboard`])
 ///
 /// Every other message is dropped: nothing on the path so far awaits one,
 /// and an unanswered request never completes rather than failing.
@@ -120,6 +125,13 @@ pub(crate) extern "C" fn send_platform_message(
                 if bytes.as_deref().and_then(method_name) == Some("getKeyboardState") =>
             {
                 Some(ReplyArg::Bytes(crate::key::keyboard_state_reply()))
+            }
+            Some(crate::text_input::TEXT_INPUT_CHANNEL) => Some(
+                crate::text_input::handle_call(bytes.as_deref())
+                    .map_or(ReplyArg::Null, ReplyArg::Bytes),
+            ),
+            Some("flutter/platform") => {
+                crate::clipboard::handle_call(bytes.as_deref()).map(ReplyArg::Bytes)
             }
             _ => None,
         };

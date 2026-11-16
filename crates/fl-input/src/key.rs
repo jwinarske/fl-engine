@@ -3,6 +3,8 @@
 
 use std::time::Duration;
 
+use crate::xkb::XkbKey;
+
 /// `FlutterKeyEventType`, `KeyEventType` in key.dart.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum KeyEventType {
@@ -60,6 +62,12 @@ pub struct KeyEvent {
     /// The `flutter/keyevent` message, JSON as the platform's
     /// `RawKeyEventData` reads it; `None` for a source that has none.
     pub raw: Option<Vec<u8>>,
+    /// The key as the keymap resolved it, for text input, which is
+    /// offered a key the framework did not handle
+    /// ([`TextInput::filter_key`](crate::text::TextInput::filter_key));
+    /// `None` for an event that is no key's, which text input is not
+    /// offered.
+    pub native: Option<XkbKey>,
 }
 
 impl KeyEvent {

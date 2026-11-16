@@ -152,7 +152,7 @@ drmkit is a new dependency (0.1.3, MIT), with its C libraries as they are: libin
 * **Device input** (stage 6). Events from libinput are bounded on the way in: coordinates clamped to the view, touch slots and key codes checked against their tables, an unknown code dropped, not indexed with
 * **Seat** (stage 6). Devices are held through the seat: a terminal switch revokes them and the display together, and keys never reach the console under a kiosk; a seat that cannot be had is reported, not worked around
 * **Permissions** (stage 6). Without a seat (logind, seatd) devices cannot be opened; the backend names what is missing and the app runs without input
-* **Channel payloads** (stages 1, 4). `flutter/textinput` and `flutter/platform` messages are decoded under the M2 decoders' rules: a malformed message is an error reply, never a panic, never an index out of range. UTF-16 offsets outside the text are clamped, as the embedder's are
+* **Channel payloads** (stages 1, 4). `flutter/textinput` and `flutter/platform` messages are decoded under the M2 decoders' rules: a malformed message is an error reply, never a panic, never an index out of range. A selection or composing range that is not inside the text is refused, as the embedder's model refuses it, and the caret is at the text's start
 
 **Reliability**
 * **Every message answered** (stage 1). Each message the engine sends gets its continuation run, by the framework's response or with null at shutdown; each message the framework sends on an M4 channel gets a reply. The soak lane counts persistent handles, as in M3

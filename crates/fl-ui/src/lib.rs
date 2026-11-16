@@ -16,9 +16,11 @@ use std::sync::Mutex;
 use fl_dart_ffi::{lookup, Symbol};
 
 mod buffer;
+mod clipboard;
 mod compositing;
 mod gradient;
 mod image;
+mod json;
 pub mod key;
 mod painting;
 mod path;
@@ -26,8 +28,10 @@ mod platform;
 pub mod pointer;
 mod semantics;
 mod text;
+pub mod text_input;
 
 pub use buffer::{asset_bundle, set_asset_bundle};
+pub use clipboard::set_clipboard;
 pub use compositing::{Clip, LayerOp, Scene};
 pub use fl_text::font::live_faces;
 pub use gradient::{Gradient, GradientKind};

@@ -1,0 +1,10 @@
+# The mouse dragged across the first word, from inside its first letter
+# to inside its last: positions in physical pixels of a 1200x900 view at
+# DPR 3, the logical (45, 68) and (98, 68) test/text_field_test.dart drags
+# between.
+mouse down 135 204
+idle
+mouse move 294 204
+idle
+mouse up 294 204
+idle
