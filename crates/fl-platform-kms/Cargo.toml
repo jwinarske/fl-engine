@@ -9,9 +9,10 @@ license.workspace = true
 
 [dependencies]
 fl-input = { workspace = true }
-# The keymap and the compose tables: `xkb` links the system's libxkbcommon;
-# nothing is built. drmkit-input's libinput half comes with the devices.
-drmkit-input = { workspace = true, features = ["xkb"] }
+# The keymap and the compose tables (`xkb`, the system's libxkbcommon) and
+# the seat's devices (`libinput`, the system's libinput and libudev):
+# linked, nothing built.
+drmkit-input = { workspace = true, features = ["xkb", "libinput"] }
 xkbcommon = { workspace = true }
 # The seat (libseat, linked from the system) and the display it hands out.
 drmkit-session = { workspace = true }

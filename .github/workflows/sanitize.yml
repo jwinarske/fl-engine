@@ -69,7 +69,7 @@ jobs:
       # D3, D6), and what the KMS platform holds its devices through: linked
       # from the system, as in ci.yml's app lane.
       - name: libxkbcommon and libseat
-        run: sudo apt-get install -y -qq libxkbcommon-dev xkb-data libx11-data libseat-dev
+        run: sudo apt-get install -y -qq libxkbcommon-dev xkb-data libx11-data libseat-dev libinput-dev libudev-dev
       # TSan's shadow memory needs the mmap layout of 28 bits of randomness;
       # the runner kernel uses 32.
       - name: mmap randomization for TSan

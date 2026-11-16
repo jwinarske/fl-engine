@@ -286,6 +286,30 @@ Tests: the clock on a display's blanks (fl-shell); a mode's rate from its timing
 
 Open, for the rest of stage 6: the devices through drmkit-input under the same seat, with the keys that switch terminals; the cursor plane and `flutter/mousecursor`; hotplug; `kms` by default and the board kit's display check; the VisionFive 2. Then drmkit-input's gaps: touchpad gestures, and devices added and removed.
 
+## Stage 6: the devices (2026-11-16)
+
+The second part of stage 6: with `--kms` and no script, the seat's keyboards, mice, touchpads and touch screens are the app's input. Written and unit-tested; **not yet seen with a device's events on a board** (see the end).
+
+* **`Seat::read_devices`**: libinput's devices, through drmkit-input, opened through the session by a `LibinputInterface` over it, on the seat's thread. They are a loop's way in, so the loop runs until it is stopped; `release_devices` lets it go
+* What libinput says goes the script's path: the key tracker, and fl-input's pointer, scrolling and touch managers, each event a packet of its own
+  * **keys**: the evdev code through the XKB keymap (`--keymap`). A held key repeats by drmkit-input's `KeyRepeater` (600 ms, then 25 Hz), each repeat a down for a key that is down, which is what a repeat is to the embedder
+  * **Ctrl+Alt and a function key** is the seat's: the keymap gives `XF86Switch_VT_n`, the seat is asked for that terminal, and the framework is not told of the key
+  * **a mouse** moves a pointer that starts in the middle of the view and is held to it; a tablet's or a touch screen's extent is mapped onto the view
+  * **a wheel**: 15 degrees a notch. **A touchpad's two fingers**: a pan, ended by libinput's scroll of nothing
+  * **a finger**: its slot, from its down to its up, which is where it last was
+* **A switch of terminals**: what is down comes up (keys, fingers, a pan, the mouse leaves), the devices are closed, and opened again on the switch back. The same when the devices are let go
+* Bounded on the way in (brief §15): positions to the view, non-finite ones to zero; a key code past the keymap's range dropped; 64 fingers remembered
+* `--kms` with `--input`: the script is the input and the devices are not read, so the run ends with the script
+
+Seen on the Pi 5: the six event nodes opened through the seat by the process, `ticker` still at a frame a blank with them read (239 flips, 238 blanks). Tests, with no device: the state driven with drmkit-input's events (fl-platform-kms, six cases: the pointer held to the view, buttons, a wheel and a pan, a finger, the terminal keys, everything let go).
+
+Differences from the brief:
+
+* **A device's time is the loop's clock when it is read**, not libinput's stamp, which is of another epoch
+* **A cancelled touch ends as an up.** `fl_touch_manager` has no cancel; brief §15's "ends its pointers with `cancel`" for a device removed needs one added to fl-input, with drmkit-input's device events
+
+Open: nothing here has moved a real device. `/dev/uinput` is root's on the Pi and `sudo` wants a password, so no synthetic device can be made over ssh; it needs a hand on the mouse, or a udev rule giving the `input` group `/dev/uinput`, with which keys, the terminal keys, fingers and unplugging can all be driven from here. The pointer is not drawn until the cursor plane.
+
 ## Decisions taken 2026-11-16
 
 D1 (devices and a script, no window), D4 (clipboard in the process), D5 and D6 (no system IME), each with what the stock Linux embedder does in its place (brief §13). D5 as taken: no recordings from the stock embedder; the engine's unit tests ported for each layer, and the same scripted input given to `flutter_tester` and to fl-dart end to end.
