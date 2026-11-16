@@ -13,6 +13,7 @@ aot = ["fl-dart-vm/aot", "fl-ui/aot"]
 
 [dependencies]
 fl-dart-vm = { workspace = true }
+fl-input = { workspace = true }
 fl-ui = { workspace = true }
 
 [lints]

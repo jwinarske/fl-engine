@@ -272,6 +272,7 @@ version = "0.1.0"
 dependencies = [
  "fl-assets",
  "fl-dart-vm",
+ "fl-input-script",
  "fl-raster",
  "fl-shell",
  "fl-ui",
@@ -310,6 +311,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "fl-input"
+version = "0.1.0"
+
+[[package]]
+name = "fl-input-script"
+version = "0.1.0"
+dependencies = [
+ "fl-input",
+]
+
+[[package]]
 name = "fl-raster"
 version = "0.1.0"
 dependencies = [
@@ -326,6 +338,7 @@ name = "fl-shell"
 version = "0.1.0"
 dependencies = [
  "fl-dart-vm",
+ "fl-input",
  "fl-ui",
 ]
 
@@ -349,6 +362,7 @@ dependencies = [
  "fl-assets",
  "fl-dart-ffi",
  "fl-image",
+ "fl-input",
  "fl-text",
 ]
 

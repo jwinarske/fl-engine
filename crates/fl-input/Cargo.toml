@@ -1,0 +1,13 @@
+[package]
+name = "fl-input"
+description = "fl-engine's input boundary: events as data, and what a source of them is given"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+
+[dependencies]
+
+[lints]
+workspace = true

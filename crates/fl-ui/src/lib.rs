@@ -22,6 +22,7 @@ mod image;
 mod painting;
 mod path;
 mod platform;
+pub mod pointer;
 mod semantics;
 mod text;
 

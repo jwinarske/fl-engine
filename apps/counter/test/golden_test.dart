@@ -7,6 +7,9 @@
 // both use the same typography. DPR 3, flutter_tester's engine DPR, which
 // the button's shadow reads.
 //
+// Then the same app tapped three times on its button, for the frame
+// fl-engine draws given the same taps as input.
+//
 //     flutter test --enable-impeller --update-goldens test/golden_test.dart
 import 'dart:io';
 
@@ -37,6 +40,16 @@ void main() {
     WidgetsApp.debugAllowBannerOverride = false;
     await tester.pumpWidget(const MyApp());
     await expectLater(find.byType(MyApp), matchesGoldenFile('goldens/counter.png'));
+
+    // Tapped three times, and each tap's ripple run to its end: what
+    // fl-engine's run shows after test/taps.txt, the same taps at the same
+    // point as a script of input events (M4 exit criterion 1).
+    for (var i = 0; i < 3; i++) {
+      await tester.tapAt(const Offset(356, 256));
+      await tester.pumpAndSettle();
+    }
+    expect(find.text('3'), findsOneWidget);
+    await expectLater(find.byType(MyApp), matchesGoldenFile('goldens/counter_tapped.png'));
     debugDisableShadows = true;
     WidgetsApp.debugAllowBannerOverride = true;
     debugDefaultTargetPlatformOverride = null;

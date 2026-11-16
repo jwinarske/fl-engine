@@ -17,6 +17,8 @@ Status: milestone 1 (Dart VM hosted from Rust).
 * fl-dart-ffi - native binding layer: symbol tables, peers on native-field wrappers
 * fl-ui - dart:ui natives
 * fl-shell - embedder: views and the runtime hooks a framework isolate needs
+* fl-input - the input boundary: events as data, and what a source delivers them through
+* fl-input-script - scripted input source, for CI and tests
 * fl-raster - dart:ui scenes drawn by emblema
 * fl-dart-cli - `fl-dart` binary
 * xtask - `cargo xtask bindgen`, `cargo xtask fetch-prebuilt`

@@ -49,7 +49,7 @@ M2 and M3 answer messages the framework sends. M4 is the first to send one: the 
 ## 4. Input Sources
 
 * **KMS, through drmkit** (boards): `drmkit-input`'s `Seat` reads the devices through libinput and `drmkit-session` holds them through libseat, so devices come and go with a virtual-terminal switch and with hotplug, with no root and no `input` group. `drmkit-input`'s `Keyboard` resolves keys through xkbcommon; its `KeyRepeater` repeats them. libinput handles touchpads, acceleration and device quirks. The same backend owns the display (D9)
-* **scripted** (CI, tests): `--input <file>`, one event per line at a frame number or time: `tap x y`, `down`/`move`/`up`, `scroll dx dy`, `key <name> down|up`, `text "..."`, `compose "..." "..."`. Keys go through the same keymap as on the boards; everything after the source is the board's path
+* **scripted** (CI, tests): `--input <file>`, one step per line: `tap x y`, `down`/`move`/`up`, `scroll dx dy`, `key <name> down|up`, `text "..."`, `compose "..." "..."`, and for when, `idle` (until the app has nothing to do) and `wait <ms>` (m4-status.md, stage 2: not a frame number or a time, which an app that draws only when asked does not reach). Keys go through the same keymap as on the boards; everything after the source is the board's path
 * Both feed one queue to the UI side, drained between loop steps as replies are; arriving input wakes the loop and asks for a frame as the engine's does
 
 ## 5. Keyboard Layout and Text

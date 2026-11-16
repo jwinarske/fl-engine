@@ -1,0 +1,11 @@
+# Three taps on the counter's button, each after the last one's ripple has
+# run to its end: test/golden_test.dart's taps, as input events.
+#
+# The view is 1200x900 at DPR 3, so 400x300 logical. The button is 56 wide,
+# 16 from the right and bottom edges: its center is (356, 256) logical,
+# (1068, 768) in physical pixels, which a script's positions are.
+tap 1068 768
+idle
+tap 1068 768
+idle
+tap 1068 768
