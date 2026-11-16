@@ -1,0 +1,17 @@
+value text="" selection=0..0 composing=-
+value text="c" selection=1..1 composing=-
+value text="ca" selection=2..2 composing=-
+value text="caf" selection=3..3 composing=-
+value text="caf´" selection=4..4 composing=3..4
+value text="caf" selection=3..3 composing=-
+value text="café" selection=4..4 composing=-
+value text="café " selection=5..5 composing=-
+value text="café b" selection=6..6 composing=-
+value text="café ba" selection=7..7 composing=-
+value text="café bar" selection=8..8 composing=-
+value text="café bar" selection=0..0 composing=-
+value text="café bar" selection=0..4 composing=-
+value text="café bar" selection=8..8 composing=-
+value text="café barcafé" selection=12..12 composing=-
+value text="café barcaf" selection=11..11 composing=-
+submitted "café barcaf"

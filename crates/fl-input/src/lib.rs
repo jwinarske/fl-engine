@@ -8,6 +8,7 @@
 //! the same for every source.
 
 mod key;
+pub mod text;
 pub mod xkb;
 
 use std::time::Duration;

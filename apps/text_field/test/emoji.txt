@@ -1,0 +1,25 @@
+# A field that starts with a character outside the BMP, two UTF-16 code
+# units, and a space (`--message "fl/seed=😄 "`): every offset after it
+# counts the two.
+key keyA
+idle
+# The selection grown back over all of it, a character at a time.
+key shiftLeft down
+key arrowLeft
+key arrowLeft
+key arrowLeft
+key shiftLeft up
+# Cut, and pasted twice.
+key controlLeft down
+key keyX
+idle
+key keyV
+idle
+key keyV
+key controlLeft up
+idle
+# The first character deleted from the front, and one typed in its place.
+key home
+key delete
+key keyZ
+idle

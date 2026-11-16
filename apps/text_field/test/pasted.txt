@@ -1,0 +1,12 @@
+# The selection copied, the caret sent to the end, the copy pasted there,
+# and its last character deleted. The framework handles every key here.
+key controlLeft down
+key keyC
+key controlLeft up
+key end
+key controlLeft down
+key keyV
+key controlLeft up
+idle
+key backspace
+idle

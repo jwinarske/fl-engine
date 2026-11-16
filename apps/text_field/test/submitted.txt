@@ -1,0 +1,3 @@
+# Return: the field's action, which for one line of text is done.
+key enter
+idle

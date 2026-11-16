@@ -1,0 +1,11 @@
+# text_field_selected.png: the text field once test/selected.txt has dragged the mouse across its first word.
+# Rendered by the stock engine's flutter_tester with Impeller, given the
+# same edits above the engine (test/text_field_test.dart); against
+# fl-engine's frame given them as input events, both at DPR 3 with Roboto
+# from the Flutter cache. Percent of pixels allowed to differ in any
+# channel, and by more than 32.
+#
+# The differences are glyph edges, as text.tolerance's. Measured
+# 2026-11-16, lavapipe: 0.231% differ, 0.009% by more than 32.
+differ 0.4
+differ_over_32 0.05

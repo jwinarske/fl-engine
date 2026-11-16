@@ -1033,7 +1033,7 @@ fn keys_match_the_stock_framework() {
     let typing = &outs[0];
     // The app handles key A: two taps, a down and an up each.
     assert!(
-        typing.contains("\nkeys: events=40 handled=4 unhandled=36\n"),
+        typing.contains("\nkeys: events=40 handled=4 unhandled=36 text=0\n"),
         "{typing}"
     );
     // The engine's own message, which flutter_tester does not send: GTK's
@@ -1068,6 +1068,93 @@ fn keys_match_the_stock_framework() {
         ]
     );
     assert!(out.contains("data toolkit=GtkKeyHelper keyCode=0xfe51 scanCode=0x30 modifiers=0x0 unicodeScalarValues=0x0 specifiedLogicalKey=0x22"));
+}
+
+/// Text input (brief M4 stage 4, exit criterion 2): a `TextField` typed
+/// into from a script's keys, a dead key's character composed in it, a
+/// word selected with the mouse, copied and pasted, and Return. Its frame
+/// after the typing, after the selection and after the paste matches
+/// flutter_tester's, and every editing value the field goes through is
+/// the one flutter_tester logs for the same edits (apps/text_field/test).
+#[cfg(feature = "kms")]
+#[test]
+#[ignore = "app lane: needs FLUTTER_ROOT, a Vulkan driver, libxkbcommon with its layouts and libX11's compose tables"]
+fn text_field_edits_match_the_stock_framework() {
+    let root = std::env::var("FLUTTER_ROOT").unwrap();
+    let fonts = format!("{root}/bin/cache/artifacts/material_fonts");
+    let roboto = format!("Roboto={fonts}/Roboto-Regular.ttf");
+    let icons = format!("MaterialIcons={fonts}/MaterialIcons-Regular.otf");
+    let app = build_app("text_field");
+    let dir = repo().join("apps/text_field/test");
+    let run = |script: &std::path::Path, more: &[&std::ffi::OsStr]| {
+        let mut args: Vec<&std::ffi::OsStr> = vec![
+            "run-app".as_ref(),
+            app.as_os_str(),
+            "1200x900@3".as_ref(),
+            "--font".as_ref(),
+            roboto.as_ref(),
+            "--font".as_ref(),
+            icons.as_ref(),
+            "--input".as_ref(),
+            script.as_os_str(),
+            // The dead acute is the international US layout's, and what it
+            // composes with is the locale's.
+            "--keymap".as_ref(),
+            "us:intl".as_ref(),
+            "--compose".as_ref(),
+            "en_US.UTF-8".as_ref(),
+        ];
+        args.extend(more);
+        let o = common::fl_dart(&args);
+        assert!(o.status.success(), "{o:?}");
+        String::from_utf8_lossy(&o.stdout).into_owned()
+    };
+    let logged = |out: &str| -> Vec<String> {
+        out.lines()
+            .filter(|l| l.starts_with("value ") || l.starts_with("submitted "))
+            .map(str::to_owned)
+            .collect()
+    };
+    let expected = |name: &str| -> Vec<String> {
+        let text = std::fs::read_to_string(dir.join(format!("{name}_events.txt"))).unwrap();
+        text.lines().map(str::to_owned).collect()
+    };
+
+    // Each part of the edit after the parts before it, for its frame.
+    let mut script = String::new();
+    let mut last = String::new();
+    for part in ["typed", "selected", "pasted", "submitted"] {
+        script.push_str(&std::fs::read_to_string(dir.join(format!("{part}.txt"))).unwrap());
+        let path = common::out_dir().join(format!("apps/text_field-{part}.txt"));
+        std::fs::write(&path, &script).unwrap();
+        if part == "submitted" {
+            last = run(&path, &[]);
+            break;
+        }
+        let name = format!("text_field_{part}");
+        let png = common::out_dir().join(format!("apps/{name}.png"));
+        let _ = std::fs::remove_file(&png);
+        run(&path, &["--png".as_ref(), png.as_os_str()]);
+        compare_with_golden_named("text_field", &name, &png, (1200, 900));
+    }
+    assert_eq!(logged(&last), expected("edit"), "{last}");
+    // The nine keys that typed, the dead key among them, were text
+    // input's. The framework handled the four it has shortcuts for, as
+    // they went down: the copy, End, the paste and Backspace. Return was
+    // offered to text input, which made it the field's action and left
+    // the key.
+    assert!(
+        last.contains("\nkeys: events=32 handled=4 unhandled=28 text=9\n"),
+        "{last}"
+    );
+
+    // A field that starts with a character outside the BMP: the offsets
+    // the framework and the engine tell each other count its two units.
+    let out = run(
+        &dir.join("emoji.txt"),
+        &["--message".as_ref(), "fl/seed=😄 ".as_ref()],
+    );
+    assert_eq!(logged(&out), expected("emoji"), "{out}");
 }
 
 /// Whether two `raw down` lines differ only as flutter_tester's simulated

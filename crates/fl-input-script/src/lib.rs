@@ -8,6 +8,10 @@
 //! down 100 300      a touch down, and where it is until it moves
 //! move 100 200      the touch moved, down
 //! up 100 200        the touch lifted
+//! mouse move 10 20  the mouse moved: hovering, or dragging with its
+//!                   button down
+//! mouse down 10 20  the mouse's primary button pressed, there
+//! mouse up 90 20    the button released
 //! idle              wait until the app has nothing to do: every event
 //!                   delivered has been dispatched, every frame asked for
 //!                   drawn (an animation run to its end)
@@ -22,7 +26,8 @@
 //! A script starts as if with `idle`, so its first event finds the app's
 //! first frame laid out. A touch is delivered as the Linux embedder's
 //! `fl_touch_manager` delivers one: added as it goes down, removed as it
-//! lifts.
+//! lifts. The mouse is its `fl_pointer_manager`'s: added by its first
+//! event, hovering with no button down, and never removed.
 //!
 //! A key is a place on the keyboard, as a device reports one. What it
 //! means is the keymap's, which whoever plays the script brings
@@ -38,7 +43,7 @@ use std::fmt;
 use std::time::Duration;
 
 use fl_input::xkb::{keycode_named, Keymap, Keys};
-use fl_input::{EventSink, PointerDeviceKind, PointerEvent, PointerPhase};
+use fl_input::{mouse_button, EventSink, PointerDeviceKind, PointerEvent, PointerPhase};
 
 /// A script's size limit: far more than any test's, and small enough to
 /// read whole.
@@ -70,6 +75,12 @@ pub enum Step {
         x: f64,
         y: f64,
     },
+    /// The mouse: moved, or its primary button pressed or released.
+    Mouse {
+        action: MouseAction,
+        x: f64,
+        y: f64,
+    },
     Idle,
     Wait(Duration),
     /// A key by its XKB keycode: down, up, or with `None` down then up.
@@ -77,6 +88,14 @@ pub enum Step {
         keycode: u16,
         pressed: Option<bool>,
     },
+}
+
+/// What the mouse did, in a [`Step::Mouse`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MouseAction {
+    Move,
+    Down,
+    Up,
 }
 
 /// A parsed script.
@@ -144,6 +163,8 @@ impl Script {
         }
         // The keyboard's key path, the script's own as a seat's is.
         let mut keys = Keys::new();
+        // The mouse: whether the framework knows of it, and its button.
+        let (mut mouse_added, mut mouse_down) = (false, false);
         for step in &self.steps {
             match *step {
                 Step::Tap { x, y } => {
@@ -171,6 +192,35 @@ impl Script {
                         touch(PointerPhase::Up, at, x, y),
                         touch(PointerPhase::Remove, at, x, y),
                     ]);
+                }
+                Step::Mouse { action, x, y } => {
+                    let at = sink.now();
+                    let mut events = Vec::with_capacity(2);
+                    if !std::mem::replace(&mut mouse_added, true) {
+                        events.push(mouse(PointerPhase::Add, at, x, y, false));
+                    }
+                    match (action, mouse_down) {
+                        (MouseAction::Move, true) => {
+                            events.push(mouse(PointerPhase::Move, at, x, y, true));
+                        }
+                        (MouseAction::Move, false) => {
+                            events.push(mouse(PointerPhase::Hover, at, x, y, false));
+                        }
+                        (MouseAction::Down, false) => {
+                            mouse_down = true;
+                            events.push(mouse(PointerPhase::Down, at, x, y, true));
+                        }
+                        (MouseAction::Up, true) => {
+                            mouse_down = false;
+                            events.push(mouse(PointerPhase::Up, at, x, y, false));
+                        }
+                        // Down while down, up while up: a button's state
+                        // told twice is no event.
+                        (MouseAction::Down, true) | (MouseAction::Up, false) => {}
+                    }
+                    if !events.is_empty() {
+                        sink.pointer_events(&events);
+                    }
                 }
                 Step::Idle => {
                     if !sink.wait_idle() {
@@ -224,6 +274,19 @@ fn touch(phase: PointerPhase, at: Duration, x: f64, y: f64) -> PointerEvent {
     PointerEvent::new(phase, PointerDeviceKind::Touch, at, x, y)
 }
 
+/// The mouse's device: not the touch's, which is 0, since the framework's
+/// pointers are told apart by device.
+const MOUSE_DEVICE: i32 = 1;
+
+/// The script's mouse, its primary button down or not.
+fn mouse(phase: PointerPhase, at: Duration, x: f64, y: f64, down: bool) -> PointerEvent {
+    PointerEvent {
+        device: MOUSE_DEVICE,
+        buttons: if down { mouse_button::PRIMARY } else { 0 },
+        ..PointerEvent::new(phase, PointerDeviceKind::Mouse, at, x, y)
+    }
+}
+
 fn parse_step(command: &str, args: &[&str]) -> Result<Step, String> {
     let point = || -> Result<(f64, f64), String> {
         let [x, y] = args else {
@@ -236,6 +299,23 @@ fn parse_step(command: &str, args: &[&str]) -> Result<Step, String> {
         "down" => point().map(|(x, y)| Step::Down { x, y }),
         "move" => point().map(|(x, y)| Step::Move { x, y }),
         "up" => point().map(|(x, y)| Step::Up { x, y }),
+        "mouse" => {
+            let (action, x, y) = match args {
+                ["move", x, y] => (MouseAction::Move, x, y),
+                ["down", x, y] => (MouseAction::Down, x, y),
+                ["up", x, y] => (MouseAction::Up, x, y),
+                _ => {
+                    return Err(
+                        "`mouse` takes `move`, `down` or `up`, then a position, x and y".to_owned(),
+                    )
+                }
+            };
+            Ok(Step::Mouse {
+                action,
+                x: position(x)?,
+                y: position(y)?,
+            })
+        }
         "idle" if args.is_empty() => Ok(Step::Idle),
         "idle" => Err("`idle` takes nothing".to_owned()),
         "wait" => {
@@ -300,7 +380,7 @@ mod tests {
     fn steps_parse_a_line_each() {
         let s = Script::parse(
             "# taps\n\n  tap 756 556.5  # the button\nidle\ndown 1 2\nmove -3 4e1\nup 3 40\nwait 250\n\
-             key keyA down\nkey keyA up\nkey enter\n",
+             key keyA down\nkey keyA up\nkey enter\nmouse down 4 5\n",
         );
         assert_eq!(
             s.map(|s| s.steps),
@@ -322,6 +402,11 @@ mod tests {
                 Step::Key {
                     keycode: 0x24,
                     pressed: None
+                },
+                Step::Mouse {
+                    action: MouseAction::Down,
+                    x: 4.0,
+                    y: 5.0
                 },
             ])
         );
@@ -353,6 +438,17 @@ mod tests {
                 "`key` takes a key's name, then `down` or `up` or neither",
             ),
             ("key a", 1, "`a` is not a key"),
+            (
+                "mouse 1 2",
+                1,
+                "`mouse` takes `move`, `down` or `up`, then a position, x and y",
+            ),
+            (
+                "mouse click 1 2",
+                1,
+                "`mouse` takes `move`, `down` or `up`, then a position, x and y",
+            ),
+            ("mouse down 1 x", 1, "`x` is not a number"),
             ("key KeyA down", 1, "`KeyA` is not a key"),
         ];
         for (text, line, message) in cases {
@@ -412,9 +508,17 @@ mod tests {
             let line: Vec<String> = events
                 .iter()
                 .map(|e| {
-                    assert_eq!(e.device_kind, PointerDeviceKind::Touch);
-                    assert_eq!((e.device, e.view_id, e.timestamp), (0, 0, self.now()));
-                    format!("{:?}@{},{}", e.phase, e.x, e.y)
+                    assert_eq!((e.view_id, e.timestamp), (0, self.now()));
+                    match e.device_kind {
+                        PointerDeviceKind::Touch => {
+                            assert_eq!((e.device, e.buttons), (0, 0));
+                            format!("{:?}@{},{}", e.phase, e.x, e.y)
+                        }
+                        kind => {
+                            assert_eq!((kind, e.device), (PointerDeviceKind::Mouse, 1));
+                            format!("mouse:{:?}@{},{} buttons={}", e.phase, e.x, e.y, e.buttons)
+                        }
+                    }
                 })
                 .collect();
             if let Ok(mut log) = self.log.lock() {
@@ -536,6 +640,39 @@ mod tests {
                 "Move@3,4",
                 "Up@3,4 Remove@3,4",
             ]
+        );
+    }
+
+    /// The mouse as `fl_pointer_manager` sends it: added once, hovering
+    /// until its button is down, moving while it is, and beside the
+    /// touch, not in its place.
+    #[test]
+    fn a_mouse_hovers_and_drags() {
+        let script = Script::parse(
+            "mouse move 1 2\nmouse down 1 2\nmouse down 1 2\nmouse move 3 4\nmouse up 3 4\n\
+             mouse up 3 4\nmouse move 5 6\ntap 7 8\n",
+        );
+        let sink = Recorder::new(usize::MAX);
+        script.unwrap_or_default().play(&sink, None);
+        assert_eq!(
+            sink.log(),
+            [
+                "idle",
+                "mouse:Add@1,2 buttons=0 mouse:Hover@1,2 buttons=0",
+                "mouse:Down@1,2 buttons=1",
+                "mouse:Move@3,4 buttons=1",
+                "mouse:Up@3,4 buttons=0",
+                "mouse:Hover@5,6 buttons=0",
+                "Add@7,8 Down@7,8 Up@7,8 Remove@7,8",
+            ]
+        );
+        // A script that starts with the button: added there.
+        let script = Script::parse("mouse down 9 9\n");
+        let sink = Recorder::new(usize::MAX);
+        script.unwrap_or_default().play(&sink, None);
+        assert_eq!(
+            sink.log(),
+            ["idle", "mouse:Add@9,9 buttons=0 mouse:Down@9,9 buttons=1"]
         );
     }
 

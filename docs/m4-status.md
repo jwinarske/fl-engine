@@ -72,7 +72,7 @@ Done: a script's keys, resolved against an XKB keymap and sent as the Linux embe
     data toolkit=GtkKeyHelper keyCode=0x61 scanCode=0x26 modifiers=0x0 unicodeScalarValues=0x61 specifiedLogicalKey=0x61
     key down physical=0x70004 logical=0x61 character="a" synthesized=false pressed=[0x61] locks=[]
     ...
-    keys: events=40 handled=4 unhandled=36
+    keys: events=40 handled=4 unhandled=36 text=0
 
 * `fl_input::KeyData`, `embedder.h`'s `FlutterKeyEvent`, and `KeyEvent`, one native key event as the framework is to be told it (D2, D8): its `KeyData` in order, the synthesized first, and its message for `flutter/keyevent`. `EventSink::key_event` delivers one
 * `fl_input::xkb`, the Linux embedder's key path below GDK, ported, with no keymap linked (D7). A source resolves a key into an `XkbKey`, GDK's `GdkEventKey` (keycode, keysym, its character, the state before the event, the group), and `Keys::handle` makes the `KeyEvent`:
@@ -110,7 +110,65 @@ Found on the way:
 * A dead key (`us:intl`, the quote key) types no character and is logical key `"`, its US key: neither of its levels is Latin-1. Composing is text input's
 * Enter and Escape carry a character, U+000D and U+001B: `gdk_keyval_to_unicode` gives one, and the embedder sends it
 
-Open: text input (stage 4), which is where an unhandled key goes next. Keys held as a device goes or the focus does (brief §8, §15) need a device to go: stage 6. The script's keys are not in the soak yet (stage 7).
+Open: keys held as a device goes or the focus does (brief §8, §15) need a device to go: stage 6. The script's keys are not in the soak yet (stage 7).
+
+## Stage 4: text input (2026-11-16)
+
+Done: a key the framework does not handle goes to text input, which types it into the text field that has the keyboard, composes a dead key's character, and performs the field's action on Return; the clipboard is answered. A `TextField` typed into, selected in with the mouse, copied from and pasted into goes through the editing values flutter_tester logs for the same edits and draws its frames. Exit criterion 2, and exit criterion 5 for `flutter/textinput` and the clipboard.
+
+    cargo build -p fl-dart-cli --features kms
+    tools/flutter-app/build.sh $FLUTTER_ROOT apps/text_field out
+    cat apps/text_field/test/{typed,selected,pasted,submitted}.txt > edit.txt
+    fl-dart run-app out/text_field.so 1200x900@3 --font Roboto=... --input edit.txt --keymap us:intl --compose en_US.UTF-8
+    value text="caf" selection=3..3 composing=-
+    value text="caf´" selection=4..4 composing=3..4
+    value text="caf" selection=3..3 composing=-
+    value text="café" selection=4..4 composing=-
+    ...
+    value text="café bar" selection=0..4 composing=-
+    value text="café barcafé" selection=12..12 composing=-
+    submitted "café barcaf"
+    keys: events=32 handled=4 unhandled=28 text=9
+
+* `fl_input::text`, the Linux embedder's text input below GTK, ported, with no OS code (D8):
+  * `TextInputModel` and `TextRange`: the engine's (`shell/platform/common/text_input_model.cc`). The text in UTF-16 code units, its selection, and the range being composed
+  * `TextInput`: `fl_text_input_handler.cc`. Which field has the keyboard and how it is configured; a key the framework left (`filter_key`): the input method first, then Home, End and Return; and an input method's signals (`ImEvent`: preedit start, changed and end, commit, delete surrounding). What the framework is to be told comes out as `Update`s: the editing state, one delta for a field that asked for deltas, or the field's action
+  * `InputMethod`: the trait in GTK's `GtkIMContext`'s place. `Direct` composes nothing and types each key's character, by `GtkIMContextSimple`'s rule for a key outside a sequence: not a release, not with Control or Alt held, not a control character
+  * `Clipboard`: the trait in `GtkClipboard`'s place, text only, and `MemoryClipboard`, the one in the process (D4)
+* Ported with their unit tests: all 154 of `text_input_model_unittests.cc`, converted by script, under their names; and `fl_text_input_handler_test.cc`'s cases of what the handler tells the framework (the action, a multiline field's Return, Home and End with and without Shift, composing, surrounding text, the marked text's rect, the three delta cases, a changed configuration). Its 11 cases of GTK's input purpose and hints have nothing here to hold: they are an on-screen keyboard's
+* `fl_ui::text_input`: `flutter/textinput` as `fl_text_input_channel.cc` has it, `JSONMethodCodec`. `setClient`, `updateConfig`, `show`, `hide`, `setEditingState`, `clearClient`, `setEditableSizeAndTransform` and `setMarkedTextRect` are decoded and answered; arguments that are not the method's are an error reply; a method the embedder lacks (`setStyle`, `setCaretRect`, autofill) is answered with null, which the framework's optional channel reads as no such method. The handler's three messages are encoded member for member as the embedder's
+* `fl_ui`'s clipboard: `Clipboard.setData`, `getData` and `hasStrings` on `flutter/platform`, as `fl_platform_channel.cc` and `fl_platform_handler.cc`. A format other than `text/plain` is an error; `hasStrings` is whether the text is not empty; an empty clipboard's `getData` is null. `fl_ui::set_clipboard` takes a platform's own
+* A JSON parser and writer of fl-ui's own for the two channels: bounded in depth (32), no panic on any bytes, what is not JSON is no call. No JSON crate comes in
+* `KeyEvent::native`: the key as the keymap resolved it, kept for text input. The loop, once both of the framework's answers are in and neither handled the key, offers it to the handler (`fl_view`'s redispatch), on the UI thread, inside the framework's response. The handler's messages are dispatched ahead of the next key, so the framework has each key's text before the key after it, as the embedder's main loop has it. `Wake::keys` counts the keys text input took (`text`)
+* `fl-platform-kms`: `Compose`, xkbcommon's compose tables as an `InputMethod` (D6). A sequence begun shows what was typed of it as the composing text, a dead key as its accent standing alone and the compose key as a middle dot, as GTK shows them; one finished takes that away, ends composing and commits the character, in GTK's order: three editing states. A sequence the table lacks is dropped with its last key. `--compose LOCALE` names the locale, the environment's by default
+* The script: `mouse move`, `mouse down` and `mouse up` at a position, the primary button, as `fl_pointer_manager` sends a mouse: added by its first event, hovering until its button is down, never removed. Its device is 1, beside the touch's 0
+* `apps/text_field`: a Material `TextField`, autofocused, that prints its editing value each time it changes. `text_field_edits_match_the_stock_framework` runs it four times, a part more of the edit each time, and holds the frames after the typing, the selection and the paste against flutter_tester's with Impeller (0.19%, 0.23% and 0.27% of pixels differ, glyph edges), and the 17 lines of the whole edit against `test/edit_events.txt`. A second script starts from `😄 ` (`--message fl/seed=...`), selects back over it with Shift and the arrows, cuts, pastes twice, deletes forward and types: 12 lines against `test/emoji_events.txt`, every offset counting the emoji's two units
+* ci.yml: the app lane installs `libx11-data`, the compose tables, and runs `text_field`'s goldens and its test in both modes
+
+Decided here:
+
+* **The handler and the input method are on the UI thread**, in fl-ui beside the channel, not in the source. The embedder offers its input method a key only after the framework has left it and only while a field has the keyboard, so a shortcut's key or a key with no field never moves a compose sequence on. That order needs the framework's answer, which is the UI thread's. So `InputMethod` is `Send`, and `Compose` moves its xkbcommon state there (the one `unsafe impl` in fl-platform-kms: the state, its table and their context are held by the one value, and used through `&mut`)
+* **The reference types as the embedder does.** flutter_tester has no engine text input: `TestTextInput.updateEditingValue` sends the framework the editing state on the same channel. The test sends the states the Linux embedder sends for each key, the three of a composed character among them, and sends as keys the ones the framework handles itself (the shortcuts, the arrows, Backspace, Delete). What is held is that fl-engine's keys, through keymap, tracker, framework, handler and compose table, come to the same values
+* **`--compose` in the test names `en_US.UTF-8`.** The table is the system's file for a locale, and the test's is not left to the runner's environment
+* **No `text` or `compose` step in the script**, which brief §4 listed. Text is typed by keys, through the keymap and the compose table, which is the path a board's keyboard takes; a step that put text in directly would go around it
+
+Differences from the embedder, each for its intent:
+
+* The model refuses a selection or a composing range that is not inside the text, as the original does, and where the original then keeps ranges that may be past the new text's end, or sums a caret offset unchecked, the ranges go to the text's start or are held inside it. Nothing indexes with what the framework sent (brief §15). The brief said clamped; refused is what the embedder does, and the brief now says so
+* An offset missing from `setEditingState` is 0, and a missing text an error reply; the embedder reads both through null
+* `preedit-changed`'s caret is in UTF-16 code units; GTK's is in characters, which the embedder adds to a UTF-16 offset as they are
+* GTK's Ctrl+Shift+U hex input is not ported: it is `GtkIMContextSimple`'s own, not the compose tables'
+* A sequence the table lacks is dropped, with no beep
+
+Found on the way:
+
+* The embedder's delta for Home or End under the delta model is the whole text inserted at the old caret (`TextEditingDelta` test: old `Flutter`, delta `Flutter`, 7 to 7), which is no description of a caret moving. Its own test holds it to that, so it is ported as it is. The framework handles Home and End itself in a focused field, so the handler's path is reached only when it does not
+* The framework cannot set a composing range through `setEditingState`: the handler's `SetComposingRange` is refused unless the model is composing, and nothing but the input method starts that. Ported as it is
+* The framework says a key is handled only as it goes down: the copy, End, the paste and Backspace count 4 handled of their 8 events, and each release is offered to text input, which has nothing to do with one
+* Return in a one-line field is not handled by the framework: it reaches the handler, which sends `TextInputClient.performAction`, and the field submits. Space is not handled either, and types
+* A message sent with `run-app --message` arrives after the first frame, by which time an autofocused field has the keyboard: the seed's text goes back to the engine as `setEditingState`, which is the path the second script is there for
+
+Open: `flutter/mousecursor` (exit criterion 5's last channel) comes with the cursor, stage 6; other `flutter/platform` methods are still dropped unanswered, as before. A system input method (IBus, Fcitx) is a later `InputMethod` (D6). Typing in the soak, its build-time budget, and fuzzing the JSON and the editing-state decoder are stage 7's lanes; the decoders' malformed-input tests are here.
 
 ## Decisions taken 2026-11-16
 

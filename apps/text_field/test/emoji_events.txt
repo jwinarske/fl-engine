@@ -1,0 +1,12 @@
+value text="" selection=0..0 composing=-
+value text="😄 " selection=3..3 composing=-
+value text="😄 a" selection=4..4 composing=-
+value text="😄 a" selection=4..3 composing=-
+value text="😄 a" selection=4..2 composing=-
+value text="😄 a" selection=4..0 composing=-
+value text="" selection=0..0 composing=-
+value text="😄 a" selection=4..4 composing=-
+value text="😄 a😄 a" selection=8..8 composing=-
+value text="😄 a😄 a" selection=0..0 composing=-
+value text=" a😄 a" selection=0..0 composing=-
+value text="z a😄 a" selection=1..1 composing=-
