@@ -529,12 +529,13 @@ const NOT_YET: &[(&str, &str)] = &[];
 #[test]
 #[ignore = "app lane: needs FLUTTER_ROOT"]
 fn every_native_is_called_by_an_app() {
-    let runs: [(&str, &[&str]); 14] = [
+    let runs: [(&str, &[&str]); 15] = [
         ("colored_box", &[]),
         ("shapes", &["--frames", "1"]),
         ("material", &[]),
         ("natives", &["--frames", "1"]),
         ("frame_order", &[]),
+        ("messages", &["--message", "fl/echo=x"]),
         ("ticker", &["--frames", "5"]),
         ("assets", &[]),
         ("counter", &["--frames", "1"]),
@@ -868,6 +869,73 @@ fn frame_order_follows_the_engines_sequence() {
     for g in gaps {
         assert!(periods(g) == 1, "{vsync}");
     }
+}
+
+/// Messages the engine sends the framework (brief M4 §3, stage 1): each is
+/// dispatched in the order sent, after `main`, and answered once: with the
+/// framework's bytes, with none, with null; when a listener is set later
+/// for a message its channel kept; with null as `ChannelBuffers` drops one
+/// for a newer one; and with null when the loop ends first.
+#[test]
+#[ignore = "app lane: needs FLUTTER_ROOT"]
+fn messages_are_answered_every_way() {
+    let app = build_app("messages");
+    let mut args: Vec<&std::ffi::OsStr> =
+        vec!["run-app".as_ref(), app.as_os_str(), "200x100".as_ref()];
+    for m in [
+        "fl/echo=h\u{e9}llo \u{1f600}",
+        "fl/echo",
+        "fl/echo=",
+        "fl/empty=x",
+        "fl/null=x",
+        "fl/twice=x",
+        "fl/late=a",
+        "fl/never=n",
+        "fl/nobody=1",
+        "fl/nobody=2",
+        "fl/echo=last",
+    ] {
+        args.push("--message".as_ref());
+        args.push(m.as_ref());
+    }
+    let o = common::fl_dart(&args);
+    assert!(o.status.success(), "{o:?}");
+    let out = String::from_utf8_lossy(&o.stdout);
+    // Without ChannelBuffers' own report of the message it dropped, which
+    // only a build with asserts prints.
+    let lines: Vec<&str> = out
+        .lines()
+        .filter(|l| l.starts_with("fl/") || l.starts_with("response ") || l.starts_with("frame "))
+        .collect();
+    let want = [
+        "fl/echo: \"h\u{e9}llo \u{1f600}\"",
+        "response fl/echo: \"h\u{e9}llo \u{1f600}\"",
+        "fl/echo: null",
+        "response fl/echo: null",
+        "fl/echo: \"\"",
+        "response fl/echo: \"\"",
+        "fl/empty: \"x\"",
+        "response fl/empty: \"\"",
+        "fl/null: \"x\"",
+        "response fl/null: null",
+        // The second response to one message is ignored.
+        "fl/twice: \"x\"",
+        "response fl/twice: \"first\"",
+        "fl/never: \"n\"",
+        // The first of two for a channel nobody listens to, dropped as
+        // the second arrives.
+        "response fl/nobody: null",
+        "fl/echo: \"last\"",
+        "response fl/echo: \"last\"",
+        "frame 1: view 0 200x100 layers=0 pictures=0 draws=0",
+        // Kept by its channel until the frame set a listener.
+        "fl/late: \"a\"",
+        "response fl/late: \"late\"",
+        // Never answered: null as the loop ends, the dispatched first.
+        "response fl/never: null",
+        "response fl/nobody: null",
+    ];
+    assert_eq!(lines, want, "{out}");
 }
 
 /// Frames after the first (exit criterion 3): the ticker asks for each,

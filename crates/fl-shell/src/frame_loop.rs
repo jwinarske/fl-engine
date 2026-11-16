@@ -13,6 +13,13 @@
 //! decodes, which arrive from the decode thread and wake the loop. The loop
 //! does not end while a decode is outstanding.
 //!
+//! Messages the engine sends the framework ([`Wake::send`], brief M4 §3) are
+//! queued from any thread and dispatched one a step, each with the
+//! microtasks it queued. A message's continuation is kept by its response
+//! id and run when the framework responds, on the UI thread; one still
+//! waiting when the loop returns is run with `None`, as is one sent after,
+//! so a sender never waits forever.
+//!
 //! Vsync here is a fixed-interval clock: ticks `period` apart from the loop's
 //! start. On KMS the flip event will take its place (stage 6).
 //!
@@ -24,6 +31,7 @@
 //! empties its cache of heap pages. dart:ui's latency performance mode,
 //! which skips them upstream, is not implemented here.
 
+use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
@@ -51,6 +59,27 @@ pub struct Wake {
 struct Inner {
     pending: Mutex<Pending>,
     changed: Condvar,
+    /// Continuations of dispatched messages, by response id.
+    waiting: Mutex<Waiting>,
+}
+
+/// What a message's sender is answered through: the framework's response,
+/// or `None` for a null response or no response at all.
+type Respond = Box<dyn FnOnce(Option<Vec<u8>>) + Send>;
+
+/// A message for the framework, not yet dispatched.
+struct Outbound {
+    channel: String,
+    data: Option<Vec<u8>>,
+    respond: Option<Respond>,
+}
+
+#[derive(Default)]
+struct Waiting {
+    by_id: HashMap<i64, Respond>,
+    /// The last id given out. 0 is never one: it is a message that wants
+    /// no response.
+    last_id: i64,
 }
 
 #[derive(Default)]
@@ -63,6 +92,10 @@ struct Pending {
     frame: Option<Instant>,
     /// A reply arrived from another thread.
     replies: bool,
+    /// Messages for the framework, oldest first.
+    outbound: VecDeque<Outbound>,
+    /// The loop has returned: nothing more is dispatched.
+    closed: bool,
 }
 
 impl Wake {
@@ -82,6 +115,57 @@ impl Wake {
         self.inner.changed.notify_one();
     }
 
+    /// Sends the framework a message on `channel`, from any thread: the
+    /// engine's `DispatchPlatformMessage`. `data` of `None` arrives as a
+    /// null `ByteData`. `respond` is run once, with the framework's
+    /// response (`None` for a null one), on the UI thread inside the
+    /// framework's call, so it must not block; or with `None` if the loop
+    /// returns first or already has, on the thread that finds that out.
+    ///
+    /// A channel with no listener keeps its messages until one is set
+    /// (`ChannelBuffers`): one message by default, an older one answered
+    /// with null as a newer one arrives.
+    pub fn send(
+        &self,
+        channel: &str,
+        data: Option<Vec<u8>>,
+        respond: impl FnOnce(Option<Vec<u8>>) + Send + 'static,
+    ) {
+        self.push(channel, data, Some(Box::new(respond)));
+    }
+
+    /// [`Wake::send`] for a message whose response nobody wants.
+    pub fn post(&self, channel: &str, data: Option<Vec<u8>>) {
+        self.push(channel, data, None);
+    }
+
+    fn push(&self, channel: &str, data: Option<Vec<u8>>, respond: Option<Respond>) {
+        let mut p = self.inner.lock();
+        if p.closed {
+            drop(p);
+            if let Some(respond) = respond {
+                respond(None);
+            }
+            return;
+        }
+        p.outbound.push_back(Outbound {
+            channel: channel.to_owned(),
+            data,
+            respond,
+        });
+        drop(p);
+        self.inner.changed.notify_one();
+    }
+
+    /// The framework's response to the message dispatched with `id`. An id
+    /// not waiting is ignored: unknown, or answered already.
+    fn respond(&self, id: i64, data: Option<Vec<u8>>) {
+        let respond = self.inner.waiting().by_id.remove(&id);
+        if let Some(respond) = respond {
+            respond(data);
+        }
+    }
+
     /// A frame at the next vsync: what `ScheduleFrame` does.
     pub fn request_frame(&self) {
         let mut p = self.inner.lock();
@@ -96,6 +180,44 @@ impl Wake {
 impl Inner {
     fn lock(&self) -> MutexGuard<'_, Pending> {
         self.pending.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    fn waiting(&self) -> MutexGuard<'_, Waiting> {
+        self.waiting.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// Keeps `respond` until the framework answers, and gives the id to
+    /// dispatch its message with.
+    fn await_response(&self, respond: Respond) -> i64 {
+        let mut w = self.waiting();
+        w.last_id += 1;
+        let id = w.last_id;
+        w.by_id.insert(id, respond);
+        id
+    }
+
+    /// Ends dispatching: every message not yet answered, dispatched or
+    /// not, is answered with `None`, oldest first, and so is any sent
+    /// from now on.
+    fn close(&self) {
+        let queued = {
+            let mut p = self.lock();
+            p.closed = true;
+            std::mem::take(&mut p.outbound)
+        };
+        let mut dispatched: Vec<(i64, Respond)> = self.waiting().by_id.drain().collect();
+        dispatched.sort_unstable_by_key(|(id, _)| *id);
+        let dispatched = dispatched.into_iter().map(|(_, r)| r);
+        for respond in dispatched.chain(queued.into_iter().filter_map(|m| m.respond)) {
+            respond(None);
+        }
+    }
+}
+
+impl Drop for Inner {
+    /// A `Wake` no loop ever ran for still answers what it was sent.
+    fn drop(&mut self) {
+        self.close();
     }
 }
 
@@ -136,6 +258,8 @@ pub fn run(
     // Their isolate is not to be touched once this returns, whether the
     // loop ended or failed.
     fl_ui::discard_replies();
+    fl_ui::set_response_sink(|_, _| {});
+    wake.inner.close();
     report
 }
 
@@ -149,6 +273,8 @@ pub(crate) fn connect(wake: &Wake) {
     fl_ui::set_frame_scheduler(move || scheduler.request_frame());
     let replies = wake.clone();
     fl_ui::set_reply_waker(move || replies.reply_arrived());
+    let responses = wake.clone();
+    fl_ui::set_response_sink(move |id, data| responses.respond(id, data));
 }
 
 fn run_steps(
@@ -184,6 +310,9 @@ fn run_steps(
                     p.messages -= 1;
                     break Step::Message;
                 }
+                if let Some(m) = p.outbound.pop_front() {
+                    break Step::Dispatch(m);
+                }
                 let Some(asked) = p.frame else {
                     break Step::Idle;
                 };
@@ -215,6 +344,10 @@ fn run_steps(
                 unsafe { fl_ui::deliver_replies() }.map_err(DartError::Api)?;
                 s.run_microtasks()
             })?,
+            Step::Dispatch(m) => {
+                let id = m.respond.map_or(0, |r| inner.await_response(r));
+                isolate.with(|s| dispatch(s, &m.channel, m.data.as_deref(), id))?;
+            }
             Step::Frame(tick) => {
                 last_tick = Some(tick);
                 let us = clock.micros(tick);
@@ -234,7 +367,7 @@ fn run_steps(
             Step::Idle => {
                 let live = isolate.with(|s| s.has_live_ports());
                 let p = inner.lock();
-                if p.messages > 0 || p.frame.is_some() || p.replies {
+                if p.messages > 0 || p.frame.is_some() || p.replies || !p.outbound.is_empty() {
                     continue;
                 }
                 if !live && !fl_ui::awaiting_decodes() {
@@ -273,6 +406,7 @@ fn run_steps(
 enum Step {
     Message,
     Replies,
+    Dispatch(Outbound),
     Frame(Instant),
     NotifyIdle(Instant),
     Idle,
@@ -285,6 +419,25 @@ fn notify_idle(isolate: &mut IsolateScope<'_>, until: Instant) {
     if left >= IDLE_AT_LEAST {
         isolate.with(|s| s.notify_idle(left));
     }
+}
+
+/// One message to the framework, as `PlatformConfiguration::
+/// DispatchPlatformMessage` sends it, and the microtasks it queued.
+fn dispatch(
+    s: &mut HandleScope<'_>,
+    channel: &str,
+    data: Option<&[u8]>,
+    response_id: i64,
+) -> Result<(), DartError> {
+    let ui = s.lookup_library("dart:ui")?;
+    let name = s.new_string(channel)?;
+    let data = match data {
+        Some(d) => s.new_byte_data(d)?,
+        None => s.null(),
+    };
+    let id = s.new_int(response_id);
+    s.invoke(ui, "_dispatchPlatformMessage", &[name, data, id])?;
+    s.run_microtasks()
 }
 
 /// One frame, as the engine runs it.
@@ -376,6 +529,60 @@ mod tests {
         let c = Clock::new(Duration::ZERO);
         let t = c.tick_at_or_after(c.start, Some(c.start));
         assert_eq!(t - c.start, Duration::from_micros(1));
+    }
+
+    /// What each continuation was run with, by name, in order.
+    type Log = Arc<Mutex<Vec<(&'static str, Option<Vec<u8>>)>>>;
+
+    /// A continuation that records what it was run with, under `name`.
+    fn record(log: &Log, name: &'static str) -> impl FnOnce(Option<Vec<u8>>) + Send + 'static {
+        let log = Arc::clone(log);
+        move |data| log.lock().unwrap().push((name, data))
+    }
+
+    #[test]
+    fn a_response_runs_its_message_s_continuation_once() {
+        let w = Wake::default();
+        let log = Log::default();
+        let a = w.inner.await_response(Box::new(record(&log, "a")));
+        let b = w.inner.await_response(Box::new(record(&log, "b")));
+        assert!(a != 0 && b != 0 && a != b);
+        w.respond(b, Some(vec![1]));
+        // Answered already, never given out, and the id of no response.
+        w.respond(b, Some(vec![2]));
+        w.respond(b + 1, None);
+        w.respond(0, None);
+        w.respond(a, None);
+        assert_eq!(*log.lock().unwrap(), [("b", Some(vec![1])), ("a", None)]);
+        assert!(w.inner.waiting().by_id.is_empty());
+    }
+
+    #[test]
+    fn closing_answers_every_message_with_none() {
+        let w = Wake::default();
+        let log = Log::default();
+        // Dispatched and waiting, then two still queued, one of them posted.
+        let _ = w.inner.await_response(Box::new(record(&log, "dispatched")));
+        w.send("c", Some(vec![1]), record(&log, "queued"));
+        w.post("c", None);
+        assert_eq!(w.inner.lock().outbound.len(), 2);
+        w.inner.close();
+        w.send("c", None, record(&log, "late"));
+        assert_eq!(
+            *log.lock().unwrap(),
+            [("dispatched", None), ("queued", None), ("late", None)]
+        );
+        assert!(w.inner.lock().outbound.is_empty());
+    }
+
+    #[test]
+    fn a_wake_never_run_answers_when_dropped() {
+        let log = Log::default();
+        let w = Wake::default();
+        w.clone().send("c", None, record(&log, "queued"));
+        assert!(log.lock().unwrap().is_empty());
+        drop(w);
+        assert_eq!(*log.lock().unwrap(), [("queued", None)]);
     }
 
     #[test]

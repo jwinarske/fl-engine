@@ -37,7 +37,7 @@ pub use painting::{Cap, ClipOp, Draw, Join, Paint, Picture, Shader, Style};
 pub use path::{Affine, FillType, Path, Point, RRect, Seg};
 pub use platform::{
     deliver_replies, discard_replies, has_pending_replies, set_device_pixel_ratio,
-    set_frame_scheduler, set_frame_sink, set_reply_waker, Frame,
+    set_frame_scheduler, set_frame_sink, set_reply_waker, set_response_sink, Frame,
 };
 pub use text::{load_font, set_style_report};
 
@@ -58,6 +58,11 @@ pub static NATIVES: &[Symbol] = &[
         "PlatformConfigurationNativeApi::SendPlatformMessage",
         3,
         platform::send_platform_message
+    ),
+    fl_dart_ffi::symbol!(
+        "PlatformConfigurationNativeApi::RespondToPlatformMessage",
+        2,
+        platform::respond_to_platform_message
     ),
     fl_dart_ffi::symbol!(
         "PlatformConfigurationNativeApi::SetSemanticsTreeEnabled",

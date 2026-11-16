@@ -3,7 +3,7 @@
 //! ```text
 //! fl-dart run hello.dill [args...]       # JIT, dev hosts (--features jit)
 //! fl-dart run-aot hello.aot [args...]    # precompiled runtime, every target
-//! fl-dart run-app libapp.so [WxH[@dpr]] [--assets DIR] [--png out.png] [--frames-dir DIR] [--ops] [--natives] [--styles] [--font FAMILY=PATH]... [--frames N] [--hz H]
+//! fl-dart run-app libapp.so [WxH[@dpr]] [--assets DIR] [--png out.png] [--frames-dir DIR] [--ops] [--natives] [--styles] [--font FAMILY=PATH]... [--message CHANNEL[=TEXT]]... [--frames N] [--hz H]
 //!                                       # a Flutter app, through dart:ui (M2);
 //!                                       # JIT takes the app's kernel instead
 //! fl-dart app-cycle libapp.so <n> [run-app options]
@@ -109,7 +109,7 @@ fn usage() -> ExitCode {
         "libapp.so"
     };
     eprintln!(
-        "       fl-dart run-app <{app}> [WxH[@dpr]] [--assets DIR] [--png out.png] [--frames-dir DIR] [--ops] [--natives] [--styles] [--font FAMILY=PATH]... [--frames N] [--hz H]\n       fl-dart app-cycle <{app}> <n> [run-app options]\n       fl-dart prepare"
+        "       fl-dart run-app <{app}> [WxH[@dpr]] [--assets DIR] [--png out.png] [--frames-dir DIR] [--ops] [--natives] [--styles] [--font FAMILY=PATH]... [--message CHANNEL[=TEXT]]... [--frames N] [--hz H]\n       fl-dart app-cycle <{app}> <n> [run-app options]\n       fl-dart prepare"
     );
     ExitCode::from(64)
 }
@@ -394,6 +394,18 @@ fn app_once(
     let mut isolate = vm.isolate_from_aot(program, cfg)?;
     #[cfg(feature = "jit")]
     let mut isolate = vm.isolate_from_kernel(program, cfg)?;
+    // Queued now, dispatched by the loop: after `main`, in this order.
+    for (channel, text) in &app.messages {
+        let data = text.as_ref().map(|t| t.clone().into_bytes());
+        if echo {
+            let name = channel.clone();
+            wake.send(channel, data, move |response| {
+                println!("{}", response_line(&name, response.as_deref()));
+            });
+        } else {
+            wake.post(channel, data);
+        }
+    }
     let view = app.view;
     let period = std::time::Duration::from_secs_f64(1.0 / view.refresh_rate);
     let limit = app.frames;
@@ -425,6 +437,19 @@ fn app_once(
         report,
         builds_us,
     })
+}
+
+/// `response CHANNEL: ...` for the framework's response to a `--message`:
+/// `null` for none, its text quoted if it is UTF-8, its bytes in hex if not.
+fn response_line(channel: &str, response: Option<&[u8]>) -> String {
+    let what = match response {
+        None => "null".to_owned(),
+        Some(bytes) => match std::str::from_utf8(bytes) {
+            Ok(text) => format!("{text:?}"),
+            Err(_) => bytes.iter().map(|b| format!("{b:02x}")).collect(),
+        },
+    };
+    format!("response {channel}: {what}")
 }
 
 /// A raster thread at the view's size if `--png` asks for pixels.
@@ -552,10 +577,12 @@ struct AppArgs {
     natives: bool,
     styles: bool,
     fonts: Vec<(String, std::path::PathBuf)>,
+    /// `--message`: a channel, and the message's text, `None` for null.
+    messages: Vec<(String, Option<String>)>,
     frames: Option<u64>,
 }
 
-/// `[WxH[@dpr]] [--assets DIR] [--png out.png] [--frames-dir DIR] [--ops] [--natives] [--styles] [--font FAMILY=PATH]... [--frames N] [--hz H]`,
+/// `[WxH[@dpr]] [--assets DIR] [--png out.png] [--frames-dir DIR] [--ops] [--natives] [--styles] [--font FAMILY=PATH]... [--message CHANNEL[=TEXT]]... [--frames N] [--hz H]`,
 /// in any order; no size is the default view. Sizes are physical pixels.
 /// `--assets` names the app's asset bundle; without it, `<app>.assets` beside
 /// the program is used if it is there, as `tools/flutter-app/build.sh` puts
@@ -563,7 +590,9 @@ struct AppArgs {
 /// writes the last. `--ops` prints each frame's [`outline`]; `--natives`, at the end, every
 /// dart:ui native the app called; `--styles`, each paragraph and text
 /// style as fl-text decoded it; `--font` registers a font file under a
-/// family before the app starts, as a test harness loads one; `--frames` stops after N frames rendered;
+/// family before the app starts, as a test harness loads one; `--message` sends the framework a
+/// message on a channel, its text as UTF-8 or null without one, once `main` has run, in the order
+/// given, and prints each response as `response CHANNEL: ...` ([`response_line`]); `--frames` stops after N frames rendered;
 /// `--hz` sets the vsync rate (60 by default).
 fn app_args(args: &[&str]) -> Option<AppArgs> {
     let mut app = AppArgs::default();
@@ -580,6 +609,13 @@ fn app_args(args: &[&str]) -> Option<AppArgs> {
                 let (family, file) = it.next()?.split_once('=')?;
                 app.fonts
                     .push((family.to_owned(), std::path::PathBuf::from(file)));
+            }
+            "--message" => {
+                let m = it.next()?;
+                app.messages.push(match m.split_once('=') {
+                    Some((channel, text)) => (channel.to_owned(), Some(text.to_owned())),
+                    None => ((*m).to_owned(), None),
+                });
             }
             "--frames" => app.frames = Some(it.next()?.parse().ok().filter(|n| *n > 0)?),
             "--hz" => app.view.refresh_rate = it.next()?.parse().ok().filter(|v: &f64| *v > 0.0)?,
