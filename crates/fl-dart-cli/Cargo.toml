@@ -23,6 +23,7 @@ aot = ["fl-dart-vm/aot", "fl-shell/aot", "fl-raster/aot"]
 [dependencies]
 fl-assets = { workspace = true }
 fl-dart-vm = { workspace = true }
+fl-input-script = { workspace = true }
 fl-shell = { workspace = true }
 fl-ui = { workspace = true }
 fl-raster = { workspace = true }

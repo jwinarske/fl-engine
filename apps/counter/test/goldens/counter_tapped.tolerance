@@ -1,0 +1,11 @@
+# counter_tapped.png: the counter app after three taps on its button, each
+# tap's ripple run to its end. Rendered by the stock engine's flutter_tester
+# with Impeller, the taps given by `tester.tapAt`; against fl-engine's frame
+# given the same taps as input events (test/taps.txt), both at DPR 3 with
+# Roboto and MaterialIcons from the Flutter cache. Percent of pixels allowed
+# to differ in any channel, and by more than 32.
+#
+# As counter.tolerance: the same frame but for the digit. Measured
+# 2026-11-16, lavapipe: 1.065% differ, 0.183% by more than 32.
+differ 1.7
+differ_over_32 0.3

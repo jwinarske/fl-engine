@@ -3,7 +3,7 @@
 //! ```text
 //! fl-dart run hello.dill [args...]       # JIT, dev hosts (--features jit)
 //! fl-dart run-aot hello.aot [args...]    # precompiled runtime, every target
-//! fl-dart run-app libapp.so [WxH[@dpr]] [--assets DIR] [--png out.png] [--frames-dir DIR] [--ops] [--natives] [--styles] [--font FAMILY=PATH]... [--message CHANNEL[=TEXT]]... [--frames N] [--hz H]
+//! fl-dart run-app libapp.so [WxH[@dpr]] [--assets DIR] [--png out.png] [--frames-dir DIR] [--ops] [--natives] [--styles] [--font FAMILY=PATH]... [--message CHANNEL[=TEXT]]... [--input SCRIPT] [--frames N] [--hz H]
 //!                                       # a Flutter app, through dart:ui (M2);
 //!                                       # JIT takes the app's kernel instead
 //! fl-dart app-cycle libapp.so <n> [run-app options]
@@ -109,7 +109,7 @@ fn usage() -> ExitCode {
         "libapp.so"
     };
     eprintln!(
-        "       fl-dart run-app <{app}> [WxH[@dpr]] [--assets DIR] [--png out.png] [--frames-dir DIR] [--ops] [--natives] [--styles] [--font FAMILY=PATH]... [--message CHANNEL[=TEXT]]... [--frames N] [--hz H]\n       fl-dart app-cycle <{app}> <n> [run-app options]\n       fl-dart prepare"
+        "       fl-dart run-app <{app}> [WxH[@dpr]] [--assets DIR] [--png out.png] [--frames-dir DIR] [--ops] [--natives] [--styles] [--font FAMILY=PATH]... [--message CHANNEL[=TEXT]]... [--input SCRIPT] [--frames N] [--hz H]\n       fl-dart app-cycle <{app}> <n> [run-app options]\n       fl-dart prepare"
     );
     ExitCode::from(64)
 }
@@ -192,6 +192,12 @@ fn run_app(path: &str, app: AppArgs) -> Result<(), Failure> {
     let run = app_once(&vm, &program, path, &app, raster.as_ref(), true)?;
     if let Some(line) = vsync_line(&run.report.frame_times_us) {
         println!("{line}");
+    }
+    if app.input.is_some() {
+        println!(
+            "{}",
+            input_line(&run.report.input_latency_us, run.input_dropped)
+        );
     }
     if app.natives {
         println!("natives: {}", fl_ui::resolved().join(","));
@@ -328,6 +334,8 @@ fn load_app(path: &str) -> Result<AppProgram, Failure> {
 
 /// What one run of an app did.
 struct AppRun {
+    /// Pointer motion dropped with the input queue at its limit.
+    input_dropped: u64,
     rendered: u64,
     report: fl_shell::Report,
     /// Each rendered frame's build time in microseconds, `_beginFrame` to
@@ -348,6 +356,7 @@ fn app_once(
 ) -> Result<AppRun, Failure> {
     use std::sync::{Arc, Mutex};
 
+    let script = app.input.as_deref().map(load_script).transpose()?;
     let rendered = Arc::new(Mutex::new(0u64));
     let builds = Arc::new(Mutex::new(Vec::new()));
     let sink_raster = raster.map(Arc::clone);
@@ -415,9 +424,30 @@ fn app_once(
             fl_shell::prepare(s, &view)?;
             s.invoke_main(&[])
         })?;
-        fl_shell::run(&mut scope, &wake, period, || {
+        // The script's own thread, as a board's devices have theirs. Made
+        // once `main` has run: the loop it waits on is about to. The loop
+        // runs while its way in is alive, and ends its waits when it ends.
+        let player = script.map(|script| {
+            let input = wake.input();
+            std::thread::Builder::new()
+                .name("fl-input-script".into())
+                .spawn(move || script.play(&input))
+        });
+        let report = fl_shell::run(&mut scope, &wake, period, || {
             limit.is_some_and(|l| *rendered.lock().unwrap_or_else(|e| e.into_inner()) >= l)
-        })
+        });
+        match player {
+            Some(Ok(thread)) => {
+                if thread.join().is_err() {
+                    return Err(Failure::Other(
+                        "--input: the script's thread panicked".into(),
+                    ));
+                }
+            }
+            Some(Err(e)) => return Err(Failure::Other(format!("--input: {e}"))),
+            None => {}
+        }
+        report
     };
     isolate.shutdown();
     // The sinks are the process's, and hold the raster thread: replacing
@@ -433,10 +463,35 @@ fn app_once(
     }
     let builds_us = std::mem::take(&mut *builds.lock().unwrap_or_else(|e| e.into_inner()));
     Ok(AppRun {
+        input_dropped: wake.input_dropped(),
         rendered: count,
         report,
         builds_us,
     })
+}
+
+/// `input: frames=… latency_us_max=… dropped=…`: the frames input asked
+/// for, the longest from an event to the end of the frame that shows it,
+/// on the UI thread, and the motion dropped with the queue full.
+fn input_line(latency_us: &[u64], dropped: u64) -> String {
+    format!(
+        "input: frames={} latency_us_max={} dropped={dropped}",
+        latency_us.len(),
+        latency_us.iter().max().copied().unwrap_or(0)
+    )
+}
+
+/// `--input`'s script, read and parsed. A file over the script's size limit
+/// is not read past it.
+fn load_script(path: &std::path::Path) -> Result<fl_input_script::Script, Failure> {
+    use std::io::Read;
+    let name = path.display();
+    let file = std::fs::File::open(path).map_err(|e| Failure::Other(format!("{name}: {e}")))?;
+    let mut text = String::new();
+    file.take(fl_input_script::MAX_BYTES as u64 + 1)
+        .read_to_string(&mut text)
+        .map_err(|e| Failure::Other(format!("{name}: {e}")))?;
+    fl_input_script::Script::parse(&text).map_err(|e| Failure::Other(format!("{name}: {e}")))
 }
 
 /// `response CHANNEL: ...` for the framework's response to a `--message`:
@@ -579,10 +634,12 @@ struct AppArgs {
     fonts: Vec<(String, std::path::PathBuf)>,
     /// `--message`: a channel, and the message's text, `None` for null.
     messages: Vec<(String, Option<String>)>,
+    /// `--input`: a script of input events.
+    input: Option<std::path::PathBuf>,
     frames: Option<u64>,
 }
 
-/// `[WxH[@dpr]] [--assets DIR] [--png out.png] [--frames-dir DIR] [--ops] [--natives] [--styles] [--font FAMILY=PATH]... [--message CHANNEL[=TEXT]]... [--frames N] [--hz H]`,
+/// `[WxH[@dpr]] [--assets DIR] [--png out.png] [--frames-dir DIR] [--ops] [--natives] [--styles] [--font FAMILY=PATH]... [--message CHANNEL[=TEXT]]... [--input SCRIPT] [--frames N] [--hz H]`,
 /// in any order; no size is the default view. Sizes are physical pixels.
 /// `--assets` names the app's asset bundle; without it, `<app>.assets` beside
 /// the program is used if it is there, as `tools/flutter-app/build.sh` puts
@@ -592,7 +649,9 @@ struct AppArgs {
 /// style as fl-text decoded it; `--font` registers a font file under a
 /// family before the app starts, as a test harness loads one; `--message` sends the framework a
 /// message on a channel, its text as UTF-8 or null without one, once `main` has run, in the order
-/// given, and prints each response as `response CHANNEL: ...` ([`response_line`]); `--frames` stops after N frames rendered;
+/// given, and prints each response as `response CHANNEL: ...` ([`response_line`]); `--input` plays a
+/// script of input events (fl-input-script) once the app has drawn its first frame, and the app runs
+/// until the script has ended and it has nothing left to do; `--frames` stops after N frames rendered;
 /// `--hz` sets the vsync rate (60 by default).
 fn app_args(args: &[&str]) -> Option<AppArgs> {
     let mut app = AppArgs::default();
@@ -617,6 +676,7 @@ fn app_args(args: &[&str]) -> Option<AppArgs> {
                     None => ((*m).to_owned(), None),
                 });
             }
+            "--input" => app.input = Some(std::path::PathBuf::from(it.next()?)),
             "--frames" => app.frames = Some(it.next()?.parse().ok().filter(|n| *n > 0)?),
             "--hz" => app.view.refresh_rate = it.next()?.parse().ok().filter(|v: &f64| *v > 0.0)?,
             _ => {

@@ -20,8 +20,15 @@
 //! waiting when the loop returns is run with `None`, as is one sent after,
 //! so a sender never waits forever.
 //!
-//! Vsync here is a fixed-interval clock: ticks `period` apart from the loop's
-//! start. On KMS the flip event will take its place (stage 6).
+//! Pointer events ([`Wake::input`], brief M4 §2, §4) are queued from any
+//! thread and dispatched together, all that have arrived, as one packet:
+//! made `PointerData`, put through the engine's converter, whose state is
+//! this thread's, and given to `_dispatchPointerDataPacket`. Nothing asks
+//! for a frame on their account: the framework does, if what they did
+//! shows. Past [`INPUT_LIMIT`] queued, motion is dropped first.
+//!
+//! Vsync here is a fixed-interval clock: ticks `period` apart from when the
+//! `Wake` was made, the frame clock's zero. On KMS the flip event will take its place (stage 6).
 //!
 //! The VM is told when the loop expects to be idle, as `Animator` tells it:
 //! when a frame is asked for, until the last frame's deadline; and when a
@@ -36,6 +43,8 @@ use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
 use fl_dart_vm::{DartError, HandleScope, IsolateScope, MessageNotify};
+use fl_input::{EventSink, PointerEvent};
+use fl_ui::pointer::{Converter, PointerData};
 
 /// `Animator`'s `kNotifyIdleTaskWaitTime`: a tad more than three frames at
 /// 60 Hz with none asked for before the loop counts itself idle.
@@ -48,6 +57,12 @@ const IDLE_FOR: Duration = Duration::from_millis(100);
 /// the VM is not told.
 const IDLE_AT_LEAST: Duration = Duration::from_millis(1);
 
+/// How many pointer events wait for the loop before motion is dropped
+/// (brief M4 §15): a second of a 1,000 Hz mouse and ten fingers at 120 Hz,
+/// far more than a loop that is running leaves waiting. Buttons, contacts
+/// and signals are kept past it, so a pointer is never left down.
+pub const INPUT_LIMIT: usize = 4096;
+
 /// What the loop waits for: messages for the isolate, from any thread, and
 /// frame requests. Cloning shares it.
 #[derive(Clone, Default)]
@@ -55,10 +70,14 @@ pub struct Wake {
     inner: Arc<Inner>,
 }
 
-#[derive(Default)]
 struct Inner {
     pending: Mutex<Pending>,
     changed: Condvar,
+    /// Told when the loop goes idle, or ends: what [`EventSink::wait_idle`]
+    /// waits on.
+    idled: Condvar,
+    /// The frame clock's zero.
+    epoch: Instant,
     /// Continuations of dispatched messages, by response id.
     waiting: Mutex<Waiting>,
 }
@@ -72,6 +91,18 @@ struct Outbound {
     channel: String,
     data: Option<Vec<u8>>,
     respond: Option<Respond>,
+}
+
+impl Default for Inner {
+    fn default() -> Inner {
+        Inner {
+            pending: Mutex::default(),
+            changed: Condvar::new(),
+            idled: Condvar::new(),
+            epoch: Instant::now(),
+            waiting: Mutex::default(),
+        }
+    }
 }
 
 #[derive(Default)]
@@ -96,6 +127,76 @@ struct Pending {
     outbound: VecDeque<Outbound>,
     /// The loop has returned: nothing more is dispatched.
     closed: bool,
+    /// Pointer events, oldest first.
+    input: VecDeque<PointerEvent>,
+    /// Motion dropped with the queue at its limit.
+    input_dropped: u64,
+    /// [`Input`]s alive: sources that may still deliver.
+    sources: usize,
+    /// The loop is waiting with nothing to do. Cleared by whatever gives
+    /// it something.
+    idle: bool,
+}
+
+/// A source's way in to the loop ([`Wake::input`]). While one is alive the
+/// loop does not end for want of something to do: the source may yet
+/// deliver. Cloning shares it.
+pub struct Input {
+    inner: Arc<Inner>,
+}
+
+impl Clone for Input {
+    fn clone(&self) -> Input {
+        self.inner.lock().sources += 1;
+        Input {
+            inner: Arc::clone(&self.inner),
+        }
+    }
+}
+
+impl Drop for Input {
+    fn drop(&mut self) {
+        let mut p = self.inner.lock();
+        p.sources -= 1;
+        drop(p);
+        // The loop may have been waiting on this source alone.
+        self.inner.changed.notify_one();
+    }
+}
+
+impl EventSink for Input {
+    fn now(&self) -> Duration {
+        self.inner.epoch.elapsed()
+    }
+
+    fn pointer_events(&self, events: &[PointerEvent]) {
+        let mut p = self.inner.lock();
+        if p.closed {
+            return;
+        }
+        for e in events {
+            if p.input.len() >= INPUT_LIMIT && e.is_motion() {
+                p.input_dropped += 1;
+            } else {
+                p.input.push_back(*e);
+            }
+        }
+        p.idle = false;
+        drop(p);
+        self.inner.changed.notify_one();
+    }
+
+    fn wait_idle(&self) -> bool {
+        let mut p = self.inner.lock();
+        while !p.idle && !p.closed {
+            p = self.inner.idled.wait(p).unwrap_or_else(|e| e.into_inner());
+        }
+        !p.closed
+    }
+
+    fn is_closed(&self) -> bool {
+        self.inner.lock().closed
+    }
 }
 
 impl Wake {
@@ -103,15 +204,36 @@ impl Wake {
     pub fn notify(&self) -> MessageNotify {
         let inner = Arc::clone(&self.inner);
         Arc::new(move || {
-            inner.lock().messages += 1;
+            let mut p = inner.lock();
+            p.messages += 1;
+            p.idle = false;
+            drop(p);
             inner.changed.notify_one();
         })
+    }
+
+    /// A way in for an input source: what it delivers events through, from
+    /// any thread, and what keeps the loop running while it may.
+    pub fn input(&self) -> Input {
+        self.inner.lock().sources += 1;
+        Input {
+            inner: Arc::clone(&self.inner),
+        }
+    }
+
+    /// Pointer motion dropped so far, with more than [`INPUT_LIMIT`] events
+    /// waiting.
+    pub fn input_dropped(&self) -> u64 {
+        self.inner.lock().input_dropped
     }
 
     /// Wakes the loop for a reply queued on another thread: dart:ui's reply
     /// waker.
     pub fn reply_arrived(&self) {
-        self.inner.lock().replies = true;
+        let mut p = self.inner.lock();
+        p.replies = true;
+        p.idle = false;
+        drop(p);
         self.inner.changed.notify_one();
     }
 
@@ -153,6 +275,7 @@ impl Wake {
             data,
             respond,
         });
+        p.idle = false;
         drop(p);
         self.inner.changed.notify_one();
     }
@@ -172,6 +295,7 @@ impl Wake {
         if p.frame.is_none() {
             p.frame = Some(Instant::now());
         }
+        p.idle = false;
         drop(p);
         self.inner.changed.notify_one();
     }
@@ -203,8 +327,11 @@ impl Inner {
         let queued = {
             let mut p = self.lock();
             p.closed = true;
+            p.input.clear();
             std::mem::take(&mut p.outbound)
         };
+        // A source waiting for the loop to go idle waits no longer.
+        self.idled.notify_all();
         let mut dispatched: Vec<(i64, Respond)> = self.waiting().by_id.drain().collect();
         dispatched.sort_unstable_by_key(|(id, _)| *id);
         let dispatched = dispatched.into_iter().map(|(_, r)| r);
@@ -239,6 +366,10 @@ pub struct Report {
     /// The time each frame was begun with, in microseconds of the loop's
     /// clock: its vsync tick, not when the frame happened to start.
     pub frame_times_us: Vec<i64>,
+    /// For each frame that input asked for, the time from the oldest event
+    /// it shows to the end of its `_drawFrame`, the scene rendered, in
+    /// microseconds: input latency on the UI thread (brief M4 §15).
+    pub input_latency_us: Vec<u64>,
 }
 
 /// Runs the isolate until `stop` says so, or until it can receive nothing
@@ -285,7 +416,13 @@ fn run_steps(
 ) -> Result<Report, DartError> {
     connect(wake);
     let inner = &wake.inner;
-    let clock = Clock::new(period);
+    let clock = Clock::new(inner.epoch, period);
+    // The engine's `PointerDataPacketConverter`: which pointers there are,
+    // where, and whether down. This thread's.
+    let mut pointers = Converter::new();
+    // The oldest event dispatched that a frame was asked for after and
+    // has not been drawn since: what the next frame's latency is from.
+    let mut undrawn_input: Option<Duration> = None;
     let mut last_tick = None;
     let mut report = Report::default();
     // `Animator`'s state for idle notifications: the last frame's deadline,
@@ -312,6 +449,9 @@ fn run_steps(
                 }
                 if let Some(m) = p.outbound.pop_front() {
                     break Step::Dispatch(m);
+                }
+                if !p.input.is_empty() {
+                    break Step::Input(p.input.drain(..).collect());
                 }
                 let Some(asked) = p.frame else {
                     break Step::Idle;
@@ -348,12 +488,30 @@ fn run_steps(
                 let id = m.respond.map_or(0, |r| inner.await_response(r));
                 isolate.with(|s| dispatch(s, &m.channel, m.data.as_deref(), id))?;
             }
+            Step::Input(events) => {
+                let packet: Vec<PointerData> = events.iter().map(PointerData::from_event).collect();
+                let mut records = Vec::with_capacity(packet.len() + 2);
+                pointers.convert(&packet, |v| v == crate::IMPLICIT_VIEW_ID, &mut records);
+                if !records.is_empty() {
+                    let bytes = fl_ui::pointer::encode_packet(&records);
+                    isolate.with(|s| dispatch_pointers(s, &bytes))?;
+                    if undrawn_input.is_none() && inner.lock().frame.is_some() {
+                        undrawn_input = events.iter().map(|e| e.timestamp).min();
+                    }
+                }
+            }
             Step::Frame(tick) => {
                 last_tick = Some(tick);
                 let us = clock.micros(tick);
                 report.frame_times_us.push(us);
                 let n = report.frame_times_us.len() as i64;
                 isolate.with(|s| frame(s, us, n))?;
+                if let Some(since) = undrawn_input.take() {
+                    let latency = inner.epoch.elapsed().saturating_sub(since);
+                    report
+                        .input_latency_us
+                        .push(u64::try_from(latency.as_micros()).unwrap_or(u64::MAX));
+                }
                 deadline = Some(tick + clock.period);
                 awaited = false;
                 // `EndFrame`: none asked for, so the loop may be idle soon.
@@ -366,14 +524,24 @@ fn run_steps(
             Step::NotifyIdle(until) => notify_idle(isolate, until),
             Step::Idle => {
                 let live = isolate.with(|s| s.has_live_ports());
-                let p = inner.lock();
-                if p.messages > 0 || p.frame.is_some() || p.replies || !p.outbound.is_empty() {
+                let decoding = fl_ui::awaiting_decodes();
+                let mut p = inner.lock();
+                if p.messages > 0
+                    || p.frame.is_some()
+                    || p.replies
+                    || !p.outbound.is_empty()
+                    || !p.input.is_empty()
+                {
                     continue;
                 }
-                if !live && !fl_ui::awaiting_decodes() {
-                    // Nothing can post to it, nothing is asked of it, and no
-                    // decode is to answer.
+                if !live && !decoding && p.sources == 0 {
+                    // Nothing can post to it, nothing is asked of it, no
+                    // decode is to answer and no source is to deliver.
                     break;
+                }
+                if !decoding && !p.idle {
+                    p.idle = true;
+                    inner.idled.notify_all();
                 }
                 match idle_check {
                     Some(at) if Instant::now() >= at => {
@@ -407,6 +575,7 @@ enum Step {
     Message,
     Replies,
     Dispatch(Outbound),
+    Input(Vec<PointerEvent>),
     Frame(Instant),
     NotifyIdle(Instant),
     Idle,
@@ -440,6 +609,15 @@ fn dispatch(
     s.run_microtasks()
 }
 
+/// One pointer packet to the framework, as `PlatformConfiguration::
+/// DispatchPointerDataPacket` sends it, and the microtasks it queued.
+fn dispatch_pointers(s: &mut HandleScope<'_>, packet: &[u8]) -> Result<(), DartError> {
+    let ui = s.lookup_library("dart:ui")?;
+    let data = s.new_byte_data(packet)?;
+    s.invoke(ui, "_dispatchPointerDataPacket", &[data])?;
+    s.run_microtasks()
+}
+
 /// One frame, as the engine runs it.
 fn frame(s: &mut HandleScope<'_>, time_us: i64, number: i64) -> Result<(), DartError> {
     *FRAME_BEGUN.lock().unwrap_or_else(|e| e.into_inner()) = Some(Instant::now());
@@ -452,16 +630,16 @@ fn frame(s: &mut HandleScope<'_>, time_us: i64, number: i64) -> Result<(), DartE
     s.run_microtasks()
 }
 
-/// Ticks `period` apart from its creation.
+/// Ticks `period` apart from `start`.
 struct Clock {
     start: Instant,
     period: Duration,
 }
 
 impl Clock {
-    fn new(period: Duration) -> Clock {
+    fn new(start: Instant, period: Duration) -> Clock {
         Clock {
-            start: Instant::now(),
+            start,
             // A zero period would make every instant a tick, and a loop that
             // never waits. One microsecond is the clock's own resolution.
             period: period.max(Duration::from_micros(1)),
@@ -498,7 +676,7 @@ mod tests {
 
     #[test]
     fn ticks_are_on_the_grid_and_never_repeat() {
-        let c = Clock::new(Duration::from_millis(10));
+        let c = Clock::new(Instant::now(), Duration::from_millis(10));
         let t0 = c.start;
         // Mid-period rounds up to the next tick.
         assert_eq!(
@@ -526,7 +704,7 @@ mod tests {
 
     #[test]
     fn a_zero_period_is_one_microsecond() {
-        let c = Clock::new(Duration::ZERO);
+        let c = Clock::new(Instant::now(), Duration::ZERO);
         let t = c.tick_at_or_after(c.start, Some(c.start));
         assert_eq!(t - c.start, Duration::from_micros(1));
     }
@@ -573,6 +751,92 @@ mod tests {
             [("dispatched", None), ("queued", None), ("late", None)]
         );
         assert!(w.inner.lock().outbound.is_empty());
+    }
+
+    fn motion(x: f64) -> PointerEvent {
+        use fl_input::{PointerDeviceKind, PointerPhase};
+        PointerEvent::new(
+            PointerPhase::Move,
+            PointerDeviceKind::Touch,
+            Duration::ZERO,
+            x,
+            0.0,
+        )
+    }
+
+    #[test]
+    fn past_its_limit_the_input_queue_drops_motion_and_nothing_else() {
+        use fl_input::PointerPhase;
+        let w = Wake::default();
+        let input = w.input();
+        let moves: Vec<PointerEvent> = (0..INPUT_LIMIT + 10).map(|i| motion(i as f64)).collect();
+        input.pointer_events(&moves);
+        assert_eq!(w.inner.lock().input.len(), INPUT_LIMIT);
+        assert_eq!(w.input_dropped(), 10);
+        // The oldest are kept: the converter moves a pointer to its next
+        // event, so what is lost is the way there.
+        assert_eq!(
+            w.inner.lock().input.back().map(|e| e.x),
+            Some((INPUT_LIMIT - 1) as f64)
+        );
+        let up = PointerEvent {
+            phase: PointerPhase::Up,
+            ..motion(9.0)
+        };
+        input.pointer_events(&[motion(1.0), up, motion(2.0)]);
+        assert_eq!(w.inner.lock().input.len(), INPUT_LIMIT + 1);
+        assert_eq!(w.input_dropped(), 12);
+        assert_eq!(
+            w.inner.lock().input.back().map(|e| e.phase),
+            Some(PointerPhase::Up)
+        );
+    }
+
+    #[test]
+    fn a_source_is_counted_while_it_lives_and_told_when_the_loop_ends() {
+        let w = Wake::default();
+        let a = w.input();
+        let b = a.clone();
+        assert_eq!(w.inner.lock().sources, 2);
+        drop(a);
+        assert_eq!(w.inner.lock().sources, 1);
+        assert!(!b.is_closed());
+        // Never idle, but ended: the wait is over, and says which.
+        let waiter = std::thread::spawn({
+            let b = b.clone();
+            move || b.wait_idle()
+        });
+        w.inner.close();
+        assert!(!waiter.join().unwrap_or(true));
+        assert!(b.is_closed());
+        b.pointer_events(&[motion(1.0)]);
+        assert!(w.inner.lock().input.is_empty());
+        drop(b);
+        assert_eq!(w.inner.lock().sources, 0);
+    }
+
+    #[test]
+    fn idle_ends_with_anything_to_do() {
+        let w = Wake::default();
+        let input = w.input();
+        let idle = |w: &Wake| w.inner.lock().idle;
+        let set = |w: &Wake| w.inner.lock().idle = true;
+        set(&w);
+        assert!(input.wait_idle());
+        input.pointer_events(&[motion(1.0)]);
+        assert!(!idle(&w));
+        set(&w);
+        w.request_frame();
+        assert!(!idle(&w));
+        set(&w);
+        w.post("c", None);
+        assert!(!idle(&w));
+        set(&w);
+        w.reply_arrived();
+        assert!(!idle(&w));
+        set(&w);
+        (w.notify())();
+        assert!(!idle(&w));
     }
 
     #[test]

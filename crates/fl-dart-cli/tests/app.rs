@@ -492,6 +492,48 @@ fn counter_matches_its_golden() {
     );
 }
 
+/// M4 stage 2's bar (exit criterion 1): the counter app, unmodified, counts
+/// three taps given as a script of input events, and its frame once the
+/// last tap's ripple has run out matches flutter_tester's after the same
+/// three taps. Every frame on the way is drawn; the last is compared.
+#[test]
+#[ignore = "app lane: needs FLUTTER_ROOT and a Vulkan driver"]
+fn counter_counts_three_scripted_taps() {
+    let root = std::env::var("FLUTTER_ROOT").unwrap();
+    let fonts = format!("{root}/bin/cache/artifacts/material_fonts");
+    let roboto = format!("Roboto={fonts}/Roboto-Regular.ttf");
+    let icons = format!("MaterialIcons={fonts}/MaterialIcons-Regular.otf");
+    let app = build_app("counter");
+    let taps = repo().join("apps/counter/test/taps.txt");
+    let png = common::out_dir().join("apps/counter_tapped.png");
+    let _ = std::fs::remove_file(&png);
+    let o = common::fl_dart(&[
+        "run-app".as_ref(),
+        app.as_os_str(),
+        "1200x900@3".as_ref(),
+        "--font".as_ref(),
+        roboto.as_ref(),
+        "--font".as_ref(),
+        icons.as_ref(),
+        "--input".as_ref(),
+        taps.as_os_str(),
+        "--png".as_ref(),
+        png.as_os_str(),
+    ]);
+    assert!(o.status.success(), "{o:?}");
+    // The first frame, and each tap's: the count laid out anew, then the
+    // ripple's frames.
+    let out = String::from_utf8_lossy(&o.stdout);
+    let frames = out.lines().filter(|l| l.starts_with("frame ")).count();
+    assert!(frames > 3, "{frames} frames: {out}");
+    // Each tap asked for a frame, and none of its events was dropped.
+    let input = out.lines().find_map(|l| l.strip_prefix("input: "));
+    let input = input.unwrap_or_else(|| panic!("no input line: {out}"));
+    assert!(input.starts_with("frames=3 latency_us_max="), "{input}");
+    assert!(input.ends_with(" dropped=0"), "{input}");
+    compare_with_golden_named("counter", "counter_tapped", &png, (1200, 900));
+}
+
 /// M3 stage 5's bar (exit criterion 2): text drawn every way a paragraph
 /// paints, against flutter_tester's golden with Impeller. Roboto and
 /// MaterialIcons from the Flutter cache in both engines.
@@ -645,8 +687,14 @@ fn matches_golden_with(name: &str, (w, h): (u32, u32), dpr: u32, extra: &[&std::
 
 /// `png`, a `w`x`h` frame of `apps/<name>`, against its golden and the
 /// tolerance beside it; the diff written beside `png`.
-fn compare_with_golden(name: &str, png: &std::path::Path, (w, h): (u32, u32)) {
-    let goldens = repo().join(format!("apps/{name}/test/goldens"));
+fn compare_with_golden(name: &str, png: &std::path::Path, size: (u32, u32)) {
+    compare_with_golden_named(name, name, png, size);
+}
+
+/// As [`compare_with_golden`], against `apps/<app>`'s golden `name`: an
+/// app with more than one.
+fn compare_with_golden_named(app: &str, name: &str, png: &std::path::Path, (w, h): (u32, u32)) {
+    let goldens = repo().join(format!("apps/{app}/test/goldens"));
     let ours = read_png(png, (w, h));
     let theirs = read_png(&goldens.join(format!("{name}.png")), (w, h));
     let tolerance = std::fs::read_to_string(goldens.join(format!("{name}.tolerance"))).unwrap();
