@@ -1,0 +1,45 @@
+# Every kind of pointer the Linux embedder sends, at a 400x300 view of one
+# pixel to a logical one. test/pointer_test.dart sends the framework the
+# same, and what each logs is held together.
+
+# A mouse: it hovers in, drags with its primary button, and a second
+# button goes down and up within the drag.
+mouse move 10 20
+mouse move 30 40
+mouse down 30 40
+mouse move 50 60
+mouse down 50 60 secondary
+mouse up 50 60 secondary
+mouse up 70 80
+idle
+
+# Its wheel, a notch down and half a notch across.
+scroll 70 80 0 1
+scroll 70 80 -0.5 0
+idle
+
+# It leaves, and is back: removed, and added again where it comes in.
+mouse leave 0 80
+mouse move 5 5
+idle
+
+# Two fingers at once, each its own pointer; the first lifts first.
+down 100 100
+down 200 100 1
+move 110 120
+move 210 120 1
+up 110 120
+up 210 120 1
+idle
+
+# A touchpad: two fingers pan, then pinch and turn.
+pan 150 150 0 -1
+pan 150 150 1 -1
+pan end 150 150
+zoom begin
+zoom 1.5
+rotate begin
+rotate 0.5
+zoom end
+rotate end
+idle

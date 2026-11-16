@@ -166,10 +166,11 @@ jobs:
       # golden is its numbers, test/metrics.txt, and breaks' its word and line
       # breaks, test/breaks.txt; keys' is what the framework makes of the keys
       # it is sent, test/*_events.txt; text_field has both, its frames and
-      # the editing values it goes through.
+      # the editing values it goes through; pointer's is the pointer events
+      # the framework sees, and scroll's where each scroll leaves its list.
       - name: Goldens
         run: |
-          for app in shapes material natives images shadows metrics breaks text counter gif gradients keys text_field; do
+          for app in shapes material natives images shadows metrics breaks text counter gif gradients keys text_field pointer scroll; do
             (cd "apps/$app" && "$FLUTTER_ROOT/bin/flutter" test --enable-impeller)
           done
       - name: Apps

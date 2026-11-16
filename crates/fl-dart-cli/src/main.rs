@@ -446,15 +446,17 @@ fn app_once(
         // runs while its way in is alive, and ends its waits when it ends.
         let player = script.map(|script| {
             let input = wake.input();
+            // What a wheel's notch is measured in: the view's logical pixels.
+            let scale = view.device_pixel_ratio;
             std::thread::Builder::new()
                 .name("fl-input-script".into())
                 .spawn(move || -> Result<(), Failure> {
                     match keymap {
                         Some(names) => {
                             let mut keymap = keymap_for(names.as_ref())?;
-                            script.play(&input, Some(keymap.as_mut()));
+                            script.play(&input, Some(keymap.as_mut()), scale);
                         }
-                        None => script.play(&input, None),
+                        None => script.play(&input, None, scale),
                     }
                     Ok(())
                 })

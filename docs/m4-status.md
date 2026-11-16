@@ -59,7 +59,7 @@ Found on the way:
 * Idle cannot see a Dart timer: a long-press or double-tap timeout is a message yet to arrive. A script that needs one waits with `wait`
 * Moves are not merged per device within a frame (brief §15, "as the engine's dispatcher allows"): the default dispatcher does not, and resampling is the framework's. Only the limit drops any
 
-Open: mouse, scroll, pan-zoom and more than one finger from the script are stage 5's; the converter and the packet already carry them.
+Open then, done at stage 5: mouse, scroll, pan-zoom and more than one finger from the script. Stage 5 also changed two things said above: the loop dispatches a packet for each delivery, not one for all that have arrived, and a script's events are timed by the script.
 
 ## Stage 3: keys (2026-11-16)
 
@@ -170,6 +170,50 @@ Found on the way:
 * A message sent with `run-app --message` arrives after the first frame, by which time an autofocused field has the keyboard: the seed's text goes back to the engine as `setEditingState`, which is the path the second script is there for
 
 Open: `flutter/mousecursor` (exit criterion 5's last channel) comes with the cursor, stage 6; other `flutter/platform` methods are still dropped unanswered, as before. A system input method (IBus, Fcitx) is a later `InputMethod` (D6). Typing in the soak, its build-time budget, and fuzzing the JSON and the editing-state decoder are stage 7's lanes; the decoders' malformed-input tests are here.
+
+## Stage 5: scroll and touch (2026-11-16)
+
+Done: a mouse with its buttons and its wheel, more than one finger, and a touchpad's pan, pinch and rotation, from the script, sent as the Linux embedder's managers send them. `apps/pointer` sees the pointer events flutter_tester is sent for the same, and `apps/scroll` comes to rest where flutter_tester's list does. Exit criteria 3 (pointer) and 4.
+
+    tools/flutter-app/build.sh $FLUTTER_ROOT apps/scroll out
+    fl-dart run-app out/scroll.so 1200x900@3 --input apps/scroll/test/scroll.txt
+    settled 159.0      the wheel, three notches
+    settled 259.0      a finger's drag
+    settled 711.9      a fling
+    settled 817.9      a touchpad's pan
+    settled 764.9      the wheel, a notch back
+
+* `fl_input::pointer`, the embedder's three managers below GDK, ported, with no OS code (D1, D8). A source says what a device did, in physical pixels, and gets the `PointerEvent`s to deliver:
+  * `Mouse`: `fl_pointer_manager`. Added by its first event, a down with its first button and an up with its last, moves between and hovers with none; a stylus's buttons are its own three; it is removed as it leaves the view unless a button is down
+  * `Scrolling`: `fl_scrolling_manager`. A wheel's notch is a scroll signal of 53 logical pixels; a touchpad's two-finger scroll is a pan-zoom gesture whose pan adds up, the other way; a pinch and a rotation are one gesture between them, where the mouse last was
+  * `Touches`: `fl_touch_manager`. Each finger a pointer of its own, with the lowest id none has, added before its first event and removed with its last
+* Ported with their unit tests under their names: `fl_pointer_manager_test.cc`'s 23 (its five of one button each are one case over the five), `fl_scrolling_manager_test.cc`'s 7, `fl_touch_manager_test.cc`'s 1. The scroll tests' GDK directions are a source's to turn into deltas
+* The devices are the embedder's: the mouse is device 0, a touchpad's gestures device 1, a touch `2 << 28` and its id. The script's touch was 0 and its mouse 1 until here
+* The script: a finger's number after a touch's position; `mouse down` and `up` with a button's name, and `mouse leave`; `scroll X Y DX DY` in notches; `pan X Y DX DY` and `pan end X Y`; `zoom` and `rotate` with `begin`, a value, or `end`. `Script::play` takes the view's scale, which a notch is measured in
+* `apps/pointer`: a `Listener` over the view logs every event, and the router's adds and removes. `pointers_match_the_stock_framework`: 33 lines against `test/pointers_events.txt`, which `flutter test` records from the events the converter makes of the embedder's, sent with `TestPointer`
+* `apps/scroll`: a list of 100 rows logs its offset as it moves and where each scroll ends. `scroll_settles_where_the_stock_framework_does`: the five offsets against `test/scroll_settled.txt`, each within a logical pixel; they are the same to the tenth printed
+* ci.yml: `pointer` and `scroll` in the goldens step; their tests need no keymap and run in the default build too
+
+Decided here:
+
+* **A delivery is a packet.** `EventSink::pointer_events` is `FlutterEngineSendPointerEvent`: its events go to the framework as one packet, and the loop keeps the packets apart, each with its microtasks. Stage 2 dispatched all that had arrived as one. The Linux embedder sends every event in a packet of its own, and the script now does. It shows: the framework resolves a one-recognizer arena in a microtask, so a pan's start and its first update in one packet lose the update to the drag's start (26.5 of 106 pixels, measured), and in two they do not
+* **A script's events are timed by the script.** An event's time is when the script began plus its `wait`s, not the clock when the step ran, so a fling's speed is what the script says: five moves 8 ms apart are 8 ms apart, whatever the sleeps came to. `idle` brings the script's time up to the clock's. Without it the fling could not be held to a pixel
+* **No `enter` step.** The manager has it; a mouse that moves or presses is added the same
+
+Differences from the embedder, each for its intent:
+
+* A zoom's and a rotation's events are stamped by the source, on the frame clock like every other; the embedder stamps them with the wall clock (`g_get_real_time`), which is not the clock its other events are on
+* Past 128 fingers at once the embedder's ids wrap to 0 and its table grows; here the rest share id 0 and are not remembered (brief §15)
+* A touch that is cancelled is not handled by the embedder (`GDK_TOUCH_CANCEL` falls through), so its pointer stays down; `TouchAction` has no cancel yet. A device removed mid-gesture is stage 6's
+
+Found on the way:
+
+* The framework takes a pointer to have stopped by its own clock, not by the events' times: a finger that rests 200 ms before it lifts is not flung because 200 ms went by on `samplingClock`. Under flutter_tester that clock moves only when the test pumps a duration, so the reference pumps the script's waits
+* A hover to where a pointer already is does not reach a `Listener`: the mouse's first hover, where it was added, is no line
+* A touchpad's pinch begins where the mouse last was, and the converter hovers the touchpad's pointer there from where its pan was: a `PointerHoverEvent` of kind trackpad
+* The wheel scrolls at once, with no animation, and each of its events ends a scroll
+
+Open: the boards' devices behind the same managers, with the cursor and `flutter/mousecursor`, are stage 6. A wheel's high-resolution steps and a touchpad's kinetic scrolling are libinput's to report there.
 
 ## Decisions taken 2026-11-16
 
