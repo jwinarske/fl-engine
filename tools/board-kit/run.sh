@@ -139,7 +139,7 @@ for prog in hello burst; do
     rss_ok=1
   fi
   if [ $rc -eq 0 ] && [ $rss_ok -eq 1 ] && [ "$fdw" = "$fde" ] && [ "$ph" = 0 ]; then
-    pass "6  1,000 isolate cycles of $prog: RSS +$((end - tenth)) kB, fds $fde, handles 0"
+    pass "6  1,000 isolate cycles of $prog: RSS $(printf '%+d' $((end - tenth))) kB, fds $fde, handles 0"
   else
     fail "6  1,000 isolate cycles of $prog (exit $rc)" "$line$(cat "$err")"
   fi

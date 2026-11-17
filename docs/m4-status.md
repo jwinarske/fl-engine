@@ -397,6 +397,23 @@ Found on the way:
 
 Both are pinned here: drmkit 0.1.5, and emblema at `7d4253a`. Built from the pins, a capture on the Pi 5 has the frame and the cursor, and the cell reads back `2D3748`.
 
+## Stage 6: the VisionFive 2 (2026-11-17)
+
+The second board: a StarFive VisionFive 2 v1.3B (JH7110, four U74 cores, PowerVR BXE-4-32 through Imagination's Vulkan 1.3 driver), Ubuntu 24.04.3, Linux 6.12.5-starfive, on HDMI. The cross lane's riscv64 kit as it is built, over ssh. seatd and libseat1 installed from Ubuntu's archive, and GDM stopped: its greeter holds the card.
+
+* **The kit's nine checks pass** (M1's exit criteria 2 to 6, docs/m1-exit.md), the first run of any of this on RISC-V hardware
+* **The display took no buffer of the renderer's.** Its display controller (card0, VeriSilicon) is a card apart from the GPU (card1), and importing the renderer's dma-buf into it is refused: `importing a buffer: Function not implemented`. The Pi 5's two are one driver's. fl-raster now tries the renderer's own ring and, where that is refused, emblema's ring of buffers GBM allocates on the display's card (`DrmScanoutTarget::with_gbm`), which the renderer imports and draws into. The display says which card is its own (`ScanoutOutput::device_fd`). libgbm is opened when that ring is asked for and not linked
+* **`run-app --kms --mode WxH[@HZ]`**: one of the display's own modes by its size, at the rate nearest the one said or its fastest. The monitor's preferred mode is 3840x2160 at 30 Hz, and there `ticker` is shown a frame in two or three blanks (99 flips over 226). `run.sh --mode` passes it on
+* **At 1280x720 and 60 Hz: 299 flips over 298 blanks, none missed**, three runs, and the kit's display check passes: 10 passed, 0 failed
+* **The CPU's governor decides that.** As the image boots it is `ondemand`, the cores at 750 MHz of 1,500 while a frame a blank is all they are asked for, and a frame in twelve then took two blanks: 299 flips over 324, at even spacing. With `performance` none does. A board's image is the place for that setting, not the engine
+
+Found on the way:
+
+* The card's HDMI read no EDID until the board was started again: `EDID has corrupt header`, the connector connected with no mode, two cables alike. fl-dart said so (`no connector of any card has a display with a mode`). After a reboot it lists sixteen
+* cross.yml's riscv64 leg failed once on main, qemu-user crashing in its own code in the one test that ran fl-dart without the harness's rerun
+
+Not done: the devices. No keyboard or mouse is on the board, and its kernel has no `/dev/uinput` to make them with, so `run.sh --input`, a terminal switch, hotplug, the cursor and latency are as they were: seen on the Pi 5 only.
+
 ## Decisions taken 2026-11-16
 
 D1 (devices and a script, no window), D4 (clipboard in the process), D5 and D6 (no system IME), each with what the stock Linux embedder does in its place (brief §13). D5 as taken: no recordings from the stock embedder; the engine's unit tests ported for each layer, and the same scripted input given to `flutter_tester` and to fl-dart end to end.

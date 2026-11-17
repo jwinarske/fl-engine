@@ -2,14 +2,14 @@
 
 State of the §12 exit criteria and the §15 list of the brief (docs/m1-fl-dart-vm.md), with the evidence for each. Evidence is a CI lane, a test, or a recorded finding. Pin: Dart 3.13.7, `416e33b0`.
 
-Open: real-board runs (criterion 2). Everything else is closed.
+Every criterion is closed: both boards have run the kit with 0 failed (below).
 
 ## §12 exit criteria
 
 | # | Criterion | State | Evidence |
 |---|---|---|---|
 | 1 | `run hello.dill`, x86_64 jit | done | ci.yml `L2 x86_64 jit`: `hello_world_reaches_the_rust_sink_and_exits_zero` |
-| 2 | `run-aot hello.aot`, x86_64, Pi 5, VF2 | x86_64 done, boards open | ci.yml `L2 x86_64 aot`. aarch64, riscv64 under qemu: cross.yml. Boards: board kit, see below |
+| 2 | `run-aot hello.aot`, x86_64, Pi 5, VF2 | done | ci.yml `L2 x86_64 aot`. aarch64, riscv64 under qemu: cross.yml. Boards: board kit, see below |
 | 3 | FFI both directions, port from a non-isolate thread | done | `ffi_crossings_both_directions`, `racing_posts_all_arrive_in_order`. x86_64, and aarch64, riscv64 under qemu |
 | 4 | Throwing `main`: `UnhandledException`, stack trace, nonzero, no UB | done | `unhandled_exception_carries_the_dart_stack_trace` (exit 255). Clean under valgrind, ASan, TSan |
 | 5 | Mismatched SDK: `SnapshotVersionMismatch`, both versions | done | `snapshot_from_another_sdk_is_named_as_a_version_mismatch` (exit 254), fl-dart-vm `snapshot::tests` |
@@ -34,7 +34,22 @@ Criterion 8, no C++ toolchain: bare `ubuntu:24.04`, gcc as rustc's linker driver
 * Kit: cross.yml artifact `fl-dart-board-kit-<target>`, 90 days, or `tools/board-kit/build.sh`
 * Checks criteria 2-6 on the board, one PASS/FAIL line each
 * Tested as packaged under qemu, both targets, `dash`: 9 passed
-* Done when both boards print 0 failed. Record the two reports here
+* Done when both boards print 0 failed. Both have:
+  * **Raspberry Pi 5** (2026-11-16, docs/m4-status.md, stage 6): the nine checks and the display's, 299 flips, 0 blanks missed
+  * **StarFive VisionFive 2 v1.3B** (2026-11-17), Ubuntu 24.04.3, Linux 6.12.5-starfive, `./run.sh --mode 1280x720`:
+
+        PASS  2  run-aot hello.aot prints Hello World, exits 0
+        PASS  2  run loop drains microtasks, futures, timers
+        PASS  3  FFI: scalars and a string to Rust, a port message from a Rust thread
+        PASS  3  8 threads post 1,000 messages each, all arrive in order
+        PASS  4  uncaught exception: exit 255, message and stack trace
+        PASS  5  other SDK's snapshot: exit 254, both versions named
+        PASS  6  1,000 isolate cycles of hello: RSS -128 kB, fds 8, handles 0
+        PASS  6  1,000 isolate cycles of burst: RSS -100 kB, fds 8, handles 0
+        PASS  6  100 processes: full VM init and cleanup, all exit 0
+        PASS  M2-4  300 frames on card=/dev/dri/card0 mode=1280x720@60.000: 299 flips, 0 blanks missed
+
+        10 passed, 0 failed, 0 skipped
 
 ## §15 bring-up list
 
