@@ -21,6 +21,10 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
+  FLUTTER_VERSION: 3.47.8
+  FLUTTER_COMMIT: 737ba8f885dc774b53b442759999a312c9461e4e
+  # Inside the workspace: actions/cache refuses paths with "..".
+  FLUTTER_ROOT: ${{ github.workspace }}/.flutter
 
 jobs:
   qemu:
@@ -88,13 +92,55 @@ jobs:
           FL_DART_SDK_BIN: ${{ github.workspace }}/dart-sdk/bin/dart
           GITHUB_TOKEN: ${{ github.token }}
         run: ci/annotate-on-fail.sh cargo test -p fl-dart-cli --target ${{ matrix.target }}
+      # What the board kit's fl-dart-kms links (brief M4 §7: linked, not
+      # built): the target's libseat, libinput, libudev and libxkbcommon,
+      # from Ubuntu's ports archive beside the runner's own. After the tests
+      # above, which run without them.
+      - name: The target's display and input libraries
+        run: |
+          sudo dpkg --add-architecture ${{ matrix.deb }}
+          # The runner's archives have no ports architectures: kept to its own.
+          sudo sed -i 's/^Types: deb$/Types: deb\nArchitectures: amd64/' /etc/apt/sources.list.d/ubuntu.sources
+          sudo tee /etc/apt/sources.list.d/ports.sources >/dev/null <<'EOF'
+          Types: deb
+          URIs: http://ports.ubuntu.com/ubuntu-ports
+          Suites: noble noble-updates noble-security
+          Components: main universe
+          Architectures: ${{ matrix.deb }}
+          Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
+          EOF
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq pkg-config \
+            libseat-dev:${{ matrix.deb }} libinput-dev:${{ matrix.deb }} \
+            libudev-dev:${{ matrix.deb }} libxkbcommon-dev:${{ matrix.deb }}
+      # The apps the kit shows on a board's display, compiled by the pinned
+      # Flutter release.
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ${{ env.FLUTTER_ROOT }}
+            ~/.pub-cache
+          key: flutter-${{ env.FLUTTER_VERSION }}-${{ env.FLUTTER_COMMIT }}
+      - name: Pinned Flutter release
+        run: |
+          if [[ ! -x "$FLUTTER_ROOT/bin/flutter" ]]; then
+            git clone -q --depth 1 --branch "$FLUTTER_VERSION" https://github.com/flutter/flutter.git "$FLUTTER_ROOT"
+          fi
+          head="$(git -C "$FLUTTER_ROOT" rev-parse HEAD)"
+          [[ "$head" == "$FLUTTER_COMMIT" ]] || { echo "Flutter is at $head, not $FLUTTER_COMMIT"; exit 1; }
+          "$FLUTTER_ROOT/bin/flutter" --disable-analytics >/dev/null
+          "$FLUTTER_ROOT/bin/flutter" precache --linux --no-android --no-ios --no-web --no-macos --no-windows --no-fuchsia
       # The board kit (tools/board-kit): fl-dart, the programs and run.sh for
-      # exit criterion 2 on a real board. Built here, run once under qemu as
-      # packaged (unpacked, run.sh under dash), and kept as an artifact.
+      # exit criterion 2 on a real board, and fl-dart-kms with the apps for
+      # the display's check. Built here, run once under qemu as packaged
+      # (unpacked, run.sh under dash; the display's check is skipped there),
+      # and kept as an artifact.
       - name: Board kit
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: ci/annotate-on-fail.sh tools/board-kit/build.sh ${{ matrix.target }} "$GITHUB_WORKSPACE/dart-sdk/bin/dart" kit
+          PKG_CONFIG_ALLOW_CROSS: "1"
+          PKG_CONFIG_LIBDIR: /usr/lib/${{ matrix.sys }}/pkgconfig:/usr/share/pkgconfig
+        run: ci/annotate-on-fail.sh tools/board-kit/build.sh ${{ matrix.target }} "$GITHUB_WORKSPACE/dart-sdk/bin/dart" kit "$FLUTTER_ROOT"
       - name: Board kit under qemu
         run: |
           mkdir -p "$RUNNER_TEMP/kit" && tar xJf kit/fl-dart-board-kit-${{ matrix.target }}.tar.xz -C "$RUNNER_TEMP/kit"

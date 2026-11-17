@@ -340,7 +340,21 @@ Differences from the brief:
 * **The cursor is not committed with the frame** (D9). It is moved by the legacy cursor calls, which the kernel applies without waiting for a blank; drmkit-cursor's atomic path commits the plane alone and blocking, and on vc4 that cost the scanout blanks while the pointer moved. A card whose cursor those calls do not drive has no cursor: the run says so and goes on
 * **No cursor with `--input`**: a script's pointer is not drawn, the devices not being read
 
-Open: the cursor's shape has not been looked at on the screen by a person (the plane and its framebuffer were read from the card). Hotplug of a display; `kms` by default and the board kit's display check; the VisionFive 2.
+Open: the cursor's shape has not been looked at on the screen by a person (the plane and its framebuffer were read from the card).
+
+## Stage 6: hotplug and the board kit (2026-11-16)
+
+* **Hotplug** (brief §15), on the Pi 5 with devices made through `/dev/uinput`: a keyboard unplugged with a key down, the key's up reaches the framework; a mouse unplugged with a button down, the pointer's up; a touch screen unplugged with a finger down, a cancel (above). libinput lets go of what a removed device held, and the device source passes it on. A device plugged in while the app runs is read: every device in these checks was
+* **The board kit's display check** (M2's exit criterion 4, brief M2 §11): the kit has `fl-dart-kms`, fl-dart with `--features kms`, and `ticker` for the target; `run.sh` shows 300 frames and passes with none dropped and no blank missed. A board with no display or no seat, or without the libraries, is a SKIP. On the Pi 5: 299 flips, 0 blanks missed, the nine other checks as before
+* **The board kit's input check** (brief §11), `run.sh --input`: `keys` and `pointer` each shown for 20 seconds while someone presses a key and clicks or touches; a key down and a pointer down must reach the framework. On the Pi 5 with the synthetic devices: both pass
+* `tools/flutter-app/build.sh` compiles an app for riscv64 too, with the Dart SDK's cross gen_snapshot
+* cross.yml installs the target's libseat, libinput, libudev and libxkbcommon from Ubuntu's ports archive for the kit's build, and the pinned Flutter release for its apps. Under qemu the display's check is skipped
+
+Differences from the brief:
+
+* **`kms` stays a feature that is asked for**, not the default: the default fl-dart links none of the four libraries, so the kit's other checks run on a board without them, and a host builds without their headers. The kit carries both binaries
+
+Open: the VisionFive 2, on which nothing of stage 6 has run. A display plugged in or unplugged while an app runs is not handled: the app keeps the connector it started on.
 
 ## Decisions taken 2026-11-16
 

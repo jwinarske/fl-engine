@@ -21,9 +21,10 @@ jit = ["fl-dart-vm/jit", "fl-shell/jit", "fl-raster/jit"]
 aot = ["fl-dart-vm/aot", "fl-shell/aot", "fl-raster/aot"]
 # The KMS platform (brief M4 D9): the XKB keymap a script's key steps are
 # resolved against, so `--input` with keys needs it, and the seat and the
-# display `--kms` draws to. It links the system's libxkbcommon and libseat,
-# which a cross sysroot may lack: off by default until the boards' devices
-# come through it too (stage 6).
+# display `--kms` draws to, with the seat's devices and the cursor. It links
+# the system's libxkbcommon, libseat, libinput and libudev, which a host or
+# a cross sysroot may lack, so it is asked for; the board kit's fl-dart-kms
+# is built with it.
 kms = ["dep:fl-platform-kms", "fl-raster/scanout"]
 
 [dependencies]
