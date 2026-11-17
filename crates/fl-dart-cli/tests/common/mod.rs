@@ -85,7 +85,20 @@ pub fn fl_dart_cmd() -> Command {
 /// starts and ends many threads at once. A fault in fl-dart is a guest signal
 /// and never carries that text, and a second emulator crash fails the test.
 pub fn fl_dart(args: &[&std::ffi::OsStr]) -> Output {
-    let o = fl_dart_cmd().args(args).output().unwrap();
+    fl_dart_in(None, args)
+}
+
+/// [`fl_dart`] run in `dir`, for a program named relative to it; the
+/// test's own directory with none. The rerun is the same.
+pub fn fl_dart_in(dir: Option<&std::path::Path>, args: &[&std::ffi::OsStr]) -> Output {
+    let run = || {
+        let mut c = fl_dart_cmd();
+        if let Some(dir) = dir {
+            c.current_dir(dir);
+        }
+        c.args(args).output().unwrap()
+    };
+    let o = run();
     let emulator_crashed = std::env::var_os("FL_DART_TEST_RUNNER").is_some()
         && String::from_utf8_lossy(&o.stderr).contains("QEMU internal SIGSEGV");
     if !emulator_crashed {
@@ -95,7 +108,7 @@ pub fn fl_dart(args: &[&std::ffi::OsStr]) -> Output {
         "qemu crashed in its own code, running once more: {}",
         String::from_utf8_lossy(&o.stderr).trim()
     );
-    fl_dart_cmd().args(args).output().unwrap()
+    run()
 }
 
 #[cfg(feature = "aot")]

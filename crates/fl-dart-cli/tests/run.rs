@@ -18,7 +18,7 @@
 
 mod common;
 
-use common::{compile, fl_dart, fl_dart_cmd, out_dir, MODE};
+use common::{compile, fl_dart, out_dir, MODE};
 use std::process::Output;
 
 fn run(name: &str, extra: &[&str]) -> Output {
@@ -105,12 +105,7 @@ fn program_named_relative_to_the_working_directory() {
     let prog = compile("hello", MODE.0);
     let dir = prog.parent().unwrap();
     let name = prog.file_name().unwrap();
-    let o = fl_dart_cmd()
-        .current_dir(dir)
-        .arg(MODE.1)
-        .arg(name)
-        .output()
-        .unwrap();
+    let o = common::fl_dart_in(Some(dir), &[MODE.1.as_ref(), name]);
     assert!(o.status.success(), "{o:?}");
     assert_eq!(stdout(&o), "Hello World\n");
 }

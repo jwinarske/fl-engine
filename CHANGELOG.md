@@ -16,7 +16,7 @@ Not published, no versions yet.
 * Lanes: soak with input, input latency reported and held to two frames, fuzz targets for the script, the input state and the channel decoders, the apps with input under ASan and TSan
 * The no-C++ lane builds `fl-dart` with `kms`: the four system libraries linked, no C built
 * `apps/cursors`, a cell for every system mouse cursor, in the app lane; `run-app --kms --capture`: Print Screen writes what the display shows, the cursor with it, to a PNG
-* Ten-bit scanout with red and blue in their places (emblema `7d4253a`): they were exchanged on the Pi 5's screen
+* Ten-bit scanout with red and blue in their places (emblema 0.3.0): they were exchanged on the Pi 5's screen
 * A display controller apart from the GPU: where it takes no buffer of the renderer's, its own card's through GBM. `run-app --kms --mode WxH[@HZ]`
 * VisionFive 2 (RISC-V): the board kit's ten checks pass, the display at 1280x720 and 60 Hz with no blank missed
 * Raspberry Pi 5: 60 Hz with no blank missed, input latency under one frame
