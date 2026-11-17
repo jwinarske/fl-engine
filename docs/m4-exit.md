@@ -2,7 +2,7 @@
 
 State of the §11 exit criteria and the §15 list of the brief (docs/m4-input.md), with the evidence for each. Evidence is a CI lane, a test, or a recorded finding. Pin: Dart 3.13.7, Flutter 3.47.8, drmkit 0.1.5, emblema 0.3.0. References: the stock engine's `flutter_tester` given the same input, and the engine's own unit tests, ported (D5).
 
-Open: the devices on the VisionFive 2, whose display runs and whose input has not been tried. Every exit criterion is met, and every §15 limit has a test that crosses it. On the Pi 5 the devices were made through `/dev/uinput`; a real mouse aside, no real keyboard, touchpad or touch screen has been tried.
+Every exit criterion is met, and every §15 limit has a test that crosses it. On the Pi 5 the devices were made through `/dev/uinput`, a real mouse aside; the VisionFive 2's were a real keyboard and mouse. No real touchpad or touch screen has been tried.
 
 ## §11 exit criteria
 
@@ -35,18 +35,18 @@ Criterion 8: gcc is in the lane as the linker driver rustc calls. `kms` is a fea
 | Hotplug | done | Pi 5: a keyboard unplugged with a key down, its up; a mouse with a button down, the pointer's up; a touch screen with a finger down, a cancel. `the_pointer_leaves_with_the_mouse_that_moved_it`, `a_finger_is_a_pointer_from_its_down_to_its_up` |
 | Latency | done | soak: the 90th percentile of the frames input asked for held to two frames (33,334 us); counter 16,989 us, 17,056 at most |
 | Typing | done | soak: text_field, 10,000 characters, a frame each, built in 891 us on average against 4,000 |
-| Boards | open | Pi 5: 20 frames asked for by a click in each of three runs, the longest 16.7, 16.7 and 16.2 ms, none dropped. VisionFive 2: no devices on it yet |
+| Boards | open | Pi 5: 20 frames asked for by a click in each of three runs, the longest 16.7, 16.7 and 16.2 ms, none dropped. VisionFive 2: `counter` at about 20 frames a second, no latency figure but its first frame's |
 
 The other limits crossed (exit criterion 7): fl-input-script `a_script_is_bounded_in_size_and_its_errors_in_length` (a megabyte; waits, positions, notches and fingers); fl-ui JSON's depth of 32; fl-input's 128 touch ids.
 
 ## Boards
 
 * **Pi 5**, 1280x1440 at 60 Hz on HDMI, V3D: the display (300 frames, no blank missed), keys, mouse, wheel, touch, a touchpad's pinch, the cursor plane, a terminal switch away and back, hotplug, the board kit's `run.sh --input`, latency. Each in m4-status.md under stage 6
-* **VisionFive 2**, 1280x720 at 60 Hz on HDMI (`--mode`; the monitor's own is 3840x2160 at 30), PowerVR BXE-4-32, buffers from GBM: the kit's nine checks and the display (300 frames, no blank missed, with the CPU's governor at `performance`). No devices: nothing was plugged in
+* **VisionFive 2**, 1280x720 at 60 Hz on HDMI (`--mode`; the monitor's own is 3840x2160 at 30), PowerVR BXE-4-32, buffers from GBM: the kit's nine checks and the display (300 frames, no blank missed, with the CPU's governor at `performance`); a real keyboard and mouse, the wheel, all 35 cursors, a capture, a terminal switch away and back. Not hotplug, nor a touch screen
 
 ## Open, carried forward
 
-* The VisionFive 2's devices: a keyboard and a mouse plugged in, `run.sh --input`, a terminal switch, the cursor, latency
+* On the VisionFive 2: hotplug, a touch screen, a latency figure; `counter` at 60 Hz, which its GPU does not reach with a multisampled frame
 * The cursor's shape was looked at on the Pi 5's screen on 2026-11-17, a real mouse taken across `apps/cursors`: it changes in each cell. Each shape against its name is not recorded one by one
 * A real keyboard, touchpad and touch screen; a rotation and a canceled pinch from a device
 * The devices' thread under TSan: CI's runners have no devices, so the sanitizer lanes run the script's thread. The device source's state is driven in fl-platform-kms's tests with drmkit-input's events
