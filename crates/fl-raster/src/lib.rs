@@ -308,6 +308,11 @@ enum Work {
     Upload(Arc<ImageData>),
     /// The last scene once more: what the target showed is gone.
     Again,
+    /// Nothing more is coming from the thread's owner: what is queued
+    /// before this is drawn, and the thread ends. Said, not left to the
+    /// channel's closing, since an uploader or a redrawer handed out may
+    /// hold a way in for as long as whoever has it lives.
+    Finish,
 }
 
 /// Scenes submitted and not yet drawn, and the glyph atlas as the last
@@ -506,7 +511,9 @@ impl RasterThread {
     }
 
     fn stop(&mut self) -> Rastered {
-        drop(self.tx.take());
+        if let Some(tx) = self.tx.take() {
+            let _ = tx.send(Work::Finish);
+        }
         match self.thread.take().map(JoinHandle::join) {
             Some(Ok(r)) => r,
             Some(Err(_)) => Rastered {
@@ -562,6 +569,7 @@ fn raster_main<T: Target>(
                 }
                 s
             }
+            Work::Finish => break,
             Work::Again => {
                 // Not a frame of the app's, and its failing is not the
                 // run's: the card may not be back, and the next scene, or
