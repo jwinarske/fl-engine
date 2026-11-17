@@ -136,6 +136,7 @@ On the board:
     cd fl-dart-board-kit-aarch64-unknown-linux-gnu
     ./run.sh | tee report.txt
     ./run.sh --input | tee report.txt    # with someone at the board
+    ./run.sh --mode 1280x720             # the display at one of its other modes
 
 * One PASS/FAIL line per check: criteria 2-6. Exit 0 only if all pass
 * The display: 300 frames of an app on KMS, none dropped and no blank missed. It needs a seat (seatd, or a login on the console) and no compositor on the card; a board with no display or no seat is a SKIP, said and counted

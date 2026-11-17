@@ -25,6 +25,6 @@ pub use capture::capture;
 pub use compose::{Compose, ComposeError};
 pub use cursor::{Cursor, CursorTarget, Pointer};
 pub use devices::DevicesConfig;
-pub use display::{Display, DisplayError, Flip, Pacing};
+pub use display::{Display, DisplayError, Flip, Pacing, WantedMode};
 pub use keymap::{KeymapError, XkbKeymap};
 pub use seat::{Activity, Seat, SeatError};
