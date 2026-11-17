@@ -32,13 +32,6 @@ const NOMINAL: f64 = 24.0;
 /// How often an animated cursor is looked at for its next frame.
 const ANIMATION_TICK: Duration = Duration::from_millis(16);
 
-/// How many times more, a tick apart, a cursor just shown or just given a
-/// new shape is told to the card again. A VisionFive 2's display
-/// controller shows the first frame of a cursor newly set as noise, right
-/// as its buffer is, and puts it right at the next thing it is told; a
-/// mouse that moved once and stopped left the noise there.
-const SETTLE_TICKS: u8 = 2;
-
 /// The name the framework's `SystemMouseCursors.none` has.
 const NONE: &str = "none";
 
@@ -347,17 +340,12 @@ fn serve(
     let mut loaded: Option<String> = None;
     let mut since = Instant::now();
     let mut animated = false;
-    // Whether it was on the screen at the last commit, and how many more
-    // times it is to be told to the card with nothing new to tell.
-    let mut was_shown = false;
-    let mut settle = 0u8;
     // The buffer is the card's size for a cursor; a theme's is no larger.
     let size = size.min(renderer.size().0).max(1);
     loop {
         if loaded.as_deref() != Some(wanted.shape.as_str()) {
             loaded = Some(wanted.shape.clone());
             animated = false;
-            settle = SETTLE_TICKS;
             if wanted.shape != NONE {
                 // A name the theme has not is the default's; a theme with
                 // not even that leaves the cursor as it was.
@@ -373,25 +361,17 @@ fn serve(
             }
         }
         renderer.move_to(wanted.x, wanted.y);
-        let shown = wanted.shown && wanted.shape != NONE;
-        if shown && !was_shown {
-            settle = SETTLE_TICKS;
-        }
-        was_shown = shown;
-        renderer.set_visible(shown);
+        renderer.set_visible(wanted.shown && wanted.shape != NONE);
         if animated {
             let _ = renderer.tick(since.elapsed());
         }
         // Refused while the card is another session's, which is told
         // of next: nothing to do about it here.
         let _ = renderer.commit();
-        let ask = if shown && (animated || settle > 0) {
+        let ask = if animated && wanted.shown {
             match rx.recv_timeout(ANIMATION_TICK) {
                 Ok(ask) => ask,
-                Err(RecvTimeoutError::Timeout) => {
-                    settle = settle.saturating_sub(1);
-                    continue;
-                }
+                Err(RecvTimeoutError::Timeout) => continue,
                 Err(RecvTimeoutError::Disconnected) => return Next::Stop,
             }
         } else {

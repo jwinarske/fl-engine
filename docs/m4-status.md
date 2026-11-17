@@ -428,7 +428,16 @@ A keyboard (HP) and a mouse (Logitech, by its receiver) plugged in, a person at 
 The cursor, on this display controller:
 
 * **Near the top and left edges it broke up**, and came back in the middle; the right and bottom edges were clean. There the cursor's image is redrawn on every move, shifted inside its buffer so the plane need not start off the screen, and on the legacy calls it was redrawn into the one buffer being scanned out. Fixed in drmkit (drmkit#134): a second buffer, drawn into and then set. With that, looked at again: clean at both edges, the capture of it in the corner clean
-* **When it first appears it is noise**, until it is next moved, though its buffer read back right at that moment. A mouse nudged once and left shows it; one kept moving does not. A cursor just shown, or just given a new shape, is now told to the card twice more, a tick apart (`SETTLE_TICKS`). With that, `pointer`'s cursor is clean from its first nudge. **`counter`'s is still noise at first**, its buffer again right in the capture: open. What differs there is not known; `counter` draws a few frames as the mouse first hovers, and `pointer` draws none
+* **When it first appears it is sometimes noise: open, and not fixed here.** A mouse nudged once and left shows a scrambled cursor that stays until the mouse is moved further; a larger movement clears it. What was found, each with a person at the board:
+  * The cursor's buffer is right while the monitor shows noise: every capture taken at that moment has a clean arrow, in place
+  * It is not every run. The same build, app and nudge gave scrambled, clean, scrambled in three runs
+  * It is in `pointer`, which asks for no cursor shape and draws no frame as the mouse moves, and in `counter`
+  * Waiting for the app's first frame before touching the mouse does not avoid it
+  * Telling the card the cursor again at the same place, a tick and two ticks later, did not clear it; nor did moving it a pixel aside and back
+  * Walking 24 MB on each core every ten seconds, to put the caches out to memory, did not clear it in fifteen seconds with the mouse untouched
+  * The Pi 5 has not shown it
+
+  It may be the board's display driver, the vendor's for this kernel (6.12.5-starfive), and nothing to be fixed from here; neither change tried is kept. Tracked as #29
 * `counter`'s button keeps the arrow: the framework asks for `basic` over it, off the web, as a script's mouse shows here too
 
 Not done on this board: latency as a number (the longest alone is printed, and `counter`'s is its first frame's shaders, 1.9 s), hotplug, a touch screen. `run.sh --input` was not run as such; its two checks are the keys and the pointer downs above.
