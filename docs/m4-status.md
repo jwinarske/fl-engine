@@ -428,7 +428,8 @@ A keyboard (HP) and a mouse (Logitech, by its receiver) plugged in, a person at 
 The cursor, on this display controller:
 
 * **Near the top and left edges it broke up**, and came back in the middle; the right and bottom edges were clean. There the cursor's image is redrawn on every move, shifted inside its buffer so the plane need not start off the screen, and on the legacy calls it was redrawn into the one buffer being scanned out. Fixed in drmkit (drmkit#134): a second buffer, drawn into and then set. With that, looked at again: clean at both edges, the capture of it in the corner clean
-* **When it first appears it is noise**, until it is next moved, though its buffer read back right at that moment. A mouse nudged once and left shows it; one kept moving does not. A cursor just shown, or just given a new shape, is now told to the card twice more, a tick apart (`SETTLE_TICKS`)
+* **When it first appears it is noise**, until it is next moved, though its buffer read back right at that moment. A mouse nudged once and left shows it; one kept moving does not. A cursor just shown, or just given a new shape, is now told to the card twice more, a tick apart (`SETTLE_TICKS`). With that, `pointer`'s cursor is clean from its first nudge. **`counter`'s is still noise at first**, its buffer again right in the capture: open. What differs there is not known; `counter` draws a few frames as the mouse first hovers, and `pointer` draws none
+* `counter`'s button keeps the arrow: the framework asks for `basic` over it, off the web, as a script's mouse shows here too
 
 Not done on this board: latency as a number (the longest alone is printed, and `counter`'s is its first frame's shaders, 1.9 s), hotplug, a touch screen. `run.sh --input` was not run as such; its two checks are the keys and the pointer downs above.
 

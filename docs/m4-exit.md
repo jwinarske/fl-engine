@@ -46,7 +46,7 @@ The other limits crossed (exit criterion 7): fl-input-script `a_script_is_bounde
 
 ## Open, carried forward
 
-* On the VisionFive 2: hotplug, a touch screen, a latency figure; `counter` at 60 Hz, which its GPU does not reach with a multisampled frame
+* On the VisionFive 2: the cursor is noise when it first appears over `counter`, until it is next moved (m4-status.md). Hotplug, a touch screen, a latency figure; `counter` at 60 Hz, which its GPU does not reach with a multisampled frame
 * The cursor's shape was looked at on the Pi 5's screen on 2026-11-17, a real mouse taken across `apps/cursors`: it changes in each cell. Each shape against its name is not recorded one by one
 * A real keyboard, touchpad and touch screen; a rotation and a canceled pinch from a device
 * The devices' thread under TSan: CI's runners have no devices, so the sanitizer lanes run the script's thread. The device source's state is driven in fl-platform-kms's tests with drmkit-input's events
