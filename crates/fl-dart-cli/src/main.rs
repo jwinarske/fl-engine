@@ -428,7 +428,6 @@ fn app_once(
         fl_ui::set_image_sink(r.uploader());
     }
     let wake = fl_shell::Wake::default();
-    set_vsync_of(Some(&wake));
     let mut cfg = fl_shell::isolate_config(path, &wake);
     if !echo {
         cfg.print = Arc::new(|_| {});
@@ -478,9 +477,13 @@ fn app_once(
                     Ok(())
                 })
         });
+        // A board's devices, with a display and no script: read from now
+        // until the loop ends.
+        attach_display(&wake, app)?;
         let report = fl_shell::run(&mut scope, &wake, period, || {
             limit.is_some_and(|l| *rendered.lock().unwrap_or_else(|e| e.into_inner()) >= l)
         });
+        detach_display();
         match player {
             Some(Ok(thread)) => match thread.join() {
                 Ok(played) => played?,
@@ -496,7 +499,6 @@ fn app_once(
         report
     };
     isolate.shutdown();
-    set_vsync_of(None);
     // The sinks are the process's, and hold the raster thread: replacing
     // them is what lets `finish` have the thread to itself.
     fl_ui::set_frame_sink(|_| {});
@@ -679,18 +681,58 @@ impl Screen {
     }
 }
 
-/// The loop a display's flips are the vsync of: the run's, while it runs.
+/// The display's seat, and the loop its flips are the vsync of: the run's,
+/// while it runs.
 #[cfg(feature = "kms")]
-static VSYNC_OF: std::sync::Mutex<Option<fl_shell::Wake>> = std::sync::Mutex::new(None);
+struct Kms {
+    seat: std::sync::Arc<fl_platform_kms::Seat>,
+    wake: Option<fl_shell::Wake>,
+}
 
-/// Tells a display's flips to `wake`'s loop, or with `None` to none.
-fn set_vsync_of(wake: Option<&fl_shell::Wake>) {
+#[cfg(feature = "kms")]
+static KMS: std::sync::Mutex<Option<Kms>> = std::sync::Mutex::new(None);
+
+/// With a display, tells its flips to `wake`'s loop and, unless a script
+/// is the run's input, reads the seat's devices for it: the loop then runs
+/// until it is stopped, as an app on a board does.
+fn attach_display(wake: &fl_shell::Wake, app: &AppArgs) -> Result<(), Failure> {
     #[cfg(feature = "kms")]
     {
-        *VSYNC_OF.lock().unwrap_or_else(|e| e.into_inner()) = wake.cloned();
+        let mut kms = KMS.lock().unwrap_or_else(|e| e.into_inner());
+        let Some(kms) = kms.as_mut() else {
+            return Ok(());
+        };
+        kms.wake = Some(wake.clone());
+        if app.input.is_none() {
+            let (layout, variant) = app
+                .keymap
+                .clone()
+                .unwrap_or_else(|| ("us".to_owned(), String::new()));
+            let config = fl_platform_kms::DevicesConfig {
+                layout,
+                variant,
+                width: app.view.width.round() as u32,
+                height: app.view.height.round() as u32,
+                scale: app.view.device_pixel_ratio,
+            };
+            kms.seat
+                .read_devices(config, std::sync::Arc::new(wake.input()))
+                .map_err(|e| Failure::Other(format!("--kms: {e}")))?;
+        }
     }
     #[cfg(not(feature = "kms"))]
-    let _ = wake;
+    let _ = (wake, app);
+    Ok(())
+}
+
+/// The run's loop has ended: its devices are let go, and the display's
+/// flips are told to none.
+fn detach_display() {
+    #[cfg(feature = "kms")]
+    if let Some(kms) = KMS.lock().unwrap_or_else(|e| e.into_inner()).as_mut() {
+        kms.seat.release_devices();
+        kms.wake = None;
+    }
 }
 
 #[cfg(feature = "kms")]
@@ -702,7 +744,8 @@ fn screen_for(app: &mut AppArgs) -> Result<Raster, Failure> {
     let (w, h) = display.size();
     let hz = display.refresh_hz();
     display.on_flip(|flip| {
-        if let Some(wake) = VSYNC_OF.lock().unwrap_or_else(|e| e.into_inner()).as_ref() {
+        let kms = KMS.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(wake) = kms.as_ref().and_then(|k| k.wake.as_ref()) {
             wake.vsync(flip.at, flip.period);
         }
     });
@@ -715,6 +758,7 @@ fn screen_for(app: &mut AppArgs) -> Result<Raster, Failure> {
     if hz > 0.0 {
         app.view.refresh_rate = hz;
     }
+    *KMS.lock().unwrap_or_else(|e| e.into_inner()) = Some(Kms { seat, wake: None });
     let raster = fl_raster::RasterThread::spawn_scanout(Box::new(display))
         .map_err(|e| Failure::Other(format!("--kms: {e}")))?;
     Ok((Some(std::sync::Arc::new(raster)), Some(screen)))
@@ -870,7 +914,9 @@ struct AppArgs {
 /// `--hz` sets the vsync rate (60 by default). `--kms` draws to a display, held through the seat,
 /// at its mode's size and rate, a size given being ignored but for its `@dpr`, which may stand
 /// alone; `--connector` names the display (`HDMI-A-1`), the first with one if not given (needs the
-/// `kms` feature).
+/// `kms` feature). With `--kms` and no `--input` the seat's keyboards, mice and touch screens are
+/// the app's input, on `--keymap`'s layout, and the app runs until `--frames` or until it is
+/// stopped.
 fn app_args(args: &[&str]) -> Option<AppArgs> {
     let mut app = AppArgs::default();
     let mut it = args.iter();

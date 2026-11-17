@@ -291,8 +291,12 @@ fn keys_and_pointers_answer_anything() {
                 }
             }
             _ => {
-                let action =
-                    [TouchAction::Begin, TouchAction::Update, TouchAction::End][rng.below(3)];
+                let action = [
+                    TouchAction::Begin,
+                    TouchAction::Update,
+                    TouchAction::End,
+                    TouchAction::Cancel,
+                ][rng.below(4)];
                 // More fingers than there are ids, and numbers past any.
                 let number = match rng.below(4) {
                     0 => rng.next() as u32,

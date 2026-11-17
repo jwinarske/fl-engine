@@ -57,6 +57,21 @@ impl XkbKeymap {
         }
     }
 
+    /// Whether a key held down repeats: a letter does, Shift does not.
+    pub fn repeats(&self, keycode: u16) -> bool {
+        self.keyboard
+            .should_repeat(u32::from(keycode.saturating_sub(EVDEV_OFFSET)))
+    }
+
+    /// The XKB keycodes of the keys that are down.
+    pub fn held(&self) -> Vec<u16> {
+        self.keyboard
+            .held_keys()
+            .iter()
+            .filter_map(|evdev| u16::try_from(*evdev).ok()?.checked_add(EVDEV_OFFSET))
+            .collect()
+    }
+
     /// The modifiers and locks in effect, as GDK reports an event's state.
     ///
     /// The logo key is reported as Mod4, as Super, and as what the
