@@ -107,6 +107,7 @@ struct Pipeline {
     device: Device,
     connector: u32,
     crtc: u32,
+    crtc_index: u32,
     plane: u32,
     mode: drm::control::Mode,
     mode_blob: u64,
@@ -232,6 +233,7 @@ impl Pipeline {
             device,
             connector,
             crtc,
+            crtc_index: target.crtc.index,
             plane,
             mode: target.mode,
             mode_blob,
@@ -352,6 +354,15 @@ impl Display {
     /// The mode's refresh rate in hertz.
     pub fn refresh_hz(&self) -> f64 {
         f64::from(refresh_mhz(&self.pipeline.mode)) / 1000.0
+    }
+
+    /// Where a cursor for this display goes ([`crate::Cursor::open`]).
+    pub fn cursor_target(&self) -> crate::CursorTarget {
+        crate::CursorTarget {
+            path: self.path.clone(),
+            crtc_id: self.pipeline.crtc,
+            crtc_index: self.pipeline.crtc_index,
+        }
     }
 
     /// What the display does, to read once it has been handed over.

@@ -687,6 +687,10 @@ impl Screen {
 struct Kms {
     seat: std::sync::Arc<fl_platform_kms::Seat>,
     wake: Option<fl_shell::Wake>,
+    /// Where the display's cursor goes, and the cursor while devices are
+    /// read.
+    cursor_target: fl_platform_kms::CursorTarget,
+    cursor: Option<fl_platform_kms::Cursor>,
 }
 
 #[cfg(feature = "kms")]
@@ -708,12 +712,32 @@ fn attach_display(wake: &fl_shell::Wake, app: &AppArgs) -> Result<(), Failure> {
                 .keymap
                 .clone()
                 .unwrap_or_else(|| ("us".to_owned(), String::new()));
+            // A mouse's pointer is drawn where the card has a cursor and
+            // the machine a cursor theme; without, the app runs the same.
+            kms.cursor = match fl_platform_kms::Cursor::open(
+                &kms.seat,
+                &kms.cursor_target,
+                app.view.device_pixel_ratio,
+            ) {
+                Ok(cursor) => Some(cursor),
+                Err(e) => {
+                    eprintln!("fl-dart: --kms: no mouse cursor: {e}");
+                    None
+                }
+            };
+            let pointer = kms.cursor.as_ref().map(fl_platform_kms::Cursor::pointer);
+            fl_ui::set_mouse_cursor(
+                pointer
+                    .clone()
+                    .map(|p| Box::new(p) as Box<dyn fl_input::MouseCursor>),
+            );
             let config = fl_platform_kms::DevicesConfig {
                 layout,
                 variant,
                 width: app.view.width.round() as u32,
                 height: app.view.height.round() as u32,
                 scale: app.view.device_pixel_ratio,
+                cursor: pointer,
             };
             kms.seat
                 .read_devices(config, std::sync::Arc::new(wake.input()))
@@ -731,6 +755,8 @@ fn detach_display() {
     #[cfg(feature = "kms")]
     if let Some(kms) = KMS.lock().unwrap_or_else(|e| e.into_inner()).as_mut() {
         kms.seat.release_devices();
+        fl_ui::set_mouse_cursor(None);
+        kms.cursor = None;
         kms.wake = None;
     }
 }
@@ -758,7 +784,12 @@ fn screen_for(app: &mut AppArgs) -> Result<Raster, Failure> {
     if hz > 0.0 {
         app.view.refresh_rate = hz;
     }
-    *KMS.lock().unwrap_or_else(|e| e.into_inner()) = Some(Kms { seat, wake: None });
+    *KMS.lock().unwrap_or_else(|e| e.into_inner()) = Some(Kms {
+        seat,
+        wake: None,
+        cursor_target: display.cursor_target(),
+        cursor: None,
+    });
     let raster = fl_raster::RasterThread::spawn_scanout(Box::new(display))
         .map_err(|e| Failure::Other(format!("--kms: {e}")))?;
     Ok((Some(std::sync::Arc::new(raster)), Some(screen)))

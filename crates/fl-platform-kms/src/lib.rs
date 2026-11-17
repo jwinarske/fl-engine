@@ -4,8 +4,9 @@
 //! method: dead keys and compose sequences from xkbcommon's compose tables.
 //! Its seat, which the card and the devices are held through, and its
 //! display: emblema's `ScanoutOutput` over drmkit's modesetting. Its
-//! devices: libinput's, through drmkit-input, opened through the seat. The
-//! cursor is to come.
+//! devices: libinput's, through drmkit-input, opened through the seat. Its
+//! cursor: an XCursor theme's, through drmkit-cursor, on the card's cursor
+//! plane.
 //!
 //! Links the system's libxkbcommon, through drmkit-input's `Keyboard` and
 //! beside it, libseat, through drmkit-session, and libinput and libudev,
@@ -13,12 +14,14 @@
 //! Nothing above `fl-input` names this crate (D8).
 
 mod compose;
+mod cursor;
 mod devices;
 mod display;
 mod keymap;
 mod seat;
 
 pub use compose::{Compose, ComposeError};
+pub use cursor::{Cursor, CursorTarget, Pointer};
 pub use devices::DevicesConfig;
 pub use display::{Display, DisplayError, Flip, Pacing};
 pub use keymap::{KeymapError, XkbKeymap};

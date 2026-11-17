@@ -19,7 +19,7 @@ Status: milestone 1 (Dart VM hosted from Rust).
 * fl-shell - embedder: views and the runtime hooks a framework isolate needs
 * fl-input - the input boundary: events as data, what a source delivers them through, and the Linux embedder's pointer managers, key path and text input, with the platform's input method and clipboard behind traits
 * fl-input-script - scripted input source, for CI and tests
-* fl-platform-kms - the KMS platform through drmkit: the seat, the display as emblema's scanout output, the seat's input devices, its XKB keymap and its compose tables for dead keys (links libseat, libinput, libudev and libxkbcommon)
+* fl-platform-kms - the KMS platform through drmkit: the seat, the display as emblema's scanout output, the seat's input devices, the mouse cursor on the card's cursor plane, its XKB keymap and its compose tables for dead keys (links libseat, libinput, libudev and libxkbcommon)
 * fl-raster - dart:ui scenes drawn by emblema
 * fl-dart-cli - `fl-dart` binary
 * xtask - `cargo xtask bindgen`, `cargo xtask fetch-prebuilt`
@@ -80,7 +80,7 @@ Drawn by emblema offscreen (Vulkan; Mesa's lavapipe works) and written as a PNG:
 
     fl-dart run-app out/colored_box.so 800x600@2 --png frame.png
 
-Drawn to a display with no compositor (KMS, on a board), at the display's mode and rate. Built with `--features kms`; needs a seat (seatd, or a login on the console), libseat, libinput and libudev. The seat's keyboards, mice and touch screens are its input:
+Drawn to a display with no compositor (KMS, on a board), at the display's mode and rate. Built with `--features kms`; needs a seat (seatd, or a login on the console), libseat, libinput and libudev. The seat's keyboards, mice and touch screens are its input, and a mouse's pointer is drawn from the machine's cursor theme:
 
     fl-dart run-app out/counter.so @2 --kms
 

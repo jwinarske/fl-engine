@@ -39,6 +39,8 @@ pub struct DevicesConfig {
     /// Physical pixels to a logical one: a wheel's notch is in logical
     /// pixels.
     pub scale: f64,
+    /// The cursor that follows the mouse, if the display has one.
+    pub cursor: Option<crate::Pointer>,
 }
 
 /// The one view there is.
@@ -125,6 +127,7 @@ pub(crate) struct Devices {
     input: drmkit_input::Seat,
     repeater: KeyRepeater,
     state: State,
+    session: Rc<RefCell<Session<LibseatBackend>>>,
     sink: Arc<dyn EventSink>,
     events: Vec<InputEvent>,
     repeats: Vec<drmkit_input::KeyEvent>,
@@ -154,6 +157,7 @@ pub(crate) struct State {
     /// Keys that went down as the seat's, a terminal switch: their ups
     /// are the seat's too.
     seat_keys: Vec<u16>,
+    cursor: Option<crate::Pointer>,
     out: Vec<PointerEvent>,
 }
 
@@ -185,6 +189,7 @@ impl State {
             panning: false,
             fingers: Vec::new(),
             seat_keys: Vec::new(),
+            cursor: config.cursor.clone(),
             out: Vec::new(),
         })
     }
@@ -247,6 +252,9 @@ impl State {
 
     fn moved(&mut self, sink: &dyn EventSink, x: f64, y: f64) {
         (self.x, self.y) = self.hold(x, y);
+        if let Some(cursor) = &self.cursor {
+            cursor.move_to(self.x, self.y);
+        }
         let at = At::mouse(sink.now(), self.x, self.y);
         self.entered = true;
         self.mouse.motion(&at, &mut self.out);
@@ -325,6 +333,10 @@ impl State {
                     None if self.fingers.len() >= MAX_SLOTS => return,
                     None => {
                         self.fingers.push((slot, x, y));
+                        // A finger is its own pointer: none is drawn.
+                        if let Some(cursor) = &self.cursor {
+                            cursor.hide();
+                        }
                         TouchAction::Begin
                     }
                 };
@@ -391,6 +403,9 @@ impl State {
             self.entered = false;
             let at = At::mouse(now, self.x, self.y);
             self.mouse.leave(&at, &mut self.out);
+            if let Some(cursor) = &self.cursor {
+                cursor.hide();
+            }
         }
         self.deliver(sink);
     }
@@ -429,6 +444,7 @@ impl Devices {
             input,
             repeater,
             state,
+            session: Rc::clone(session),
             sink,
             events: Vec::new(),
             repeats: Vec::new(),
@@ -491,11 +507,22 @@ impl Devices {
         self.repeater.cancel();
         self.state.release_all(self.sink.as_ref());
         self.input.suspend();
+        if let Some(cursor) = &self.state.cursor {
+            cursor.pause();
+        }
     }
 
-    /// The session is back: the devices are opened again.
+    /// The session is back: the devices are opened again, and the cursor
+    /// has its card again.
     pub(crate) fn resume(&mut self) {
         let _ = self.input.resume();
+        if let Some(cursor) = &self.state.cursor {
+            // Not back for the card yet: the cursor stays away until the
+            // next time the session is.
+            if let Ok(fd) = crate::seat::take(&mut self.session.borrow_mut(), cursor.path()) {
+                cursor.resume(fd);
+            }
+        }
     }
 }
 
@@ -574,6 +601,7 @@ mod tests {
             width: 800,
             height: 600,
             scale: 2.0,
+            cursor: None,
         })
         .unwrap()
     }
@@ -644,6 +672,29 @@ mod tests {
         assert_eq!(s.pointer(), (0.0, 599.0));
         s.event(&sink, &motion(f64::INFINITY, -1e300), &mut asked);
         assert_eq!(s.pointer(), (0.0, 0.0));
+    }
+
+    #[test]
+    fn the_cursor_follows_the_mouse_and_goes_for_a_finger() {
+        use crate::cursor::Ask;
+        let (pointer, asks) = crate::Pointer::kept();
+        let mut s = state();
+        s.cursor = Some(pointer);
+        let (sink, mut asked) = (Kept::default(), Asked::default());
+        s.event(&sink, &motion(10.0, -5.0), &mut asked);
+        assert!(matches!(asks.try_recv(), Ok(Ask::Move(410, 295))));
+        // Held to the view, as the pointer is.
+        s.event(&sink, &motion(5000.0, 5000.0), &mut asked);
+        assert!(matches!(asks.try_recv(), Ok(Ask::Move(799, 599))));
+        s.event(&sink, &touch(0, 0.5, 0.5, TouchPhase::Down), &mut asked);
+        assert!(matches!(asks.try_recv(), Ok(Ask::Hide)));
+        s.event(&sink, &touch(0, 0.6, 0.5, TouchPhase::Motion), &mut asked);
+        assert!(asks.try_recv().is_err());
+        // The devices going takes it too.
+        s.event(&sink, &motion(-1.0, 0.0), &mut asked);
+        assert!(matches!(asks.try_recv(), Ok(Ask::Move(798, 599))));
+        s.release_all(&sink);
+        assert!(matches!(asks.try_recv(), Ok(Ask::Hide)));
     }
 
     #[test]

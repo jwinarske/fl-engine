@@ -91,6 +91,8 @@ pub(crate) extern "C" fn send_channel_update(_name: sys::Dart_Handle, _listening
 ///   the Linux embedder does not implement is answered with null, which
 ///   the framework's optional channel reads as no such method
 /// * `flutter/platform`'s clipboard methods ([`crate::clipboard`])
+/// * `flutter/mousecursor` ([`crate::mouse_cursor`]): the cursor a
+///   `MouseRegion` asks for, shown by the platform if it has one
 ///
 /// Every other message is dropped: nothing on the path so far awaits one,
 /// and an unanswered request never completes rather than failing.
@@ -128,6 +130,10 @@ pub(crate) extern "C" fn send_platform_message(
             }
             Some(crate::text_input::TEXT_INPUT_CHANNEL) => Some(
                 crate::text_input::handle_call(bytes.as_deref())
+                    .map_or(ReplyArg::Null, ReplyArg::Bytes),
+            ),
+            Some(crate::mouse_cursor::MOUSE_CURSOR_CHANNEL) => Some(
+                crate::mouse_cursor::handle_call(bytes.as_deref())
                     .map_or(ReplyArg::Null, ReplyArg::Bytes),
             ),
             Some("flutter/platform") => {

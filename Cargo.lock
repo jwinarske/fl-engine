@@ -188,6 +188,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "drmkit-cursor"
+version = "0.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "97407ab3c1c034d40cf6f572e380a7fa2fb11b5002dd0a1b25269bc2bb4a36cc"
+dependencies = [
+ "drm",
+ "drmkit-core",
+ "drmkit-dumb",
+ "drmkit-fmt",
+ "drmkit-planes",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "drmkit-display"
 version = "0.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -198,6 +212,20 @@ dependencies = [
  "drmkit-fmt",
  "drmkit-modeset",
  "drmkit-planes",
+ "rustix",
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "drmkit-dumb"
+version = "0.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "35bacdca1f3199725aeafc14c2c202be32193be924a6e56353574865b097c787"
+dependencies = [
+ "drm",
+ "drm-ffi",
+ "drmkit-core",
+ "drmkit-fmt",
  "rustix",
  "thiserror 2.0.21",
 ]
@@ -493,9 +521,11 @@ version = "0.1.0"
 dependencies = [
  "drm",
  "drmkit-core",
+ "drmkit-cursor",
  "drmkit-display",
  "drmkit-input",
  "drmkit-modeset",
+ "drmkit-planes",
  "drmkit-session",
  "emblema-hal",
  "emblema-present-drm",
