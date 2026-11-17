@@ -6,9 +6,11 @@
 #   build.sh <flutter-root> <app-dir> <out-dir> [target | kernel]
 #
 #   target: x86_64-unknown-linux-gnu (default) | aarch64-unknown-linux-gnu
-#           (aarch64 cross-compiled on an x64 host: Flutter's linux-arm64
-#           gen_snapshot is itself an arm64 binary, so the Dart SDK's
-#           x64-to-arm64 one, the same VM revision, is used instead)
+#           | riscv64gc-unknown-linux-gnu
+#           (the other two cross-compiled on an x64 host: Flutter's
+#           linux-arm64 gen_snapshot is itself an arm64 binary and it has
+#           none for riscv64, so the Dart SDK's x64-to-target one, the same
+#           VM revision, is used instead)
 #   kernel: <out-dir>/<app>.dill instead, for fl-dart's JIT build: the
 #           non-product platform, linked in, as `flutter run` compiles in
 #           debug mode but in one file. Architecture-independent.
@@ -32,7 +34,8 @@ name="$(basename "$app")"
 
 case "$target" in
   x86_64-unknown-linux-gnu) engine=linux-x64-release ;;
-  aarch64-unknown-linux-gnu) engine=linux-arm64-release ;;
+  aarch64-unknown-linux-gnu) engine=linux-arm64-release; cross=arm64 ;;
+  riscv64gc-unknown-linux-gnu) engine=; cross=riscv64 ;;
   kernel) engine= ;;
   *) echo "build.sh: unsupported target $target" >&2; exit 1 ;;
 esac
@@ -68,14 +71,15 @@ trap 'rm -rf "$work"' EXIT
 
 sdk_root="$cache/artifacts/engine/common/flutter_patched_sdk_product"
 gen_snapshot="$cache/artifacts/engine/$engine/gen_snapshot"
-if [[ "$target" == aarch64-unknown-linux-gnu && "$(uname -m)" == x86_64 ]]; then
+if [[ -n "${cross:-}" && ( "$(uname -m)" == x86_64 || -z "$engine" ) ]]; then
+  [[ "$(uname -m)" == x86_64 ]] || { echo "build.sh: $target is cross-compiled on an x64 host only" >&2; exit 1; }
   # dartdev fetches its cross gen_snapshot on the first cross compile.
   sdk="$cache/dart-sdk"
   version="$(cat "$sdk/version")"
-  gen_snapshot="$HOME/.dart/dartdev/sdk_cache/$version/gen_snapshot_linux_x64_linux_arm64"
+  gen_snapshot="$HOME/.dart/dartdev/sdk_cache/$version/gen_snapshot_linux_x64_linux_$cross"
   if [[ ! -x "$gen_snapshot" ]]; then
     echo 'void main() {}' > "$work/stub.dart"
-    "$sdk/bin/dart" compile aot-snapshot --target-os linux --target-arch arm64 \
+    "$sdk/bin/dart" compile aot-snapshot --target-os linux --target-arch "$cross" \
       "$work/stub.dart" -o "$work/stub.aot" >/dev/null
   fi
   [[ -x "$gen_snapshot" ]] || { echo "build.sh: dartdev left no cross gen_snapshot at $gen_snapshot" >&2; exit 1; }

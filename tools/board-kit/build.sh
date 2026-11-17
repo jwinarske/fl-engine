@@ -2,16 +2,22 @@
 # Builds the board kit: what exit criterion 2 needs on a real board, so the
 # board session is copy, unpack, run.
 #
-#   build.sh <target> <dart> <out-dir>
+#   build.sh <target> <dart> <out-dir> [flutter-root]
 #
-#   target: aarch64-unknown-linux-gnu | riscv64gc-unknown-linux-gnu
-#   dart:   the pinned stock SDK's dart, which cross-compiles the programs
+#   target:  aarch64-unknown-linux-gnu | riscv64gc-unknown-linux-gnu
+#   dart:    the pinned stock SDK's dart, which cross-compiles the programs
+#   flutter: the pinned Flutter release. With it the kit has the display's
+#            check too: fl-dart-kms, fl-dart built with `--features kms`,
+#            and the apps it runs (ticker, keys, pointer) for the target.
+#            The build then links the target's libseat, libinput, libudev
+#            and libxkbcommon, found by pkg-config.
 #
 # The cargo target linker must be set (CARGO_TARGET_<T>_LINKER), as cross.yml
 # does. Writes <out-dir>/fl-dart-board-kit-<target>.tar.xz: fl-dart (release),
 # the L2 programs as AOT snapshots for the target, a snapshot with its SDK
 # hash overwritten (criterion 5), run.sh, and MANIFEST with the commit and
-# every file's sha256.
+# every file's sha256. fl-dart links none of the display's libraries, so a
+# board without them still runs every check but the display's.
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -19,6 +25,7 @@ repo="$(cd "$here/../.." && pwd)"
 target="$1"
 dart="$2"
 out="$(mkdir -p "$3" && cd "$3" && pwd)"
+flutter="${4:-}"
 
 case "$target" in
   aarch64-unknown-linux-gnu) arch=arm64 ;;
@@ -54,12 +61,28 @@ b[i:i + len(h)] = b"f" * len(h)
 open(dst, "wb").write(b)
 PY
 
+# The display (M2 exit criterion 4) and the devices (M4): fl-dart on KMS,
+# and apps to show there.
+apps=()
+if [[ -n "$flutter" ]]; then
+  (cd "$repo" && cargo build --release -p fl-dart-cli --features kms --target "$target")
+  cp "$repo/target/$target/release/fl-dart" "$kit/fl-dart-kms"
+  for app in ticker keys pointer; do
+    "$repo/tools/flutter-app/build.sh" "$flutter" "$repo/apps/$app" "$kit" "$target"
+    apps+=("$app.so")
+  done
+fi
+
 cp "$here/run.sh" "$kit/"
 {
   echo "commit=$(git -C "$repo" rev-parse HEAD)"
   echo "target=$target"
   echo "dart=$("$dart" --version 2>&1)"
   (cd "$kit" && sha256sum fl-dart ./*.aot run.sh)
+  if [[ -n "$flutter" ]]; then
+    echo "flutter=$(git -C "$flutter" rev-parse HEAD)"
+    (cd "$kit" && sha256sum fl-dart-kms "${apps[@]}")
+  fi
 } > "$kit/MANIFEST"
 
 tar --sort=name --owner=0 --group=0 --numeric-owner -C "$stage" -cJf "$out/$name.tar.xz" "$name"

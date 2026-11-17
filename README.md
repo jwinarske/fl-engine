@@ -120,16 +120,21 @@ Cross, under qemu (see `.github/workflows/cross.yml`):
 
 Exit criterion 2 on Raspberry Pi 5 and VisionFive 2. The cross lane builds a kit per target and keeps it 90 days (artifact `fl-dart-board-kit-<target>`), or build it:
 
-    tools/board-kit/build.sh aarch64-unknown-linux-gnu /path/to/dart-sdk/bin/dart kit
+    tools/board-kit/build.sh aarch64-unknown-linux-gnu /path/to/dart-sdk/bin/dart kit [/path/to/flutter]
+
+With the pinned Flutter release named, the kit has the display's check too: `fl-dart-kms` (fl-dart with `--features kms`, linking the target's libseat, libinput, libudev and libxkbcommon through pkg-config) and the apps it shows.
 
 On the board:
 
     tar xJf fl-dart-board-kit-aarch64-unknown-linux-gnu.tar.xz
     cd fl-dart-board-kit-aarch64-unknown-linux-gnu
     ./run.sh | tee report.txt
+    ./run.sh --input | tee report.txt    # with someone at the board
 
 * One PASS/FAIL line per check: criteria 2-6. Exit 0 only if all pass
-* POSIX sh, no other dependency on the board
+* The display: 300 frames of an app on KMS, none dropped and no blank missed. It needs a seat (seatd, or a login on the console) and no compositor on the card; a board with no display or no seat is a SKIP, said and counted
+* `--input`: a key pressed, and a click or a touch, each within 20 seconds, reach the framework
+* POSIX sh; `fl-dart` depends on nothing else on the board, `fl-dart-kms` on the four libraries
 * MANIFEST holds the commit and every file's sha256
 * Under qemu (FL_DART_TEST_RUNNER) RSS is reported, not asserted: qemu-user keeps about 39 kB per guest thread
 

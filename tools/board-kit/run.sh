@@ -4,15 +4,23 @@
 #
 #   tar xJf fl-dart-board-kit-<target>.tar.xz && cd fl-dart-board-kit-<target>
 #   ./run.sh | tee report.txt
+#   ./run.sh --input          and the devices, with someone at the board
 #
-# One PASS or FAIL line per check, a summary, exit 0 only if all pass.
+# One PASS or FAIL line per check, a summary, exit 0 only if all pass. A
+# check of something the board has not (a display, a seat) is a SKIP, said
+# and counted, and no failure.
 # Plain POSIX sh: a board image may have no bash. Under FL_DART_TEST_RUNNER
 # (e.g. "qemu-aarch64 -L /usr/aarch64-linux-gnu") it runs off-board too,
 # which is how the kit itself is tested; that run is not a board result.
 cd "$(dirname "$0")" || exit 1
 
+input=0
+[ "$1" = "--input" ] && input=1
+
 fails=0
 passes=0
+skips=0
+skip() { skips=$((skips + 1)); echo "SKIP  $1"; [ -n "$2" ] && printf '%s\n' "$2" | sed 's/^/      /'; }
 pass() { passes=$((passes + 1)); echo "PASS  $1"; }
 fail() { fails=$((fails + 1)); echo "FAIL  $1"; [ -n "$2" ] && printf '%s\n' "$2" | sed 's/^/      /'; }
 
@@ -141,7 +149,64 @@ else
   fail "6  100 processes" "$bad"
 fi
 
+# The display (M2 exit criterion 4): an app's frames on KMS, each begun at
+# the display's blank and shown at the next, none missed. fl-dart-kms is
+# fl-dart with the KMS platform, which links the board's libseat, libinput,
+# libudev and libxkbcommon; it needs a seat (seatd, or a login on the
+# console) and no compositor on the card.
+kms() { ./fl-dart-kms "$@" > "$out" 2> "$err"; rc=$?; }
+# val_of <name>: the number after name= on the run's `kms:` line.
+val_of() { sed -n 's/^kms: //p' "$out" | tr ' ' '\n' | sed -n "s/^$1=//p"; }
+shown=0
+if [ ! -x ./fl-dart-kms ] || [ ! -f ticker.so ]; then
+  skip "M2-4  display: this kit was built without it"
+elif [ -n "$FL_DART_TEST_RUNNER" ]; then
+  skip "M2-4  display: not a board"
+else
+  kms run-app ticker.so --kms --frames 300
+  flips="$(val_of flips)"; blanks="$(val_of vblanks)"; dropped="$(val_of dropped)"
+  what="$(sed -n 's/^kms: //p' "$out" | sed 's/ flips=.*//')"
+  if [ $rc -eq 0 ] && [ -n "$flips" ] && [ -n "$blanks" ]; then
+    # n flips span n-1 blanks when none is missed.
+    missed=$((blanks - flips + 1))
+    if [ "$flips" -ge 299 ] && [ "$missed" -le 0 ] && [ "$dropped" = 0 ]; then
+      shown=1
+      pass "M2-4  300 frames on $what: $flips flips, 0 blanks missed"
+    else
+      fail "M2-4  300 frames on $what: $flips flips over $blanks blanks, $missed missed, $dropped dropped"
+    fi
+  elif grep -q 'no seat\|no display\|error while loading shared libraries' "$err"; then
+    skip "M2-4  display" "$(grep -v '^\[drm' "$err" | head -n 3)"
+  else
+    fail "M2-4  display (exit $rc)" "$(tail -n 5 "$err")"
+  fi
+fi
+
+# The devices (M4), with --input: someone presses a key and clicks or
+# touches, and the framework is told of each.
+# heard <app> <pattern> <ask>: runs the app on the display for 20 s and
+# looks for the pattern in what it prints.
+heard() {
+  echo "ASK   $3 (20 s)"
+  timeout 20 ./fl-dart-kms run-app "$1" --kms > "$out" 2> "$err"
+  grep -q "$2" "$out"
+}
+if [ $input -eq 1 ] && [ $shown -eq 1 ]; then
+  if heard keys.so '^key down' "press a key on the board's keyboard"; then
+    pass "M4  a key pressed reached the framework: $(grep -c '^key down' "$out") down"
+  else
+    fail "M4  no key reached the framework" "$(tail -n 3 "$err")"
+  fi
+  if heard pointer.so '^PointerDownEvent' "click the mouse, or touch the screen"; then
+    pass "M4  a pointer down reached the framework: $(sed -n 's/^PointerDownEvent kind=\([a-z]*\).*/\1/p' "$out" | sort -u | tr '\n' ' ')"
+  else
+    fail "M4  no pointer down reached the framework" "$(tail -n 3 "$err")"
+  fi
+elif [ $input -eq 1 ]; then
+  skip "M4  devices: no display was shown on"
+fi
+
 echo
-echo "$passes passed, $fails failed"
+echo "$passes passed, $fails failed, $skips skipped"
 [ $reruns -gt 0 ] && echo "($reruns rerun after a qemu-internal crash)"
 [ $fails -eq 0 ]
