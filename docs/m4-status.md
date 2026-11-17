@@ -405,6 +405,7 @@ The second board: a StarFive VisionFive 2 v1.3B (JH7110, four U74 cores, PowerVR
 * **The display took no buffer of the renderer's.** Its display controller (card0, VeriSilicon) is a card apart from the GPU (card1), and importing the renderer's dma-buf into it is refused: `importing a buffer: Function not implemented`. The Pi 5's two are one driver's. fl-raster now tries the renderer's own ring and, where that is refused, emblema's ring of buffers GBM allocates on the display's card (`DrmScanoutTarget::with_gbm`), which the renderer imports and draws into. The display says which card is its own (`ScanoutOutput::device_fd`). libgbm is opened when that ring is asked for and not linked
 * **`run-app --kms --mode WxH[@HZ]`**: one of the display's own modes by its size, at the rate nearest the one said or its fastest. The monitor's preferred mode is 3840x2160 at 30 Hz, and there `ticker` is shown a frame in two or three blanks (99 flips over 226). `run.sh --mode` passes it on
 * **At 1280x720 and 60 Hz: 299 flips over 298 blanks, none missed**, three runs, and the kit's display check passes: 10 passed, 0 failed
+* **Looked at on the monitor**, by a person: `ticker`'s red to blue, as it should be
 * **The CPU's governor decides that.** As the image boots it is `ondemand`, the cores at 750 MHz of 1,500 while a frame a blank is all they are asked for, and a frame in twelve then took two blanks: 299 flips over 324, at even spacing. With `performance` none does. A board's image is the place for that setting, not the engine
 
 Found on the way:
