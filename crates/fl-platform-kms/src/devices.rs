@@ -151,6 +151,9 @@ pub(crate) struct State {
     /// Each finger down, by its slot, and where it last was: an up does
     /// not say.
     fingers: Vec<(u32, f64, f64)>,
+    /// Keys that went down as the seat's, a terminal switch: their ups
+    /// are the seat's too.
+    seat_keys: Vec<u16>,
     out: Vec<PointerEvent>,
 }
 
@@ -181,6 +184,7 @@ impl State {
             entered: false,
             panning: false,
             fingers: Vec::new(),
+            seat_keys: Vec::new(),
             out: Vec::new(),
         })
     }
@@ -221,9 +225,18 @@ impl State {
             return;
         };
         let key = self.keymap.key(sink.now(), keycode, pressed);
-        if (SWITCH_VT_1..SWITCH_VT_1 + SWITCH_VTS).contains(&key.keyval) {
-            if pressed {
-                asked.switch_to = i32::try_from(key.keyval - SWITCH_VT_1 + 1).ok();
+        if pressed && (SWITCH_VT_1..SWITCH_VT_1 + SWITCH_VTS).contains(&key.keyval) {
+            asked.switch_to = i32::try_from(key.keyval - SWITCH_VT_1 + 1).ok();
+            if !self.seat_keys.contains(&keycode) {
+                self.seat_keys.push(keycode);
+            }
+            return;
+        }
+        // Its up, by which time the modifiers that made it the seat's may
+        // be up themselves, and its repeats.
+        if let Some(i) = self.seat_keys.iter().position(|k| *k == keycode) {
+            if !pressed {
+                self.seat_keys.swap_remove(i);
             }
             return;
         }
@@ -322,8 +335,13 @@ impl State {
                     return;
                 };
                 let (_, x, y) = self.fingers.swap_remove(i);
-                self.touches
-                    .touch(now, TouchAction::End, slot, x, y, &mut self.out);
+                // A cancel is a device unplugged with a finger on it.
+                let action = if event.phase == TouchPhase::Up {
+                    TouchAction::End
+                } else {
+                    TouchAction::Cancel
+                };
+                self.touches.touch(now, action, slot, x, y, &mut self.out);
             }
             _ => {}
         }
@@ -354,7 +372,7 @@ impl State {
         let now = sink.now();
         for (slot, x, y) in std::mem::take(&mut self.fingers) {
             self.touches
-                .touch(now, TouchAction::End, slot, x, y, &mut self.out);
+                .touch(now, TouchAction::Cancel, slot, x, y, &mut self.out);
         }
         if self.panning {
             self.panning = false;
@@ -701,8 +719,12 @@ mod tests {
         s.event(&sink, &touch(1, 7.0, -3.0, TouchPhase::Down), &mut asked);
         let down = sink.taken();
         assert_eq!((down[1].x, down[1].y), (799.0, 0.0));
+        // A device unplugged under a finger: given up, not lifted.
+        s.event(&sink, &touch(1, 0.0, 0.0, TouchPhase::Cancel), &mut asked);
+        let phases: Vec<_> = sink.taken().iter().map(|e| e.phase).collect();
+        assert_eq!(phases, [PointerPhase::Cancel, PointerPhase::Remove]);
         // No more fingers are remembered than a device has slots for.
-        for slot in 2..200 {
+        for slot in 1..200 {
             s.event(&sink, &touch(slot, 0.5, 0.5, TouchPhase::Down), &mut asked);
         }
         assert_eq!(s.fingers.len(), MAX_SLOTS);
@@ -722,6 +744,13 @@ mod tests {
         assert_eq!(asked.switch_to, Some(2));
         s.event(&sink, &key("f2", false), &mut asked);
         assert_eq!(sink.keys(), [true, true]);
+        // The session goes with F3 still down, as it does: the modifiers
+        // come up, and F3, with nothing held by then, is still the seat's.
+        s.event(&sink, &key("f3", true), &mut asked);
+        assert_eq!(asked.switch_to, Some(3));
+        s.release_all(&sink);
+        assert_eq!(sink.keys(), [false, false]);
+        assert!(s.seat_keys.is_empty());
         // A code no keymap has is dropped.
         let none = InputEvent::Key(drmkit_input::KeyEvent {
             key: u32::MAX,
@@ -752,12 +781,12 @@ mod tests {
         sink.taken();
         sink.keys();
         s.release_all(&sink);
-        // Both keys up; the finger ended, the pan ended, the mouse gone.
+        // Both keys up; the finger given up, the pan ended, the mouse gone.
         assert_eq!(sink.keys(), [false, false]);
         assert_eq!(
             sink.phases(),
             [
-                PointerPhase::Up,
+                PointerPhase::Cancel,
                 PointerPhase::Remove,
                 PointerPhase::PanZoomEnd,
                 PointerPhase::Remove

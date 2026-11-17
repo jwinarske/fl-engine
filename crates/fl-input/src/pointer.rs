@@ -401,6 +401,10 @@ pub enum TouchAction {
     Begin,
     Update,
     End,
+    /// The finger did not come up: its device went, or the screen did.
+    /// Not something the embedder's manager has; a gesture under way is
+    /// given up, not finished.
+    Cancel,
 }
 
 /// `fl_touch_manager`: the fingers on a touch screen, each a pointer of
@@ -466,8 +470,15 @@ impl Touches {
         match action {
             TouchAction::Begin => out.push(event(PointerPhase::Down, mouse_button::PRIMARY)),
             TouchAction::Update => out.push(event(PointerPhase::Move, mouse_button::PRIMARY)),
-            TouchAction::End => {
-                out.push(event(PointerPhase::Up, 0));
+            TouchAction::End | TouchAction::Cancel => {
+                out.push(event(
+                    if action == TouchAction::End {
+                        PointerPhase::Up
+                    } else {
+                        PointerPhase::Cancel
+                    },
+                    0,
+                ));
                 out.push(event(PointerPhase::Remove, 0));
                 self.ids.retain(|(n, _)| *n != number);
                 self.added.retain(|a| *a != id);
