@@ -15,6 +15,7 @@ Not published, no versions yet.
 * Board kit: `fl-dart-kms` and the display's check; `run.sh --input`
 * Lanes: soak with input, input latency reported and held to two frames, fuzz targets for the script, the input state and the channel decoders, the apps with input under ASan and TSan
 * The no-C++ lane builds `fl-dart` with `kms`: the four system libraries linked, no C built
+* `apps/cursors`, a cell for every system mouse cursor, in the app lane; `run-app --kms --capture`: Print Screen writes what the display shows, the cursor with it, to a PNG
 * Raspberry Pi 5: 60 Hz with no blank missed, input latency under one frame
 
 ### Milestone 3: images and text (in progress)

@@ -3,7 +3,7 @@
 //! ```text
 //! fl-dart run hello.dill [args...]       # JIT, dev hosts (--features jit)
 //! fl-dart run-aot hello.aot [args...]    # precompiled runtime, every target
-//! fl-dart run-app libapp.so [WxH[@dpr]] [--assets DIR] [--png out.png] [--frames-dir DIR] [--ops] [--natives] [--styles] [--font FAMILY=PATH]... [--message CHANNEL[=TEXT]]... [--input SCRIPT] [--keymap LAYOUT[:VARIANT]] [--compose LOCALE] [--frames N] [--hz H] [--kms [--connector NAME]]
+//! fl-dart run-app libapp.so [WxH[@dpr]] [--assets DIR] [--png out.png] [--frames-dir DIR] [--ops] [--natives] [--styles] [--font FAMILY=PATH]... [--message CHANNEL[=TEXT]]... [--input SCRIPT] [--keymap LAYOUT[:VARIANT]] [--compose LOCALE] [--frames N] [--hz H] [--kms [--connector NAME] [--capture out.png]]
 //!                                       # a Flutter app, through dart:ui (M2);
 //!                                       # JIT takes the app's kernel instead
 //! fl-dart app-cycle libapp.so <n> [run-app options]
@@ -109,7 +109,7 @@ fn usage() -> ExitCode {
         "libapp.so"
     };
     eprintln!(
-        "       fl-dart run-app <{app}> [WxH[@dpr]] [--assets DIR] [--png out.png] [--frames-dir DIR] [--ops] [--natives] [--styles] [--font FAMILY=PATH]... [--message CHANNEL[=TEXT]]... [--input SCRIPT] [--keymap LAYOUT[:VARIANT]] [--compose LOCALE] [--frames N] [--hz H] [--kms [--connector NAME]]\n       fl-dart app-cycle <{app}> <n> [run-app options]\n       fl-dart prepare"
+        "       fl-dart run-app <{app}> [WxH[@dpr]] [--assets DIR] [--png out.png] [--frames-dir DIR] [--ops] [--natives] [--styles] [--font FAMILY=PATH]... [--message CHANNEL[=TEXT]]... [--input SCRIPT] [--keymap LAYOUT[:VARIANT]] [--compose LOCALE] [--frames N] [--hz H] [--kms [--connector NAME] [--capture out.png]]\n       fl-dart app-cycle <{app}> <n> [run-app options]\n       fl-dart prepare"
     );
     ExitCode::from(64)
 }
@@ -481,10 +481,16 @@ fn app_once(
         // A board's devices, with a display and no script: read from now
         // until the loop ends.
         attach_display(&wake, app)?;
+        // A script's mouse has no cursor to show: what the framework asks
+        // for is said instead.
+        if app.input.is_some() {
+            fl_ui::set_mouse_cursor(Some(Box::new(SaidCursor)));
+        }
         let report = fl_shell::run(&mut scope, &wake, period, || {
             limit.is_some_and(|l| *rendered.lock().unwrap_or_else(|e| e.into_inner()) >= l)
         });
         detach_display();
+        fl_ui::set_mouse_cursor(None);
         match player {
             Some(Ok(thread)) => match thread.join() {
                 Ok(played) => played?,
@@ -697,6 +703,16 @@ struct Kms {
 #[cfg(feature = "kms")]
 static KMS: std::sync::Mutex<Option<Kms>> = std::sync::Mutex::new(None);
 
+/// The mouse cursor of a run with no cursor to show: each one the framework
+/// asks for is a line, `mouse cursor: NAME`, the cursor theme's name for it.
+struct SaidCursor;
+
+impl fl_input::MouseCursor for SaidCursor {
+    fn activate(&mut self, name: &str) {
+        println!("mouse cursor: {name}");
+    }
+}
+
 /// With a display, tells its flips to `wake`'s loop and, unless a script
 /// is the run's input, reads the seat's devices for it: the loop then runs
 /// until it is stopped, as an app on a board does.
@@ -739,6 +755,10 @@ fn attach_display(wake: &fl_shell::Wake, app: &AppArgs) -> Result<(), Failure> {
                 height: app.view.height.round() as u32,
                 scale: app.view.device_pixel_ratio,
                 cursor: pointer,
+                print_screen: app
+                    .capture
+                    .clone()
+                    .map(|path| captures(&kms.seat, &kms.cursor_target, path)),
             };
             kms.seat
                 .read_devices(config, std::sync::Arc::new(wake.input()))
@@ -748,6 +768,44 @@ fn attach_display(wake: &fl_shell::Wake, app: &AppArgs) -> Result<(), Failure> {
     #[cfg(not(feature = "kms"))]
     let _ = (wake, app);
     Ok(())
+}
+
+/// `--capture`: each time it is told, what the display shows is written to
+/// `path`, the first as it is named and those after numbered (`shot.png`,
+/// `shot-2.png`). On a thread of its own, which ends when nobody is left
+/// to tell it: reading the planes back takes longer than a key should.
+#[cfg(feature = "kms")]
+fn captures(
+    seat: &std::sync::Arc<fl_platform_kms::Seat>,
+    target: &fl_platform_kms::CursorTarget,
+    path: std::path::PathBuf,
+) -> std::sync::mpsc::Sender<()> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    let (seat, target) = (std::sync::Arc::clone(seat), target.clone());
+    let spawned = std::thread::Builder::new()
+        .name("fl-capture".into())
+        .spawn(move || {
+            for n in 1u32.. {
+                if rx.recv().is_err() {
+                    break;
+                }
+                let to = if n == 1 {
+                    path.clone()
+                } else {
+                    let stem = path.file_stem().unwrap_or_default().to_string_lossy();
+                    let ext = path.extension().unwrap_or_default().to_string_lossy();
+                    path.with_file_name(format!("{stem}-{n}.{ext}"))
+                };
+                match fl_platform_kms::capture(&seat, &target, &to) {
+                    Ok((w, h)) => println!("capture: {} {w}x{h}", to.display()),
+                    Err(e) => eprintln!("fl-dart: --capture: {e}"),
+                }
+            }
+        });
+    if let Err(e) = spawned {
+        eprintln!("fl-dart: --capture: {e}");
+    }
+    tx
 }
 
 /// The run's loop has ended: its devices are let go, and the display's
@@ -926,9 +984,11 @@ struct AppArgs {
     /// `--connector`: which display, `HDMI-A-1`; the first with one if not
     /// given.
     connector: Option<String>,
+    /// `--capture`: Print Screen writes what the display shows here.
+    capture: Option<std::path::PathBuf>,
 }
 
-/// `[WxH[@dpr]] [--assets DIR] [--png out.png] [--frames-dir DIR] [--ops] [--natives] [--styles] [--font FAMILY=PATH]... [--message CHANNEL[=TEXT]]... [--input SCRIPT] [--keymap LAYOUT[:VARIANT]] [--compose LOCALE] [--frames N] [--hz H] [--kms [--connector NAME]]`,
+/// `[WxH[@dpr]] [--assets DIR] [--png out.png] [--frames-dir DIR] [--ops] [--natives] [--styles] [--font FAMILY=PATH]... [--message CHANNEL[=TEXT]]... [--input SCRIPT] [--keymap LAYOUT[:VARIANT]] [--compose LOCALE] [--frames N] [--hz H] [--kms [--connector NAME] [--capture out.png]]`,
 /// in any order; no size is the default view. Sizes are physical pixels.
 /// `--assets` names the app's asset bundle; without it, `<app>.assets` beside
 /// the program is used if it is there, as `tools/flutter-app/build.sh` puts
@@ -940,7 +1000,8 @@ struct AppArgs {
 /// message on a channel, its text as UTF-8 or null without one, once `main` has run, in the order
 /// given, and prints each response as `response CHANNEL: ...` ([`response_line`]); `--input` plays a
 /// script of input events (fl-input-script) once the app has drawn its first frame, and the app runs
-/// until the script has ended and it has nothing left to do; `--keymap` names the XKB layout, and a
+/// until the script has ended and it has nothing left to do, each mouse cursor the framework asks
+/// for meanwhile printed as `mouse cursor: NAME`; `--keymap` names the XKB layout, and a
 /// variant of it, that the script's keys are resolved against (`us` by default; needs the `kms`
 /// feature); `--frames` stops after N frames rendered;
 /// `--hz` sets the vsync rate (60 by default). `--kms` draws to a display, held through the seat,
@@ -948,7 +1009,8 @@ struct AppArgs {
 /// alone; `--connector` names the display (`HDMI-A-1`), the first with one if not given (needs the
 /// `kms` feature). With `--kms` and no `--input` the seat's keyboards, mice and touch screens are
 /// the app's input, on `--keymap`'s layout, and the app runs until `--frames` or until it is
-/// stopped.
+/// stopped; `--capture` then makes Print Screen write what the display shows, the mouse's cursor
+/// with it, to a PNG, the first as named and those after numbered.
 fn app_args(args: &[&str]) -> Option<AppArgs> {
     let mut app = AppArgs::default();
     let mut it = args.iter();
@@ -985,6 +1047,7 @@ fn app_args(args: &[&str]) -> Option<AppArgs> {
             "--frames" => app.frames = Some(it.next()?.parse().ok().filter(|n| *n > 0)?),
             "--hz" => app.view.refresh_rate = it.next()?.parse().ok().filter(|v: &f64| *v > 0.0)?,
             "--kms" => app.kms = true,
+            "--capture" => app.capture = Some(std::path::PathBuf::from(it.next()?)),
             "--connector" => {
                 app.connector = Some(it.next().filter(|c| !c.is_empty())?.to_string());
             }

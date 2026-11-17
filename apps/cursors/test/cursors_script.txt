@@ -1,0 +1,75 @@
+# A mouse taken to the middle of each cell, the rows in turn, at a 1000x700
+# view of one pixel to a logical one: five cells of 200 by 100 to a row.
+# The framework asks for a cell's cursor as the mouse comes into it, and
+# test/cursors.txt is what it asks for, by the cursor theme's names.
+
+mouse move 100 50
+idle
+mouse move 300 50
+idle
+mouse move 500 50
+idle
+mouse move 700 50
+idle
+mouse move 900 50
+idle
+mouse move 100 150
+idle
+mouse move 300 150
+idle
+mouse move 500 150
+idle
+mouse move 700 150
+idle
+mouse move 900 150
+idle
+mouse move 100 250
+idle
+mouse move 300 250
+idle
+mouse move 500 250
+idle
+mouse move 700 250
+idle
+mouse move 900 250
+idle
+mouse move 100 350
+idle
+mouse move 300 350
+idle
+mouse move 500 350
+idle
+mouse move 700 350
+idle
+mouse move 900 350
+idle
+mouse move 100 450
+idle
+mouse move 300 450
+idle
+mouse move 500 450
+idle
+mouse move 700 450
+idle
+mouse move 900 450
+idle
+mouse move 100 550
+idle
+mouse move 300 550
+idle
+mouse move 500 550
+idle
+mouse move 700 550
+idle
+mouse move 900 550
+idle
+mouse move 100 650
+idle
+mouse move 300 650
+idle
+mouse move 500 650
+idle
+mouse move 700 650
+idle
+mouse move 900 650
+idle

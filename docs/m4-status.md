@@ -381,6 +381,22 @@ Stage 7 left tap-to-frame latency on the Pi 5 for stage 6 (brief §15: from the 
 
 Not measured: from the device to the screen. The blank the frame is shown at is one more after the end of `_drawFrame`, and libinput's own delay is before the event.
 
+## Stage 6: the cursor looked at, and the screen read back (2026-11-17)
+
+The cursor's shape had not been looked at by a person (above). Now it has, and what the display shows can be kept.
+
+* **`apps/cursors`**: a cell for each of the framework's 35 system cursors, saying its kind and the cursor theme's name for it; the cell the mouse is in is printed
+* **Looked at on the Pi 5**, on HDMI at 1280x1440 with a real mouse (Logitech M705) and the machine's theme (Adwaita, which has a file for all 34 that show): the cursor changes in each cell
+* **`every_system_cursor_is_asked_for_by_its_theme_name`** (app lane): a script's mouse into each cell in turn. The framework asks for all 35, each by its kind, and the engine's name for each is the cell's. `run-app --input` prints what is asked, `mouse cursor: NAME`, a script's mouse having no cursor to show
+* **`run-app --kms --capture out.png`**: Print Screen writes what the display shows to a PNG, the first as named and those after numbered, and is no key of the framework's while that is asked for. `fl_platform_kms::capture` reads every plane on the display's CRTC back from the card and composes them, the cursor's among them, through drmkit-capture, on a thread of its own with the seat's descriptor
+
+Found on the way:
+
+* **Red and blue were exchanged on the Pi 5's screen**, in every frame since stage 6's first. The first capture read back showed it: a cell drawn `2D3748` was scanned out as `48372D`. emblema named its ten-bit buffer `XR30` to KMS, and its bits are `XB30`'s: Vulkan's `A2B10G10R10`, red lowest. vc4 offers both and took what it was told. Fixed in emblema (emblema#248); the same frame then reads back `2D3748`. Nothing here had looked at a color on the board: the frames compared with goldens are offscreen ones, and the board's checks counted flips
+* **drmkit-capture could not read a ten-bit plane**, so the first capture was the cursor on nothing. It reads the four packed ten-bit formats since drmkit#132
+
+Open: both fixes are in their repositories' pull requests, not yet in the versions pinned here. Until they are, a capture on the Pi 5 has the cursor alone and the screen's red and blue are exchanged.
+
 ## Decisions taken 2026-11-16
 
 D1 (devices and a script, no window), D4 (clipboard in the process), D5 and D6 (no system IME), each with what the stock Linux embedder does in its place (brief §13). D5 as taken: no recordings from the stock embedder; the engine's unit tests ported for each layer, and the same scripted input given to `flutter_tester` and to fl-dart end to end.

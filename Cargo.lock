@@ -175,6 +175,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "drmkit-capture"
+version = "0.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e162293005291282b47dcb2a1bd85253be6662a508a556b3b8a789776a2839db"
+dependencies = [
+ "drm",
+ "drmkit-core",
+ "drmkit-fmt",
+ "drmkit-log",
+ "png",
+ "rustix",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "drmkit-core"
 version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -520,6 +535,7 @@ name = "fl-platform-kms"
 version = "0.1.0"
 dependencies = [
  "drm",
+ "drmkit-capture",
  "drmkit-core",
  "drmkit-cursor",
  "drmkit-display",

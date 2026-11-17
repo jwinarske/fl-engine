@@ -36,6 +36,7 @@ drmkit-core = "0.1.4"
 drmkit-display = "0.1.4"
 drmkit-modeset = "0.1.4"
 drmkit-cursor = "0.1.4"
+drmkit-capture = "0.1.4"
 drmkit-planes = "0.1.4"
 drmkit-session = "0.1.4"
 drm = { version = "0.15", default-features = false }

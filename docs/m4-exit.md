@@ -2,7 +2,7 @@
 
 State of the §11 exit criteria and the §15 list of the brief (docs/m4-input.md), with the evidence for each. Evidence is a CI lane, a test, or a recorded finding. Pin: Dart 3.13.7, Flutter 3.47.8, drmkit 0.1.4. References: the stock engine's `flutter_tester` given the same input, and the engine's own unit tests, ported (D5).
 
-Open: the VisionFive 2, on which nothing of stage 6 has run, and the cursor's shape looked at on a screen by a person. Every exit criterion is met, and every §15 limit has a test that crosses it. On the Pi 5 the devices were made through `/dev/uinput`; a real mouse aside, no real keyboard, touchpad or touch screen has been tried.
+Open: the VisionFive 2, on which nothing of stage 6 has run. Every exit criterion is met, and every §15 limit has a test that crosses it. On the Pi 5 the devices were made through `/dev/uinput`; a real mouse aside, no real keyboard, touchpad or touch screen has been tried.
 
 ## §11 exit criteria
 
@@ -12,7 +12,7 @@ Open: the VisionFive 2, on which nothing of stage 6 has run, and the cursor's sh
 | 2 | `text_field` takes text, a composed character, a dragged selection, copy and paste, and matches its golden after each | done | `text_field_edits_match_the_stock_framework`: frames after the typing, the selection and the paste against their goldens, and every editing value the one `flutter_tester` logs |
 | 3 | `keys` and `pointer` match `flutter_tester` for the same input; the synthesized events match the engine's unit tests, ported | done | `keys_match_the_stock_framework`, `pointers_match_the_stock_framework`. Ported, case for case under their names: fl-ui `pointer`, `PointerDataPacketConverter`'s 12; fl-input `xkb::tracker_tests`, 16 of `fl_key_embedder_responder_test.cc`'s 17; `pointer_tests`, the pointer, scrolling and touch managers' |
 | 4 | `scroll` scrolls by wheel, drag and fling to the stock engine's offsets within a pixel | done | `scroll_settles_where_the_stock_framework_does`: five rests (wheel, drag, fling, touchpad pan, wheel back), each within a logical pixel of `apps/scroll/test/scroll_settled.txt` |
-| 5 | Every message on `flutter/textinput`, `flutter/keyboard`, `flutter/platform`'s clipboard and `flutter/mousecursor` is answered | done | `messages_are_answered_every_way`; fl-ui `malformed_calls_are_errors`, `a_kind_is_shown_by_its_theme_name_and_every_call_is_answered`, `the_keyboard_state_is_a_standard_codec_map`; the channel fuzz target answers every call or names it no call; soak `persistent_handles=0` |
+| 5 | Every message on `flutter/textinput`, `flutter/keyboard`, `flutter/platform`'s clipboard and `flutter/mousecursor` is answered | done | `messages_are_answered_every_way`; `every_system_cursor_is_asked_for_by_its_theme_name`; fl-ui `malformed_calls_are_errors`, `a_kind_is_shown_by_its_theme_name_and_every_call_is_answered`, `the_keyboard_state_is_a_standard_codec_map`; the channel fuzz target answers every call or names it no call; soak `persistent_handles=0` |
 | 6 | The input thread never touches Dart: events are `Send`, the converter and editing state are not, each with a compile-fail case | done, one difference | fl-ui `tests/compile_fail/converter_crosses_threads`; fl-input `events_cross_threads`. The editing state is `Send` and behind fl-ui's mutex (below) |
 | 7 | Leak, sanitizer and fuzz lanes green with the M4 programs; every §15 limit crossed by a test | done | soak.yml `input_cycles_stay_flat` (counter, pointer, scroll, keys, text_field); sanitize.yml `apps_under_a_sanitizer` with `jit,kms`, ASan and TSan; fuzz: fl-input and fl-input-script `--test fuzz`, fl-ui's channel fuzz, short in ci.yml, long under ASan. Limits: §15 below |
 | 8 | No C compiler: Cargo builds no C or C++, the platform's libraries are linked, not built; the no-C++ lane covers the build. The core crates link none of them | done | ci.yml `no C++ toolchain` (`ci/no-cxx.sh`): `fl-dart` built with `--features kms` with no C++ compiler present and no crate that builds C in its tree, linking the system's libseat, libinput, libudev and libxkbcommon. ci.yml `Input boundary`: fl-ui and fl-shell depend on no backend, fl-input on nothing |
@@ -47,7 +47,7 @@ The other limits crossed (exit criterion 7): fl-input-script `a_script_is_bounde
 ## Open, carried forward
 
 * The VisionFive 2
-* The cursor's shape, looked at on a screen: the plane and its framebuffer were read from the card
+* The cursor's shape was looked at on the Pi 5's screen on 2026-11-17, a real mouse taken across `apps/cursors`: it changes in each cell. Each shape against its name is not recorded one by one
 * A real keyboard, touchpad and touch screen; a rotation and a canceled pinch from a device
 * The devices' thread under TSan: CI's runners have no devices, so the sanitizer lanes run the script's thread. The device source's state is driven in fl-platform-kms's tests with drmkit-input's events
 * From the device to the screen: latency is measured from the event's arrival to the end of `_drawFrame`
