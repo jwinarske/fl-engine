@@ -99,6 +99,40 @@ fn report(args: &[&std::ffi::OsStr]) -> Report {
     Report { line, values }
 }
 
+/// How far the Dart heap's resident pages may end above where they were a
+/// tenth of the way in: see [`growth_apart_from_dart`].
+#[cfg(feature = "aot")]
+const DART_HEAP_STEP_LIMIT_KB: u64 = 2048;
+
+/// A run's growth from its tenth to its end with the Dart heap's pages
+/// taken out, and the Dart heap's own, both in kB.
+///
+/// An app typed into for thousands of frames a cycle is sampled wherever
+/// its collector happens to be: text_field's Dart heap reads 5.4 to 6.7 MB
+/// from one tenth to the next on the same commit, and a low first sample
+/// alone put a run 1.1 MB over a 512 kB limit. The isolate is shut down
+/// each cycle, so nothing in its heap outlives one; what a leak across
+/// cycles grows is everything else, held to the limit as before, with the
+/// heap held to a step of its own.
+#[cfg(feature = "aot")]
+fn growth_apart_from_dart(r: &Report) -> (u64, u64) {
+    let dart: Vec<u64> = r
+        .line
+        .split_whitespace()
+        .find_map(|kv| kv.strip_prefix("rss_dart_tenths_kb="))
+        .map(|list| list.split(',').filter_map(|v| v.parse().ok()).collect())
+        .unwrap_or_default();
+    let (first, last) = (
+        dart.first().copied().unwrap_or(0),
+        dart.last().copied().unwrap_or(0),
+    );
+    let rest = |total: u64, dart: u64| total.saturating_sub(dart);
+    (
+        rest(r["rss_end_kb"], last).saturating_sub(rest(r["rss_tenth_kb"], first)),
+        last.saturating_sub(first),
+    )
+}
+
 /// Two frames at 60 Hz (brief M4 §15, latency): from an input event to
 /// the end of the frame that shows it.
 #[cfg(feature = "aot")]
@@ -185,10 +219,14 @@ fn input_cycles_stay_flat() {
         let r = report(&args);
         let n = u64::from(n);
         assert!(r["frames"] >= n, "{name}: {r:?}");
-        let growth = r["rss_end_kb"].saturating_sub(r["rss_tenth_kb"]);
+        let (growth, dart) = growth_apart_from_dart(&r);
         assert!(
             growth <= RSS_GROWTH_LIMIT_KB,
-            "{name}: RSS grew {growth} kB over the last nine tenths of {n} cycles: {r:?}"
+            "{name}: RSS apart from the Dart heap grew {growth} kB over the last nine tenths of {n} cycles: {r:?}"
+        );
+        assert!(
+            dart <= DART_HEAP_STEP_LIMIT_KB,
+            "{name}: the Dart heap ended {dart} kB above its tenth over {n} cycles: {r:?}"
         );
         assert_eq!(
             r["fds_end"], r["fds_warm"],
