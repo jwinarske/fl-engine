@@ -427,7 +427,7 @@ A keyboard (HP) and a mouse (Logitech, by its receiver) plugged in, a person at 
 
 The cursor, on this display controller:
 
-* **Near the top and left edges it broke up**, and came back in the middle; the right and bottom edges were clean. There the cursor's image is redrawn on every move, shifted inside its buffer so the plane need not start off the screen, and on the legacy calls it was redrawn into the one buffer being scanned out. Fixed in drmkit (drmkit#134): a second buffer, drawn into and then set. With that, looked at again: clean at both edges, the capture of it in the corner clean
+* **Near the top and left edges it broke up**, and came back in the middle; the right and bottom edges were clean. There the cursor's image is redrawn on every move, shifted inside its buffer so the plane need not start off the screen, and on the legacy calls it was redrawn into the one buffer being scanned out. Fixed in drmkit 0.1.6 (drmkit#134), pinned here: a second buffer, drawn into and then set. With that, looked at again: clean at both edges, the capture of it in the corner clean
 * **When it first appears it is sometimes noise: open, and not fixed here.** A mouse nudged once and left shows a scrambled cursor that stays until the mouse is moved further; a larger movement clears it. What was found, each with a person at the board:
   * The cursor's buffer is right while the monitor shows noise: every capture taken at that moment has a clean arrow, in place
   * It is not every run. The same build, app and nudge gave scrambled, clean, scrambled in three runs
