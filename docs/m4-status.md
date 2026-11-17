@@ -414,7 +414,24 @@ Found on the way:
 * The card's HDMI read no EDID until the board was started again: `EDID has corrupt header`, the connector connected with no mode, two cables alike. fl-dart said so (`no connector of any card has a display with a mode`). After a reboot it lists sixteen
 * cross.yml's riscv64 leg failed once on main, qemu-user crashing in its own code in the one test that ran fl-dart without the harness's rerun
 
-Not done: the devices. No keyboard or mouse is on the board, and its kernel has no `/dev/uinput` to make them with, so `run.sh --input`, a terminal switch, hotplug, the cursor and latency are as they were: seen on the Pi 5 only.
+### Its devices
+
+A keyboard (HP) and a mouse (Logitech, by its receiver) plugged in, a person at the board, each app shown for a minute or two over ssh at 1280x720. The board's kernel has no `/dev/uinput`, so nothing here is synthetic.
+
+* **Keys**: `keys` heard 243 key downs in one run and 155 in another, each with its physical key, logical key and character, two held at once among them
+* **Mouse**: `pointer` heard the mouse added, 2,019 hovers, 11 downs and ups, drags; and in a later run 209 wheel notches, both ways, each a scroll of 53 as on the Pi 5
+* **Cursors**: `cursors`, all 35 cells entered; the cursor changes in each, `wait` and `progress` animate
+* **A capture**: Print Screen with `--capture` wrote the display's frame with the cursor on it, read back through GBM's buffers, the cells `2D3748` and `4A5568` as drawn
+* **A switch of terminals**: Ctrl+Alt+F2 and Ctrl+Alt+F1, twice, the grid back each time and captured after (above, found on the way)
+* **`counter`**, the first app with text and Material's widgets on this board: drawn right, the count going up by the click. It is shown at about 20 frames a second, 199 flips over 620 blanks, where `ticker` holds 60: its frame is multisampled, and emblema's own numbers have this GPU paying for each sample (docs/on-a-board.md there). Its first clicks were not answered while the ripple's shaders compiled
+
+The cursor, on this display controller:
+
+* **Near the top and left edges it broke up**, and came back in the middle; the right and bottom edges were clean. There the cursor's image is redrawn on every move, shifted inside its buffer so the plane need not start off the screen, and on the legacy calls it was redrawn into the one buffer being scanned out. Fixed in drmkit (drmkit#134): a second buffer, drawn into and then set. With that, looked at again: clean at both edges, the capture of it in the corner clean
+* **When it first appears it is noise**, until it is next moved, though its buffer read back right at that moment. A mouse nudged once and left shows it; one kept moving does not. A cursor just shown, or just given a new shape, is now told to the card twice more, a tick apart (`SETTLE_TICKS`). With that, `pointer`'s cursor is clean from its first nudge. **`counter`'s is still noise at first**, its buffer again right in the capture: open. What differs there is not known; `counter` draws a few frames as the mouse first hovers, and `pointer` draws none
+* `counter`'s button keeps the arrow: the framework asks for `basic` over it, off the web, as a script's mouse shows here too
+
+Not done on this board: latency as a number (the longest alone is printed, and `counter`'s is its first frame's shaders, 1.9 s), hotplug, a touch screen. `run.sh --input` was not run as such; its two checks are the keys and the pointer downs above.
 
 ## Decisions taken 2026-11-16
 

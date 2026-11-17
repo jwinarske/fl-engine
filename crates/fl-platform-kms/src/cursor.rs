@@ -33,10 +33,12 @@ const NOMINAL: f64 = 24.0;
 const ANIMATION_TICK: Duration = Duration::from_millis(16);
 
 /// How many times more, a tick apart, a cursor just shown or just given a
-/// new shape is told to the card again. A VisionFive 2's display
-/// controller shows the first frame of a cursor newly set as noise, right
-/// as its buffer is, and puts it right at the next thing it is told; a
-/// mouse that moved once and stopped left the noise there.
+/// new shape is told to the card: once a pixel to the right, then where
+/// it is. A VisionFive 2's display controller shows the first frame of a
+/// cursor newly set as noise, right as its buffer is, and puts it right
+/// once the cursor has moved in a later frame; a mouse that moved once
+/// and stopped left the noise there. Telling it the same place again did
+/// nothing: it has to be another.
 const SETTLE_TICKS: u8 = 2;
 
 /// The name the framework's `SystemMouseCursors.none` has.
@@ -372,11 +374,12 @@ fn serve(
                 }
             }
         }
-        renderer.move_to(wanted.x, wanted.y);
         let shown = wanted.shown && wanted.shape != NONE;
         if shown && !was_shown {
             settle = SETTLE_TICKS;
         }
+        // Settling, the tick before the last is a pixel aside.
+        renderer.move_to(wanted.x.saturating_add(i32::from(settle == 1)), wanted.y);
         was_shown = shown;
         renderer.set_visible(shown);
         if animated {
