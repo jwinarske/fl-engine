@@ -372,6 +372,15 @@ Tests (fl-platform-kms, two more cases): a pinch's zoom and turn as one gesture,
 
 Not seen: a real touchpad, and a rotation from a device (the script's fingers moved apart on a line).
 
+## Stage 6: latency on the board (2026-11-16)
+
+Stage 7 left tap-to-frame latency on the Pi 5 for stage 6 (brief §15: from the oldest event a frame shows to the end of its `_drawFrame`, held to two frames).
+
+* `run-app --kms` prints the `input:` line a script's run prints, for the seat's devices: the frames input asked for, the longest latency, the motion dropped
+* On the Pi 5 at 1280x1440 and 60 Hz, `counter` with a mouse made through `/dev/uinput` taken to the button and clicked, three runs of 100 frames: 20 frames asked for by input in each, the longest 16.7, 16.7 and 16.2 ms, none dropped. Under one frame of 16.7 ms: an event waits for the next blank, and the build is short
+
+Not measured: from the device to the screen. The blank the frame is shown at is one more after the end of `_drawFrame`, and libinput's own delay is before the event.
+
 ## Decisions taken 2026-11-16
 
 D1 (devices and a script, no window), D4 (clipboard in the process), D5 and D6 (no system IME), each with what the stock Linux embedder does in its place (brief §13). D5 as taken: no recordings from the stock embedder; the engine's unit tests ported for each layer, and the same scripted input given to `flutter_tester` and to fl-dart end to end.
