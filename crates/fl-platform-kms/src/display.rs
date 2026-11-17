@@ -516,6 +516,10 @@ impl ScanoutOutput for Display {
         &self.pipeline.formats
     }
 
+    fn device_fd(&self) -> Option<std::os::fd::BorrowedFd<'_>> {
+        Some(self.pipeline.device.as_fd())
+    }
+
     fn import_dmabuf(&mut self, buffer: DmaBufPlanes) -> emblema_hal::Result<FbHandle> {
         if buffer.planes.is_empty() || buffer.planes.len() > 4 {
             return Err(Error::Unsupported(

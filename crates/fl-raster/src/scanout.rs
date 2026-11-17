@@ -33,15 +33,25 @@ struct Shared {
     /// The output's formats when this was made: with the ring, so as the
     /// card stands.
     formats: Vec<FormatModifierSet>,
+    /// The output's card as it was then, its own descriptor: the lock's
+    /// guard cannot lend the output's.
+    card: Option<std::os::fd::OwnedFd>,
     reconfigured: Arc<AtomicBool>,
 }
 
 impl Shared {
     fn new(output: &Arc<Mutex<Output>>, reconfigured: &Arc<AtomicBool>) -> Shared {
-        let formats = lock(output).supported_formats().to_vec();
+        let (formats, card) = {
+            let output = lock(output);
+            let card = output
+                .device_fd()
+                .and_then(|fd| fd.try_clone_to_owned().ok());
+            (output.supported_formats().to_vec(), card)
+        };
         Shared {
             output: Arc::clone(output),
             formats,
+            card,
             reconfigured: Arc::clone(reconfigured),
         }
     }
@@ -72,6 +82,10 @@ impl ScanoutOutput for Shared {
 
     fn supported_formats(&self) -> &[FormatModifierSet] {
         &self.formats
+    }
+
+    fn device_fd(&self) -> Option<std::os::fd::BorrowedFd<'_>> {
+        self.card.as_ref().map(std::os::fd::AsFd::as_fd)
     }
 
     fn import_dmabuf(&mut self, buffer: DmaBufPlanes) -> emblema::Result<FbHandle> {
@@ -139,8 +153,22 @@ impl Scanout {
             old.destroy(vk);
         }
         self.reconfigured.store(false, Ordering::Release);
+        // The renderer's own buffers, handed to the display; and where the
+        // display takes none of those (a display controller apart from the
+        // GPU, which imports nothing it did not allocate), the display's,
+        // allocated by GBM on its card and drawn into by the renderer.
         let shared = Shared::new(&self.output, &self.reconfigured);
-        let target = DrmScanoutTarget::new(vk, shared, DEFAULT_RING_DEPTH)?;
+        let target = match DrmScanoutTarget::new(vk, shared, DEFAULT_RING_DEPTH) {
+            Ok(target) => target,
+            Err(own) => {
+                let shared = Shared::new(&self.output, &self.reconfigured);
+                DrmScanoutTarget::with_gbm(vk, shared, DEFAULT_RING_DEPTH).map_err(|gbm| {
+                    RasterError::Unsupported(format!(
+                        "no buffers for the display: the renderer's ({own}), nor the card's through GBM ({gbm})"
+                    ))
+                })?
+            }
+        };
         let extent = target.extent();
         self.device.width = extent.width;
         self.device.height = extent.height;

@@ -252,6 +252,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "38690d60a00be5899c86f52cf2186d50571d79eefeef6d59e56b2228a667c9c0"
 
 [[package]]
+name = "drmkit-gbm"
+version = "0.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f70a3d319c1b06b55d6cdd54caf764357a07e17c29559354e17b5713ec161350"
+dependencies = [
+ "libloading",
+ "rustix",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "drmkit-input"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -402,6 +413,7 @@ version = "0.2.0"
 source = "git+https://github.com/jwinarske/emblema?rev=7d4253a7314172925059587e5c600ddfde3d7483#7d4253a7314172925059587e5c600ddfde3d7483"
 dependencies = [
  "drm",
+ "drmkit-gbm",
  "emblema-core",
  "emblema-hal",
  "emblema-present",
@@ -556,6 +568,7 @@ version = "0.1.0"
 dependencies = [
  "emblema",
  "emblema-hal",
+ "emblema-present-drm",
  "fl-text",
  "fl-ui",
  "png",
