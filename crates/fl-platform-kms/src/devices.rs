@@ -16,8 +16,9 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use drmkit_input::{
-    InputEvent, KeyRepeater, LibinputInterface, PointerEvent as Pointer, RepeatConfig,
-    ScrollSource, SeatOptions, TouchPhase,
+    DeviceChange, DeviceEvent, GestureEvent, GestureKind, GesturePhase, InputEvent, KeyRepeater,
+    LibinputInterface, PointerEvent as Pointer, RepeatConfig, ScrollSource, SeatOptions,
+    TouchPhase,
 };
 use drmkit_session::{LibseatBackend, Session};
 use fl_input::pointer::{button, At, Mouse, Scroll, Scrolling, TouchAction, Touches};
@@ -151,6 +152,13 @@ pub(crate) struct State {
     entered: bool,
     /// A touchpad's two-finger scroll is under way.
     panning: bool,
+    /// A touchpad's pinch is under way, and how far it has turned, in
+    /// radians: libinput says each step, the embedder the whole.
+    pinching: bool,
+    turned: f64,
+    /// The device that last moved the pointer, by its name: the pointer
+    /// leaves the view when it is unplugged.
+    mouse_device: Option<String>,
     /// Each finger down, by its slot, and where it last was: an up does
     /// not say.
     fingers: Vec<(u32, f64, f64)>,
@@ -169,11 +177,15 @@ impl State {
             f64::from(config.width.max(1)),
             f64::from(config.height.max(1)),
         );
+        // A pinch is said where the mouse last was: where it starts, until
+        // it moves.
+        let mut scrolling = Scrolling::new(VIEW);
+        scrolling.set_last_mouse_position((width / 2.0).floor(), (height / 2.0).floor());
         Ok(State {
             keymap,
             keys: Keys::new(),
             mouse: Mouse::new(VIEW),
-            scrolling: Scrolling::new(VIEW),
+            scrolling,
             touches: Touches::new(VIEW),
             // A pointer starts in the middle, as a compositor's does.
             x: (width / 2.0).floor(),
@@ -187,6 +199,9 @@ impl State {
             },
             entered: false,
             panning: false,
+            pinching: false,
+            turned: 0.0,
+            mouse_device: None,
             fingers: Vec::new(),
             seat_keys: Vec::new(),
             cursor: config.cursor.clone(),
@@ -261,14 +276,97 @@ impl State {
         self.scrolling.set_last_mouse_position(self.x, self.y);
     }
 
+    /// Remembers whose pointer it is. A name is kept only when it changes:
+    /// a mouse says it with every move.
+    fn moved_by(&mut self, device: Option<&str>) {
+        if self.mouse_device.as_deref() != device {
+            self.mouse_device = device.map(str::to_owned);
+        }
+    }
+
+    /// A touchpad's pinch: a zoom and a rotation at once, which the
+    /// embedder is told as GTK's two gestures and tells the framework as
+    /// one. A swipe of three fingers or more and a hold are nothing to the
+    /// framework.
+    fn gesture(&mut self, sink: &dyn EventSink, event: &GestureEvent) {
+        if event.kind != GestureKind::Pinch {
+            return;
+        }
+        let now = sink.now();
+        match event.phase {
+            GesturePhase::Begin => {
+                if self.pinching {
+                    return;
+                }
+                self.pinching = true;
+                self.turned = 0.0;
+                self.scrolling.zoom_begin(now, &mut self.out);
+                self.scrolling.rotation_begin(now, &mut self.out);
+            }
+            GesturePhase::Update if self.pinching => {
+                let scale = event.scale;
+                if scale.is_finite() && scale > 0.0 {
+                    self.scrolling.zoom_update(now, scale, &mut self.out);
+                }
+                // Degrees, clockwise, as the framework's radians are.
+                let step = finite(event.rotation).to_radians();
+                if step != 0.0 {
+                    self.turned += step;
+                    self.scrolling
+                        .rotation_update(now, self.turned, &mut self.out);
+                }
+            }
+            // The framework has no cancel for a pan-zoom: either ends it.
+            GesturePhase::End | GesturePhase::Cancel => self.end_pinch(now),
+            _ => {}
+        }
+    }
+
+    fn end_pinch(&mut self, now: std::time::Duration) {
+        if self.pinching {
+            self.pinching = false;
+            self.scrolling.zoom_end(now, &mut self.out);
+            self.scrolling.rotation_end(now, &mut self.out);
+        }
+    }
+
+    /// A device plugged in or unplugged. libinput has let go of what an
+    /// unplugged one held; what is left is the pointer it moved, which
+    /// leaves the view, and its cursor with it.
+    fn device(&mut self, sink: &dyn EventSink, event: &DeviceEvent) {
+        if event.change != DeviceChange::Removed || !event.capabilities.pointer {
+            return;
+        }
+        if !self.entered || self.mouse_device != event.name {
+            return;
+        }
+        self.mouse_device = None;
+        self.leave(sink.now());
+    }
+
+    fn leave(&mut self, now: std::time::Duration) {
+        if self.entered {
+            self.entered = false;
+            let at = At::mouse(now, self.x, self.y);
+            self.mouse.leave(&at, &mut self.out);
+            if let Some(cursor) = &self.cursor {
+                cursor.hide();
+            }
+        }
+    }
+
     fn pointer_event(&mut self, sink: &dyn EventSink, event: &Pointer) {
         match event {
             Pointer::Motion(m) => {
                 let (dx, dy) = (finite(m.dx), finite(m.dy));
+                self.moved_by(m.device.as_deref());
                 self.moved(sink, self.x + dx, self.y + dy);
             }
             // An extent of 1 by 1, onto the view's.
-            Pointer::Absolute(a) => self.moved(sink, a.x * self.width, a.y * self.height),
+            Pointer::Absolute(a) => {
+                self.moved_by(a.device.as_deref());
+                self.moved(sink, a.x * self.width, a.y * self.height);
+            }
             Pointer::Button(b) => {
                 let gdk = match b.button {
                     BTN_LEFT => button::PRIMARY,
@@ -364,6 +462,8 @@ impl State {
             InputEvent::Key(key) => self.key(sink, key.key, key.pressed, asked),
             InputEvent::Pointer(pointer) => self.pointer_event(sink, pointer),
             InputEvent::Touch(touch) => self.touch(sink, touch),
+            InputEvent::Gesture(gesture) => self.gesture(sink, gesture),
+            InputEvent::Device(device) => self.device(sink, device),
             _ => {}
         }
         self.deliver(sink);
@@ -399,14 +499,8 @@ impl State {
             };
             self.scrolling.scroll(&scroll, self.scale, &mut self.out);
         }
-        if self.entered {
-            self.entered = false;
-            let at = At::mouse(now, self.x, self.y);
-            self.mouse.leave(&at, &mut self.out);
-            if let Some(cursor) = &self.cursor {
-                cursor.hide();
-            }
-        }
+        self.end_pinch(now);
+        self.leave(now);
         self.deliver(sink);
     }
 }
@@ -645,6 +739,127 @@ mod tests {
             phase,
             device: None,
         })
+    }
+
+    fn pinch(phase: GesturePhase, scale: f64, rotation: f64) -> InputEvent {
+        InputEvent::Gesture(GestureEvent {
+            time_ms: 0,
+            kind: GestureKind::Pinch,
+            phase,
+            fingers: 2,
+            dx: 0.0,
+            dy: 0.0,
+            scale,
+            rotation,
+            device: None,
+        })
+    }
+
+    fn unplugged(name: &str, pointer: bool) -> InputEvent {
+        InputEvent::Device(DeviceEvent {
+            change: DeviceChange::Removed,
+            sysname: "event9".into(),
+            name: Some(name.into()),
+            vendor: 0,
+            product: 0,
+            capabilities: drmkit_input::DeviceCapabilities {
+                pointer,
+                ..Default::default()
+            },
+        })
+    }
+
+    #[test]
+    fn a_pinch_is_a_zoom_and_a_rotation_as_one_gesture() {
+        let (mut s, sink, mut asked) = (state(), Kept::default(), Asked::default());
+        // An update with no begin is no gesture.
+        s.event(&sink, &pinch(GesturePhase::Update, 2.0, 0.0), &mut asked);
+        assert!(sink.taken().is_empty());
+        s.event(&sink, &pinch(GesturePhase::Begin, 1.0, 0.0), &mut asked);
+        s.event(&sink, &pinch(GesturePhase::Update, 1.5, 0.0), &mut asked);
+        // Each step of the turn adds to the whole, in radians.
+        s.event(&sink, &pinch(GesturePhase::Update, 2.0, 90.0), &mut asked);
+        s.event(&sink, &pinch(GesturePhase::Update, 2.0, 90.0), &mut asked);
+        // A device that says nothing sensible changes nothing.
+        s.event(
+            &sink,
+            &pinch(GesturePhase::Update, f64::NAN, f64::INFINITY),
+            &mut asked,
+        );
+        s.event(&sink, &pinch(GesturePhase::End, 2.0, 0.0), &mut asked);
+        let events = sink.taken();
+        // Where the pointer starts, which no mouse has moved it from.
+        assert_eq!((events[0].x, events[0].y), (400.0, 300.0));
+        let said: Vec<_> = events
+            .iter()
+            .map(|e| (e.phase, e.scale, (e.rotation * 100.0).round()))
+            .collect();
+        assert_eq!(
+            said,
+            [
+                (PointerPhase::PanZoomStart, 0.0, 0.0),
+                (PointerPhase::PanZoomUpdate, 1.5, 0.0),
+                (PointerPhase::PanZoomUpdate, 2.0, 0.0),
+                (PointerPhase::PanZoomUpdate, 2.0, 157.0),
+                (PointerPhase::PanZoomUpdate, 2.0, 157.0),
+                (PointerPhase::PanZoomUpdate, 2.0, 314.0),
+                (PointerPhase::PanZoomEnd, 0.0, 0.0),
+            ]
+        );
+        // One that is canceled ends too, and so does one the devices
+        // going cuts short; a swipe and a hold are nothing.
+        s.event(&sink, &pinch(GesturePhase::Begin, 1.0, 0.0), &mut asked);
+        s.event(&sink, &pinch(GesturePhase::Cancel, 1.0, 0.0), &mut asked);
+        s.event(&sink, &pinch(GesturePhase::Begin, 1.0, 0.0), &mut asked);
+        s.release_all(&sink);
+        let InputEvent::Gesture(mut swipe) = pinch(GesturePhase::Begin, 1.0, 0.0) else {
+            unreachable!()
+        };
+        swipe.kind = GestureKind::Swipe;
+        s.event(&sink, &InputEvent::Gesture(swipe), &mut asked);
+        assert_eq!(
+            sink.phases(),
+            [
+                PointerPhase::PanZoomStart,
+                PointerPhase::PanZoomEnd,
+                PointerPhase::PanZoomStart,
+                PointerPhase::PanZoomEnd
+            ]
+        );
+    }
+
+    #[test]
+    fn the_pointer_leaves_with_the_mouse_that_moved_it() {
+        use crate::cursor::Ask;
+        let (pointer, asks) = crate::Pointer::kept();
+        let mut s = state();
+        s.cursor = Some(pointer);
+        let (sink, mut asked) = (Kept::default(), Asked::default());
+        let by = |name: &str| {
+            InputEvent::Pointer(Pointer::Motion(PointerMotion {
+                time_ms: 0,
+                dx: 1.0,
+                dy: 0.0,
+                device: Some(name.into()),
+            }))
+        };
+        s.event(&sink, &by("a mouse"), &mut asked);
+        sink.taken();
+        assert!(matches!(asks.try_recv(), Ok(Ask::Move(..))));
+        // A keyboard, and another mouse, take nothing with them.
+        s.event(&sink, &unplugged("a mouse", false), &mut asked);
+        s.event(&sink, &unplugged("another mouse", true), &mut asked);
+        assert!(sink.taken().is_empty());
+        assert!(asks.try_recv().is_err());
+        s.event(&sink, &unplugged("a mouse", true), &mut asked);
+        assert_eq!(sink.phases(), [PointerPhase::Remove]);
+        assert!(matches!(asks.try_recv(), Ok(Ask::Hide)));
+        // Once: it has left already.
+        s.event(&sink, &unplugged("a mouse", true), &mut asked);
+        assert!(sink.taken().is_empty());
+        // And it is back where it was with the next mouse's first move.
+        s.event(&sink, &by("another mouse"), &mut asked);
+        assert_eq!(sink.phases().first(), Some(&PointerPhase::Add));
     }
 
     fn key(name: &str, down: bool) -> InputEvent {
