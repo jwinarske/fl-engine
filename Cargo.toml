@@ -63,3 +63,19 @@ fl-input = { path = "crates/fl-input", version = "0.1.0" }
 fl-input-script = { path = "crates/fl-input-script", version = "0.1.0" }
 fl-platform-kms = { path = "crates/fl-platform-kms", version = "0.1.0" }
 fl-text = { path = "crates/fl-text", version = "0.1.0" }
+
+# Not for merging: drmkit from its cursor branch, for a board check.
+[patch.crates-io]
+drmkit-capture = { git = "https://github.com/jwinarske/drmkit", branch = "cursor-legacy-two-buffers" }
+drmkit-core = { git = "https://github.com/jwinarske/drmkit", branch = "cursor-legacy-two-buffers" }
+drmkit-cursor = { git = "https://github.com/jwinarske/drmkit", branch = "cursor-legacy-two-buffers" }
+drmkit-display = { git = "https://github.com/jwinarske/drmkit", branch = "cursor-legacy-two-buffers" }
+drmkit-dumb = { git = "https://github.com/jwinarske/drmkit", branch = "cursor-legacy-two-buffers" }
+drmkit-fmt = { git = "https://github.com/jwinarske/drmkit", branch = "cursor-legacy-two-buffers" }
+drmkit-gbm = { git = "https://github.com/jwinarske/drmkit", branch = "cursor-legacy-two-buffers" }
+drmkit-input = { git = "https://github.com/jwinarske/drmkit", branch = "cursor-legacy-two-buffers" }
+drmkit-log = { git = "https://github.com/jwinarske/drmkit", branch = "cursor-legacy-two-buffers" }
+drmkit-modeset = { git = "https://github.com/jwinarske/drmkit", branch = "cursor-legacy-two-buffers" }
+drmkit-planes = { git = "https://github.com/jwinarske/drmkit", branch = "cursor-legacy-two-buffers" }
+drmkit-session = { git = "https://github.com/jwinarske/drmkit", branch = "cursor-legacy-two-buffers" }
+drmkit-time = { git = "https://github.com/jwinarske/drmkit", branch = "cursor-legacy-two-buffers" }

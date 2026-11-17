@@ -67,7 +67,7 @@ apps=()
 if [[ -n "$flutter" ]]; then
   (cd "$repo" && cargo build --release -p fl-dart-cli --features kms --target "$target")
   cp "$repo/target/$target/release/fl-dart" "$kit/fl-dart-kms"
-  for app in ticker keys pointer; do
+  for app in ticker keys pointer cursors; do
     "$repo/tools/flutter-app/build.sh" "$flutter" "$repo/apps/$app" "$kit" "$target"
     apps+=("$app.so")
   done
