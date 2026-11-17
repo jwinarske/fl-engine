@@ -42,6 +42,9 @@ pub struct DevicesConfig {
     pub scale: f64,
     /// The cursor that follows the mouse, if the display has one.
     pub cursor: Option<crate::Pointer>,
+    /// Told when Print Screen goes down, which is then no key of the
+    /// framework's: someone wants what the display shows kept.
+    pub print_screen: Option<std::sync::mpsc::Sender<()>>,
 }
 
 /// The one view there is.
@@ -63,6 +66,9 @@ const MAX_KEYCODE: u32 = 767;
 /// `XF86Switch_VT_1`; the twelve are consecutive.
 const SWITCH_VT_1: u32 = 0x1008_fe01;
 const SWITCH_VTS: u32 = 12;
+
+/// `Print`, the Print Screen key.
+const PRINT: u32 = 0xff61;
 
 /// A wheel's notch in libinput's scroll value, degrees.
 const WHEEL_NOTCH: f64 = 15.0;
@@ -166,6 +172,7 @@ pub(crate) struct State {
     /// are the seat's too.
     seat_keys: Vec<u16>,
     cursor: Option<crate::Pointer>,
+    print_screen: Option<std::sync::mpsc::Sender<()>>,
     out: Vec<PointerEvent>,
 }
 
@@ -205,6 +212,7 @@ impl State {
             fingers: Vec::new(),
             seat_keys: Vec::new(),
             cursor: config.cursor.clone(),
+            print_screen: config.print_screen.clone(),
             out: Vec::new(),
         })
     }
@@ -251,6 +259,15 @@ impl State {
                 self.seat_keys.push(keycode);
             }
             return;
+        }
+        if pressed && key.keyval == PRINT {
+            if let Some(told) = &self.print_screen {
+                let _ = told.send(());
+                if !self.seat_keys.contains(&keycode) {
+                    self.seat_keys.push(keycode);
+                }
+                return;
+            }
         }
         // Its up, by which time the modifiers that made it the seat's may
         // be up themselves, and its repeats.
@@ -696,6 +713,7 @@ mod tests {
             height: 600,
             scale: 2.0,
             cursor: None,
+            print_screen: None,
         })
         .unwrap()
     }
@@ -994,6 +1012,29 @@ mod tests {
             s.event(&sink, &touch(slot, 0.5, 0.5, TouchPhase::Down), &mut asked);
         }
         assert_eq!(s.fingers.len(), MAX_SLOTS);
+    }
+
+    #[test]
+    fn print_screen_is_told_to_who_asked_and_is_a_key_otherwise() {
+        let (mut s, sink, mut asked) = (state(), Kept::default(), Asked::default());
+        // Nobody asked: a key as any other.
+        s.event(&sink, &key("printScreen", true), &mut asked);
+        s.event(&sink, &key("printScreen", false), &mut asked);
+        assert_eq!(sink.keys(), [true, false]);
+        let (tx, rx) = std::sync::mpsc::channel();
+        s.print_screen = Some(tx);
+        // Asked for: told once for the down, its repeat and its up nobody's.
+        s.event(&sink, &key("printScreen", true), &mut asked);
+        s.event(&sink, &key("printScreen", false), &mut asked);
+        assert_eq!(rx.try_iter().count(), 1);
+        assert_eq!(sink.keys(), []);
+        assert!(s.seat_keys.is_empty());
+        // Whoever asked has gone: the key is still not the framework's.
+        drop(rx);
+        s.event(&sink, &key("printScreen", true), &mut asked);
+        s.event(&sink, &key("printScreen", false), &mut asked);
+        assert_eq!(sink.keys(), []);
+        assert_eq!(asked, Asked::default());
     }
 
     #[test]

@@ -1098,6 +1098,46 @@ fn pointers_match_the_stock_framework() {
     assert!(out.contains(" dropped=0\n"), "{out}");
 }
 
+/// The mouse cursor (brief M4 stage 6, exit criterion 5's last channel):
+/// `apps/cursors` has a cell for each of the framework's system cursors,
+/// and a script's mouse goes into each in turn. The framework asks for
+/// every one as the mouse enters its cell, by the kind the cell names, and
+/// the engine answers with the cursor theme's name the Linux embedder has
+/// for that kind (apps/cursors/test/cursors.txt), `none` for no cursor.
+#[test]
+#[ignore = "app lane: needs FLUTTER_ROOT"]
+fn every_system_cursor_is_asked_for_by_its_theme_name() {
+    let app = build_app("cursors");
+    let dir = repo().join("apps/cursors/test");
+    let script = dir.join("cursors_script.txt");
+    let o = common::fl_dart(&[
+        "run-app".as_ref(),
+        app.as_os_str(),
+        "1000x700".as_ref(),
+        "--input".as_ref(),
+        script.as_os_str(),
+    ]);
+    assert!(o.status.success(), "{o:?}");
+    let out = String::from_utf8_lossy(&o.stdout);
+    let expected = std::fs::read_to_string(dir.join("cursors.txt")).unwrap();
+    let expected: Vec<&str> = expected.lines().collect();
+    assert_eq!(expected.len(), 35);
+    // What the engine was asked to show, in the cells' order.
+    let asked: Vec<&str> = out
+        .lines()
+        .filter_map(|l| l.strip_prefix("mouse cursor: "))
+        .collect();
+    assert_eq!(asked, expected, "{out}");
+    // And the cell the app saw the mouse in each time: its own name for
+    // the theme's cursor is the engine's.
+    let entered: Vec<&str> = out
+        .lines()
+        .filter_map(|l| l.strip_prefix("cursor ")?.split(' ').nth(1))
+        .collect();
+    assert_eq!(entered, expected, "{out}");
+    assert!(out.contains(" dropped=0\n"), "{out}");
+}
+
 /// Scrolling (brief M4 stage 5, exit criterion 4): a list scrolled by the
 /// wheel, dragged and flung by a finger, and panned on a touchpad comes to
 /// rest where flutter_tester's does for the same events at the same times

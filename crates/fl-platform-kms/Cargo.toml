@@ -22,6 +22,8 @@ drmkit-modeset = { workspace = true }
 # The cursor: XCursor themes read in Rust, shown on the card's cursor plane.
 drmkit-cursor = { workspace = true }
 drmkit-planes = { workspace = true }
+# What the display shows, read back from the card (`run-app --capture`).
+drmkit-capture = { workspace = true }
 drm = { workspace = true }
 rustix = { workspace = true }
 # The trait the display implements (brief M4 D9), and its types: emblema's

@@ -1,0 +1,11 @@
+name: cursors
+description: fl-engine test program. A cell for each system mouse cursor, to look at on a board (docs/m4-input.md stage 6).
+publish_to: none
+environment:
+  sdk: ^3.13.0
+dependencies:
+  flutter:
+    sdk: flutter
+dev_dependencies:
+  flutter_test:
+    sdk: flutter

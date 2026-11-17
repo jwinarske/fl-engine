@@ -175,10 +175,25 @@ dependencies = [
 ]
 
 [[package]]
-name = "drmkit-core"
-version = "0.1.4"
+name = "drmkit-capture"
+version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3dbaca9c2767f92836e7c62cc223bb68ceaafd849ff9a20dc6b8f8d962572c59"
+checksum = "f61b84be43169a11544a0f8a3bd889e62a1931e1cc2bcb67f89097083bacb75d"
+dependencies = [
+ "drm",
+ "drmkit-core",
+ "drmkit-fmt",
+ "drmkit-log",
+ "png",
+ "rustix",
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "drmkit-core"
+version = "0.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fa3e41dd1fbfc5c224e8765d87abf3f7863f69eaf61c3d9bd69a90bc4164b779"
 dependencies = [
  "drm",
  "drm-ffi",
@@ -189,9 +204,9 @@ dependencies = [
 
 [[package]]
 name = "drmkit-cursor"
-version = "0.1.4"
+version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "31ca02e0f4b7791940a311de3a27f81ce298f743e94132d3c436292b2e64725e"
+checksum = "b6559fdb836222fde7f95f5c53b94f3f9682d87b16bb84d82f9c2e5346fc23bd"
 dependencies = [
  "drm",
  "drmkit-core",
@@ -203,9 +218,9 @@ dependencies = [
 
 [[package]]
 name = "drmkit-display"
-version = "0.1.4"
+version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7232c8c27658b19a7f73d800076cc1d8b1959d80e0f067cb0081aede1f1a0adf"
+checksum = "4f9873b556368ff9fb153913094ae46e4c08991131cd698ba01146257cb2d289"
 dependencies = [
  "drm",
  "drmkit-core",
@@ -218,9 +233,9 @@ dependencies = [
 
 [[package]]
 name = "drmkit-dumb"
-version = "0.1.4"
+version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3eff3c38fe0c07156f5d18920657555e0aa96380d93475a96ffa7ec496baa38c"
+checksum = "acebb41a02a43d935d125e01af94e22a6b0cca3573846535389263e85ea91fef"
 dependencies = [
  "drm",
  "drm-ffi",
@@ -232,15 +247,15 @@ dependencies = [
 
 [[package]]
 name = "drmkit-fmt"
-version = "0.1.4"
+version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7a588bdb39813e5ecfb829c56a21e29d3e39ba34c9ad452c6d3cc9bca886d47c"
+checksum = "38690d60a00be5899c86f52cf2186d50571d79eefeef6d59e56b2228a667c9c0"
 
 [[package]]
 name = "drmkit-input"
-version = "0.1.4"
+version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9efccdbc6c26f26d15310c02959ac96d02fa02a8638672c2c6d7aaba2fe8eba8"
+checksum = "21c38e2fd2de7e880dc50627b56e8fa705867f63bb001aae072be8a902ec474c"
 dependencies = [
  "drmkit-log",
  "input",
@@ -251,15 +266,15 @@ dependencies = [
 
 [[package]]
 name = "drmkit-log"
-version = "0.1.4"
+version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ccb27b9bb1aca61a11c384cf016bb489bd53a608cbfa748f5feb879224a9cde8"
+checksum = "94615156f67b9cc6c68d520c5e17396eca2b9acf3cefa6fb007fa09373a35843"
 
 [[package]]
 name = "drmkit-modeset"
-version = "0.1.4"
+version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6e0a6e5bb9677d86db62e8ad2aecd3fe8b8041225f2343bb7945838923ab55fe"
+checksum = "403be5c4107455d81045ff0312cbc436ce86c8c03634aff3bd9346b561595871"
 dependencies = [
  "drm",
  "drmkit-core",
@@ -270,9 +285,9 @@ dependencies = [
 
 [[package]]
 name = "drmkit-planes"
-version = "0.1.4"
+version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fa614443744e390c4424922b78271f6b878e93fcdc2ca2bf917453d34ab0836b"
+checksum = "da562dbe32b1b1b78d89fac6b2154562b49012763c61077b43f57622276b7bb0"
 dependencies = [
  "drm",
  "drmkit-core",
@@ -283,9 +298,9 @@ dependencies = [
 
 [[package]]
 name = "drmkit-session"
-version = "0.1.4"
+version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ea3fb98b367fc448503d81f4622f95997de7bbb621cba22b5ade7889cda2c886"
+checksum = "51c31745da8a1819c4748581c52eb232e1b1328a7ac403b20b5fb1592d041671"
 dependencies = [
  "drmkit-log",
  "libseat",
@@ -294,9 +309,9 @@ dependencies = [
 
 [[package]]
 name = "drmkit-time"
-version = "0.1.4"
+version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3d1a306ae2cb7c7ac95317818a0c9f8c02f6c668912c95e1b6b65446de820ca3"
+checksum = "2326e1a64c2499d65bbf9a63e8ac6bf4310c4d9ef313e1827bc4dbcdab5e39e9"
 dependencies = [
  "rustix",
 ]
@@ -320,7 +335,7 @@ checksum = "0e9c71c2167ca323c882b99918929403426e2373ea17242ff5653e0d5e1058be"
 [[package]]
 name = "emblema"
 version = "0.2.0"
-source = "git+https://github.com/jwinarske/emblema?rev=7aacc5753a77c021545c210fe10165ae6e80d3d7#7aacc5753a77c021545c210fe10165ae6e80d3d7"
+source = "git+https://github.com/jwinarske/emblema?rev=7d4253a7314172925059587e5c600ddfde3d7483#7d4253a7314172925059587e5c600ddfde3d7483"
 dependencies = [
  "emblema-core",
  "emblema-hal",
@@ -333,7 +348,7 @@ dependencies = [
 [[package]]
 name = "emblema-core"
 version = "0.2.0"
-source = "git+https://github.com/jwinarske/emblema?rev=7aacc5753a77c021545c210fe10165ae6e80d3d7#7aacc5753a77c021545c210fe10165ae6e80d3d7"
+source = "git+https://github.com/jwinarske/emblema?rev=7d4253a7314172925059587e5c600ddfde3d7483#7d4253a7314172925059587e5c600ddfde3d7483"
 dependencies = [
  "emblema-geometry",
  "emblema-hal",
@@ -346,7 +361,7 @@ dependencies = [
 [[package]]
 name = "emblema-geometry"
 version = "0.2.0"
-source = "git+https://github.com/jwinarske/emblema?rev=7aacc5753a77c021545c210fe10165ae6e80d3d7#7aacc5753a77c021545c210fe10165ae6e80d3d7"
+source = "git+https://github.com/jwinarske/emblema?rev=7d4253a7314172925059587e5c600ddfde3d7483#7d4253a7314172925059587e5c600ddfde3d7483"
 dependencies = [
  "earcutr",
  "glam",
@@ -356,7 +371,7 @@ dependencies = [
 [[package]]
 name = "emblema-hal"
 version = "0.2.0"
-source = "git+https://github.com/jwinarske/emblema?rev=7aacc5753a77c021545c210fe10165ae6e80d3d7#7aacc5753a77c021545c210fe10165ae6e80d3d7"
+source = "git+https://github.com/jwinarske/emblema?rev=7d4253a7314172925059587e5c600ddfde3d7483#7d4253a7314172925059587e5c600ddfde3d7483"
 dependencies = [
  "thiserror 1.0.69",
 ]
@@ -364,7 +379,7 @@ dependencies = [
 [[package]]
 name = "emblema-hal-vulkan"
 version = "0.2.0"
-source = "git+https://github.com/jwinarske/emblema?rev=7aacc5753a77c021545c210fe10165ae6e80d3d7#7aacc5753a77c021545c210fe10165ae6e80d3d7"
+source = "git+https://github.com/jwinarske/emblema?rev=7d4253a7314172925059587e5c600ddfde3d7483#7d4253a7314172925059587e5c600ddfde3d7483"
 dependencies = [
  "ash",
  "emblema-hal",
@@ -375,7 +390,7 @@ dependencies = [
 [[package]]
 name = "emblema-present"
 version = "0.2.0"
-source = "git+https://github.com/jwinarske/emblema?rev=7aacc5753a77c021545c210fe10165ae6e80d3d7#7aacc5753a77c021545c210fe10165ae6e80d3d7"
+source = "git+https://github.com/jwinarske/emblema?rev=7d4253a7314172925059587e5c600ddfde3d7483#7d4253a7314172925059587e5c600ddfde3d7483"
 dependencies = [
  "emblema-hal",
  "log",
@@ -384,7 +399,7 @@ dependencies = [
 [[package]]
 name = "emblema-present-drm"
 version = "0.2.0"
-source = "git+https://github.com/jwinarske/emblema?rev=7aacc5753a77c021545c210fe10165ae6e80d3d7#7aacc5753a77c021545c210fe10165ae6e80d3d7"
+source = "git+https://github.com/jwinarske/emblema?rev=7d4253a7314172925059587e5c600ddfde3d7483#7d4253a7314172925059587e5c600ddfde3d7483"
 dependencies = [
  "drm",
  "emblema-core",
@@ -397,7 +412,7 @@ dependencies = [
 [[package]]
 name = "emblema-renderer"
 version = "0.2.0"
-source = "git+https://github.com/jwinarske/emblema?rev=7aacc5753a77c021545c210fe10165ae6e80d3d7#7aacc5753a77c021545c210fe10165ae6e80d3d7"
+source = "git+https://github.com/jwinarske/emblema?rev=7d4253a7314172925059587e5c600ddfde3d7483#7d4253a7314172925059587e5c600ddfde3d7483"
 dependencies = [
  "emblema-geometry",
  "emblema-hal",
@@ -407,7 +422,7 @@ dependencies = [
 [[package]]
 name = "emblema-shaders"
 version = "0.2.0"
-source = "git+https://github.com/jwinarske/emblema?rev=7aacc5753a77c021545c210fe10165ae6e80d3d7#7aacc5753a77c021545c210fe10165ae6e80d3d7"
+source = "git+https://github.com/jwinarske/emblema?rev=7d4253a7314172925059587e5c600ddfde3d7483#7d4253a7314172925059587e5c600ddfde3d7483"
 dependencies = [
  "naga",
 ]
@@ -415,7 +430,7 @@ dependencies = [
 [[package]]
 name = "emblema-text"
 version = "0.2.0"
-source = "git+https://github.com/jwinarske/emblema?rev=7aacc5753a77c021545c210fe10165ae6e80d3d7#7aacc5753a77c021545c210fe10165ae6e80d3d7"
+source = "git+https://github.com/jwinarske/emblema?rev=7d4253a7314172925059587e5c600ddfde3d7483#7d4253a7314172925059587e5c600ddfde3d7483"
 
 [[package]]
 name = "equivalent"
@@ -520,6 +535,7 @@ name = "fl-platform-kms"
 version = "0.1.0"
 dependencies = [
  "drm",
+ "drmkit-capture",
  "drmkit-core",
  "drmkit-cursor",
  "drmkit-display",

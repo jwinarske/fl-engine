@@ -86,6 +86,10 @@ Drawn to a display with no compositor (KMS, on a board), at the display's mode a
 
     fl-dart run-app out/counter.so @2 --kms
 
+With `--capture shot.png`, Print Screen writes what the display shows, the cursor with it, to a PNG (`shot.png`, then `shot-2.png`):
+
+    fl-dart run-app out/cursors.so --kms --capture shot.png
+
 Notes:
 
 * A snapshot from another SDK is refused, with both versions named

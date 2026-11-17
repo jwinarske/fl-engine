@@ -13,6 +13,7 @@
 //! through drmkit-input.
 //! Nothing above `fl-input` names this crate (D8).
 
+mod capture;
 mod compose;
 mod cursor;
 mod devices;
@@ -20,6 +21,7 @@ mod display;
 mod keymap;
 mod seat;
 
+pub use capture::capture;
 pub use compose::{Compose, ComposeError};
 pub use cursor::{Cursor, CursorTarget, Pointer};
 pub use devices::DevicesConfig;
