@@ -43,21 +43,13 @@ drm = { version = "0.15", default-features = false }
 rustix = { version = "1.1", default-features = false, features = ["std", "event", "fs", "time"] }
 xkbcommon = { version = "0.9", default-features = false }
 trybuild = "1"
-# Pinned to a commit on emblema's main, not 0.2.0 from crates.io: it carries
-# BlendMode and TileMode numbered as upstream (jwinarske/emblema#225) and
-# draw_shadow in device pixels (#227), a colored analytic blur
-# premultiplied (#234), a shader's local transform (#235), a paint's
-# opacity on every shader (#236), a sweep's angle measured as upstream's
-# (#237), a tint blended in dart:ui's order (#238), an image's tile mode
-# per axis (#239), an atlas faded after its blend (#240), a glyph key's
-# subpixel bucket (#241), a blurred convex path's shadow mesh (#242), an
-# atlas resident from the start (#243), pipelines built ahead of the
-# first frame (#245), a rounded fill tessellated once the pass is
-# multisampled (#246) and its shader compiled per variant (#247). Back to
-# a registry version once one includes them.
-emblema = { git = "https://github.com/jwinarske/emblema", rev = "7d4253a7314172925059587e5c600ddfde3d7483", default-features = false }
-emblema-hal = { git = "https://github.com/jwinarske/emblema", rev = "7d4253a7314172925059587e5c600ddfde3d7483" }
-emblema-present-drm = { git = "https://github.com/jwinarske/emblema", rev = "7d4253a7314172925059587e5c600ddfde3d7483" }
+# emblema 0.3.0, from the registry: the first release with what dart:ui
+# needs of it (blend and tile modes numbered as upstream, a shader's local
+# transform, per-axis tile modes, a glyph key's subpixel bucket, pipelines
+# built ahead of the first frame) and ten-bit scanout under its own fourcc.
+emblema = { version = "0.3.0", default-features = false }
+emblema-hal = "0.3.0"
+emblema-present-drm = "0.3.0"
 
 fl-dart-sys = { path = "crates/fl-dart-sys", version = "0.1.0", default-features = false }
 fl-dart-vm = { path = "crates/fl-dart-vm", version = "0.1.0", default-features = false }
