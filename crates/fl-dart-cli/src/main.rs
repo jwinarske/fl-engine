@@ -3,7 +3,7 @@
 //! ```text
 //! fl-dart run hello.dill [args...]       # JIT, dev hosts (--features jit)
 //! fl-dart run-aot hello.aot [args...]    # precompiled runtime, every target
-//! fl-dart run-app libapp.so [WxH[@dpr]] [--assets DIR] [--png out.png] [--frames-dir DIR] [--ops] [--natives] [--styles] [--font FAMILY=PATH]... [--message CHANNEL[=TEXT]]... [--input SCRIPT] [--keymap LAYOUT[:VARIANT]] [--compose LOCALE] [--frames N] [--hz H]
+//! fl-dart run-app libapp.so [WxH[@dpr]] [--assets DIR] [--png out.png] [--frames-dir DIR] [--ops] [--natives] [--styles] [--font FAMILY=PATH]... [--message CHANNEL[=TEXT]]... [--input SCRIPT] [--keymap LAYOUT[:VARIANT]] [--compose LOCALE] [--frames N] [--hz H] [--kms [--connector NAME]]
 //!                                       # a Flutter app, through dart:ui (M2);
 //!                                       # JIT takes the app's kernel instead
 //! fl-dart app-cycle libapp.so <n> [run-app options]
@@ -109,7 +109,7 @@ fn usage() -> ExitCode {
         "libapp.so"
     };
     eprintln!(
-        "       fl-dart run-app <{app}> [WxH[@dpr]] [--assets DIR] [--png out.png] [--frames-dir DIR] [--ops] [--natives] [--styles] [--font FAMILY=PATH]... [--message CHANNEL[=TEXT]]... [--input SCRIPT] [--keymap LAYOUT[:VARIANT]] [--compose LOCALE] [--frames N] [--hz H]\n       fl-dart app-cycle <{app}> <n> [run-app options]\n       fl-dart prepare"
+        "       fl-dart run-app <{app}> [WxH[@dpr]] [--assets DIR] [--png out.png] [--frames-dir DIR] [--ops] [--natives] [--styles] [--font FAMILY=PATH]... [--message CHANNEL[=TEXT]]... [--input SCRIPT] [--keymap LAYOUT[:VARIANT]] [--compose LOCALE] [--frames N] [--hz H] [--kms [--connector NAME]]\n       fl-dart app-cycle <{app}> <n> [run-app options]\n       fl-dart prepare"
     );
     ExitCode::from(64)
 }
@@ -181,17 +181,23 @@ fn run_aot(path: &str, args: &[&str]) -> Result<(), Failure> {
 /// is an error. With `--png`, every frame is drawn by emblema offscreen on
 /// the raster thread and the last one written there. With frames begun at
 /// vsync, a `vsync:` line reports their spacing.
-fn run_app(path: &str, app: AppArgs) -> Result<(), Failure> {
+fn run_app(path: &str, mut app: AppArgs) -> Result<(), Failure> {
     let program = load_app(path)?;
     set_assets(path, &app)?;
     fl_ui::set_style_report(app.styles);
     let vm = start_vm()?;
     // Dropped before `vm`: no poster is in the VM when it is cleaned up.
     let _posters = ffi::Posters;
-    let raster = raster_for(&app)?;
+    let (raster, screen) = raster_for(&mut app)?;
     let run = app_once(&vm, &program, path, &app, raster.as_ref(), true)?;
     if let Some(line) = vsync_line(&run.report.frame_times_us) {
         println!("{line}");
+    }
+    if let Some(screen) = &screen {
+        if let Some(r) = raster.as_ref() {
+            r.wait_drawn();
+        }
+        println!("{}", screen.line());
     }
     if app.input.is_some() {
         println!(
@@ -213,12 +219,12 @@ fn run_app(path: &str, app: AppArgs) -> Result<(), Failure> {
 /// Reports what `cycle` reports, and the frames rendered in all. With
 /// `--png` one raster thread draws every cycle's frames, so the raster side
 /// churns too; it is made once, as a device is.
-fn app_cycle(path: &str, n: u32, app: AppArgs) -> Result<(), Failure> {
+fn app_cycle(path: &str, n: u32, mut app: AppArgs) -> Result<(), Failure> {
     let program = load_app(path)?;
     let vm = start_vm()?;
     // Dropped before `vm`: no poster is in the VM when it is cleaned up.
     let _posters = ffi::Posters;
-    let raster = raster_for(&app)?;
+    let (raster, _screen) = raster_for(&mut app)?;
     // Sampled as `cycle` samples: after the first cycle, after each tenth,
     // and at the end.
     let tenth = (n / 10).max(1);
@@ -422,6 +428,7 @@ fn app_once(
         fl_ui::set_image_sink(r.uploader());
     }
     let wake = fl_shell::Wake::default();
+    set_vsync_of(Some(&wake));
     let mut cfg = fl_shell::isolate_config(path, &wake);
     if !echo {
         cfg.print = Arc::new(|_| {});
@@ -489,6 +496,7 @@ fn app_once(
         report
     };
     isolate.shutdown();
+    set_vsync_of(None);
     // The sinks are the process's, and hold the raster thread: replacing
     // them is what lets `finish` have the thread to itself.
     fl_ui::set_frame_sink(|_| {});
@@ -610,10 +618,26 @@ fn response_line(channel: &str, response: Option<&[u8]>) -> String {
     format!("response {channel}: {what}")
 }
 
-/// A raster thread at the view's size if `--png` asks for pixels.
-fn raster_for(app: &AppArgs) -> Result<Option<std::sync::Arc<fl_raster::RasterThread>>, Failure> {
+/// What `raster_for` makes: the thread, and the display if it draws to one.
+type Raster = (
+    Option<std::sync::Arc<fl_raster::RasterThread>>,
+    Option<Screen>,
+);
+
+/// A raster thread at the view's size if `--png` asks for pixels, or with
+/// `--kms` one that draws to a display: the view is then the display's size
+/// and its frames are begun at the display's rate.
+fn raster_for(app: &mut AppArgs) -> Result<Raster, Failure> {
+    if app.kms {
+        if app.png.is_some() || app.frames_dir.is_some() {
+            return Err(Failure::Other(
+                "--kms: a display's frames are not read back; drop --png and --frames-dir".into(),
+            ));
+        }
+        return screen_for(app);
+    }
     if app.png.is_none() && app.frames_dir.is_none() {
-        return Ok(None);
+        return Ok((None, None));
     }
     if let Some(dir) = &app.frames_dir {
         std::fs::create_dir_all(dir)
@@ -624,8 +648,83 @@ fn raster_for(app: &AppArgs) -> Result<Option<std::sync::Arc<fl_raster::RasterTh
         app.view.height.round() as u32,
     );
     fl_raster::RasterThread::spawn_capturing(w, h, app.frames_dir.clone())
-        .map(|r| Some(std::sync::Arc::new(r)))
+        .map(|r| (Some(std::sync::Arc::new(r)), None))
         .map_err(|e| Failure::Other(format!("offscreen target: {e}")))
+}
+
+/// The display `--kms` draws to, and what it did.
+struct Screen {
+    /// `card=… mode=WxH@Hz`.
+    what: String,
+    #[cfg(feature = "kms")]
+    pacing: std::sync::Arc<fl_platform_kms::Pacing>,
+}
+
+impl Screen {
+    /// `kms: card=… mode=WxH@Hz flips=… vblanks=… dropped=…`: the frames
+    /// that reached the screen, the vertical blanks from the first of
+    /// them to the last, one fewer when none was missed between, and the
+    /// frames drawn while another session had the card.
+    fn line(&self) -> String {
+        #[cfg(feature = "kms")]
+        let did = format!(
+            " flips={} vblanks={} dropped={}",
+            self.pacing.flips(),
+            self.pacing.vblanks(),
+            self.pacing.dropped()
+        );
+        #[cfg(not(feature = "kms"))]
+        let did = "";
+        format!("kms: {}{did}", self.what)
+    }
+}
+
+/// The loop a display's flips are the vsync of: the run's, while it runs.
+#[cfg(feature = "kms")]
+static VSYNC_OF: std::sync::Mutex<Option<fl_shell::Wake>> = std::sync::Mutex::new(None);
+
+/// Tells a display's flips to `wake`'s loop, or with `None` to none.
+fn set_vsync_of(wake: Option<&fl_shell::Wake>) {
+    #[cfg(feature = "kms")]
+    {
+        *VSYNC_OF.lock().unwrap_or_else(|e| e.into_inner()) = wake.cloned();
+    }
+    #[cfg(not(feature = "kms"))]
+    let _ = wake;
+}
+
+#[cfg(feature = "kms")]
+fn screen_for(app: &mut AppArgs) -> Result<Raster, Failure> {
+    use fl_platform_kms::{Display, Seat};
+    let kms = |e: &dyn std::fmt::Display| Failure::Other(format!("--kms: {e}"));
+    let seat = std::sync::Arc::new(Seat::open().map_err(|e| kms(&e))?);
+    let mut display = Display::open(&seat, app.connector.as_deref()).map_err(|e| kms(&e))?;
+    let (w, h) = display.size();
+    let hz = display.refresh_hz();
+    display.on_flip(|flip| {
+        if let Some(wake) = VSYNC_OF.lock().unwrap_or_else(|e| e.into_inner()).as_ref() {
+            wake.vsync(flip.at, flip.period);
+        }
+    });
+    let screen = Screen {
+        what: format!("card={} mode={w}x{h}@{hz:.3}", display.path().display()),
+        pacing: display.pacing(),
+    };
+    app.view.width = f64::from(w);
+    app.view.height = f64::from(h);
+    if hz > 0.0 {
+        app.view.refresh_rate = hz;
+    }
+    let raster = fl_raster::RasterThread::spawn_scanout(Box::new(display))
+        .map_err(|e| Failure::Other(format!("--kms: {e}")))?;
+    Ok((Some(std::sync::Arc::new(raster)), Some(screen)))
+}
+
+#[cfg(not(feature = "kms"))]
+fn screen_for(_: &mut AppArgs) -> Result<Raster, Failure> {
+    Err(Failure::Other(
+        "--kms: build fl-dart with `--features kms`".into(),
+    ))
 }
 
 /// Stops the raster thread and writes its last frame to `--png`. Its first
@@ -746,9 +845,14 @@ struct AppArgs {
     /// compose by; the environment's if not given.
     compose: Option<String>,
     frames: Option<u64>,
+    /// `--kms`: frames go to a display, not offscreen.
+    kms: bool,
+    /// `--connector`: which display, `HDMI-A-1`; the first with one if not
+    /// given.
+    connector: Option<String>,
 }
 
-/// `[WxH[@dpr]] [--assets DIR] [--png out.png] [--frames-dir DIR] [--ops] [--natives] [--styles] [--font FAMILY=PATH]... [--message CHANNEL[=TEXT]]... [--input SCRIPT] [--keymap LAYOUT[:VARIANT]] [--compose LOCALE] [--frames N] [--hz H]`,
+/// `[WxH[@dpr]] [--assets DIR] [--png out.png] [--frames-dir DIR] [--ops] [--natives] [--styles] [--font FAMILY=PATH]... [--message CHANNEL[=TEXT]]... [--input SCRIPT] [--keymap LAYOUT[:VARIANT]] [--compose LOCALE] [--frames N] [--hz H] [--kms [--connector NAME]]`,
 /// in any order; no size is the default view. Sizes are physical pixels.
 /// `--assets` names the app's asset bundle; without it, `<app>.assets` beside
 /// the program is used if it is there, as `tools/flutter-app/build.sh` puts
@@ -763,7 +867,10 @@ struct AppArgs {
 /// until the script has ended and it has nothing left to do; `--keymap` names the XKB layout, and a
 /// variant of it, that the script's keys are resolved against (`us` by default; needs the `kms`
 /// feature); `--frames` stops after N frames rendered;
-/// `--hz` sets the vsync rate (60 by default).
+/// `--hz` sets the vsync rate (60 by default). `--kms` draws to a display, held through the seat,
+/// at its mode's size and rate, a size given being ignored but for its `@dpr`, which may stand
+/// alone; `--connector` names the display (`HDMI-A-1`), the first with one if not given (needs the
+/// `kms` feature).
 fn app_args(args: &[&str]) -> Option<AppArgs> {
     let mut app = AppArgs::default();
     let mut it = args.iter();
@@ -799,14 +906,21 @@ fn app_args(args: &[&str]) -> Option<AppArgs> {
             "--compose" => app.compose = Some(it.next().filter(|l| !l.is_empty())?.to_string()),
             "--frames" => app.frames = Some(it.next()?.parse().ok().filter(|n| *n > 0)?),
             "--hz" => app.view.refresh_rate = it.next()?.parse().ok().filter(|v: &f64| *v > 0.0)?,
+            "--kms" => app.kms = true,
+            "--connector" => {
+                app.connector = Some(it.next().filter(|c| !c.is_empty())?.to_string());
+            }
             _ => {
                 let (size, dpr) = match a.split_once('@') {
                     Some((size, dpr)) => (size, Some(dpr)),
                     None => (*a, None),
                 };
-                let (w, h) = size.split_once('x')?;
-                app.view.width = w.parse().ok().filter(|v: &f64| *v >= 1.0)?;
-                app.view.height = h.parse().ok().filter(|v: &f64| *v >= 1.0)?;
+                // `@dpr` alone: a display's size is its mode's.
+                if !size.is_empty() {
+                    let (w, h) = size.split_once('x')?;
+                    app.view.width = w.parse().ok().filter(|v: &f64| *v >= 1.0)?;
+                    app.view.height = h.parse().ok().filter(|v: &f64| *v >= 1.0)?;
+                }
                 if let Some(dpr) = dpr {
                     app.view.device_pixel_ratio = dpr.parse().ok().filter(|v: &f64| *v > 0.0)?;
                 }

@@ -1,0 +1,224 @@
+//! A display as the raster thread's target (brief M4 D9): emblema's
+//! `DrmScanoutTarget` over an output the platform implements.
+//!
+//! emblema renders into a ring of buffers it allocates and exports; the
+//! output imports each as a framebuffer, commits the one a frame was drawn
+//! into, and says when it reached the screen. Nothing here names
+//! KMS or the platform: the output is emblema's [`ScanoutOutput`], the
+//! trait it keeps for a KMS stack other than its own.
+
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, MutexGuard};
+
+use emblema::drm::{DrmScanoutTarget, DEFAULT_RING_DEPTH};
+use emblema::present::PresentTarget;
+use emblema::vulkan::{VulkanHal, VulkanTexture};
+use emblema::{Context, Image};
+use fl_ui::Scene;
+
+pub use emblema::drm::{CommitRequest, DmaBufPlanes, FbHandle, Mode, OutputEvent, ScanoutOutput};
+pub use emblema::{Error, Extent2D};
+pub use emblema_hal::{DmaBufPlane, FormatModifierSet, Fourcc, Modifier};
+
+use crate::{record, Device, RasterError, Target};
+
+/// The display side, made by the platform and used on the raster thread.
+pub type Output = Box<dyn ScanoutOutput + Send>;
+
+/// The output as the ring holds it: shared, since the ring is made again
+/// over the same output when the output says everything is to be rebuilt,
+/// and noting when it says so.
+struct Shared {
+    output: Arc<Mutex<Output>>,
+    /// The output's formats when this was made: with the ring, so as the
+    /// card stands.
+    formats: Vec<FormatModifierSet>,
+    reconfigured: Arc<AtomicBool>,
+}
+
+impl Shared {
+    fn new(output: &Arc<Mutex<Output>>, reconfigured: &Arc<AtomicBool>) -> Shared {
+        let formats = lock(output).supported_formats().to_vec();
+        Shared {
+            output: Arc::clone(output),
+            formats,
+            reconfigured: Arc::clone(reconfigured),
+        }
+    }
+
+    fn note(&self, events: &[OutputEvent]) {
+        if events.contains(&OutputEvent::Reconfigured) {
+            self.reconfigured.store(true, Ordering::Release);
+        }
+    }
+}
+
+fn lock(output: &Mutex<Output>) -> MutexGuard<'_, Output> {
+    output.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+impl ScanoutOutput for Shared {
+    fn mode(&self) -> Mode {
+        lock(&self.output).mode()
+    }
+
+    fn modes(&self) -> Vec<Mode> {
+        lock(&self.output).modes()
+    }
+
+    fn set_mode(&mut self, mode: Mode) -> emblema::Result<()> {
+        lock(&self.output).set_mode(mode)
+    }
+
+    fn supported_formats(&self) -> &[FormatModifierSet] {
+        &self.formats
+    }
+
+    fn import_dmabuf(&mut self, buffer: DmaBufPlanes) -> emblema::Result<FbHandle> {
+        lock(&self.output).import_dmabuf(buffer)
+    }
+
+    fn release_framebuffer(&mut self, fb: FbHandle) {
+        lock(&self.output).release_framebuffer(fb);
+    }
+
+    fn commit(&mut self, request: CommitRequest) -> emblema::Result<()> {
+        let mut output = lock(&self.output);
+        let done = output.commit(request);
+        if done.is_err() {
+            // Refused for being of a card since rebuilt, perhaps: what it
+            // has to say is heard before the error is acted on.
+            self.note(&output.poll_events());
+        }
+        done
+    }
+
+    fn poll_events(&mut self) -> Vec<OutputEvent> {
+        let events = lock(&self.output).poll_events();
+        self.note(&events);
+        events
+    }
+
+    fn wait_for_event(&mut self, timeout_nanos: u64) -> emblema::Result<Vec<OutputEvent>> {
+        let events = lock(&self.output).wait_for_event(timeout_nanos)?;
+        self.note(&events);
+        Ok(events)
+    }
+}
+
+/// The raster thread's device with a display for its target.
+pub(crate) struct Scanout {
+    device: Device,
+    target: Option<DrmScanoutTarget<VulkanHal, Shared>>,
+    output: Arc<Mutex<Output>>,
+    reconfigured: Arc<AtomicBool>,
+}
+
+impl Scanout {
+    /// A ring of the output's mode's size, in a format both sides take.
+    pub(crate) fn new(output: Output) -> Result<Scanout, RasterError> {
+        let mut scanout = Scanout {
+            device: Device::new()?,
+            target: None,
+            output: Arc::new(Mutex::new(output)),
+            reconfigured: Arc::default(),
+        };
+        scanout.build()?;
+        Ok(scanout)
+    }
+
+    /// Makes the ring, over the output as it stands, the old one's
+    /// buffers gone first. The device's size is the ring's.
+    fn build(&mut self) -> Result<(), RasterError> {
+        let vk = match &mut self.device.ctx {
+            Context::Vulkan(vk) => vk,
+            #[allow(unreachable_patterns)]
+            _ => return Err(RasterError::Unsupported("scanout without Vulkan".into())),
+        };
+        if let Some(old) = self.target.take() {
+            old.destroy(vk);
+        }
+        self.reconfigured.store(false, Ordering::Release);
+        let shared = Shared::new(&self.output, &self.reconfigured);
+        let target = DrmScanoutTarget::new(vk, shared, DEFAULT_RING_DEPTH)?;
+        let extent = target.extent();
+        self.device.width = extent.width;
+        self.device.height = extent.height;
+        self.target = Some(target);
+        Ok(())
+    }
+
+    /// Draws `scene` into a free buffer of the ring and commits it. Waits
+    /// for the flip before, if one is pending: the display takes one
+    /// commit at a time, and that wait is what paces the thread.
+    fn present(&mut self, scene: &Scene) -> Result<(), RasterError> {
+        let Device {
+            ctx,
+            images,
+            glyphs,
+            width,
+            height,
+        } = &mut self.device;
+        let (recording, slots) = record(ctx, images, glyphs, (*width, *height), scene)?;
+        let target = self
+            .target
+            .as_mut()
+            .ok_or_else(|| RasterError::Unsupported("a destroyed target".into()))?;
+        let vk = match ctx {
+            Context::Vulkan(vk) => vk,
+            #[allow(unreachable_patterns)]
+            _ => return Err(RasterError::Unsupported("scanout without Vulkan".into())),
+        };
+        let textures = slots
+            .table
+            .iter()
+            .map(|image| match image {
+                Image::Vulkan(texture) => Ok(texture),
+                #[allow(unreachable_patterns)]
+                _ => Err(RasterError::Unsupported(
+                    "an image of another backend".into(),
+                )),
+            })
+            .collect::<Result<Vec<&VulkanTexture>, RasterError>>()?;
+        // Drawn and waited for here, then committed with no fence. The
+        // canvas antialiases by multisampling, and emblema's submission
+        // that returns a fence for the kernel to wait on instead does not
+        // take a multisampled pass yet.
+        let buffer = target.acquire(vk)?;
+        emblema::execute::<VulkanHal>(vk, buffer, &recording, &textures)?;
+        target.present(vk)?;
+        Ok(())
+    }
+}
+
+impl Target for Scanout {
+    fn draw(&mut self, scene: &Scene) -> Result<Option<Vec<u8>>, RasterError> {
+        let mut drawn = self.present(scene);
+        // The output's buffers went, with the card, while the session was
+        // switched away: the ring is made again and the frame drawn into it.
+        if drawn.is_err() && self.reconfigured.load(Ordering::Acquire) {
+            self.build()?;
+            drawn = self.present(scene);
+        }
+        drawn.map(|()| None)
+    }
+
+    fn device(&mut self) -> &mut Device {
+        &mut self.device
+    }
+}
+
+impl Drop for Scanout {
+    /// The ring goes before the images, and both before their context.
+    fn drop(&mut self) {
+        // `if let` with one backend built in is irrefutable, and with two
+        // is not: a match holds for both.
+        #[allow(clippy::single_match)]
+        match (self.target.take(), &mut self.device.ctx) {
+            (Some(target), Context::Vulkan(vk)) => target.destroy(vk),
+            #[allow(unreachable_patterns)]
+            _ => {}
+        }
+        self.device.clear();
+    }
+}

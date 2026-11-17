@@ -19,7 +19,7 @@ Status: milestone 1 (Dart VM hosted from Rust).
 * fl-shell - embedder: views and the runtime hooks a framework isolate needs
 * fl-input - the input boundary: events as data, what a source delivers them through, and the Linux embedder's pointer managers, key path and text input, with the platform's input method and clipboard behind traits
 * fl-input-script - scripted input source, for CI and tests
-* fl-platform-kms - the KMS platform through drmkit: so far its XKB keymap and its compose tables for dead keys (links libxkbcommon)
+* fl-platform-kms - the KMS platform through drmkit: the seat, the display as emblema's scanout output, its XKB keymap and its compose tables for dead keys (links libseat and libxkbcommon)
 * fl-raster - dart:ui scenes drawn by emblema
 * fl-dart-cli - `fl-dart` binary
 * xtask - `cargo xtask bindgen`, `cargo xtask fetch-prebuilt`
@@ -79,6 +79,10 @@ Flutter app, through dart:ui (milestone 2, in progress). Built with the pinned F
 Drawn by emblema offscreen (Vulkan; Mesa's lavapipe works) and written as a PNG:
 
     fl-dart run-app out/colored_box.so 800x600@2 --png frame.png
+
+Drawn to a display with no compositor (KMS, on a board), at the display's mode and rate. Built with `--features kms`; needs a seat (seatd, or a login on the console) and libseat:
+
+    fl-dart run-app out/counter.so @2 --kms
 
 Notes:
 

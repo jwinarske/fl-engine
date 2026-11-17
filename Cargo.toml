@@ -32,8 +32,29 @@ thiserror = "1"
 # drmkit (brief M4 D3, D9), with its C libraries as they are: linked from the
 # system, never built. Only fl-platform-kms depends on it.
 drmkit-input = { version = "0.1.3", default-features = false }
+drmkit-core = "0.1.3"
+drmkit-display = "0.1.3"
+drmkit-modeset = "0.1.3"
+drmkit-session = "0.1.3"
+drm = { version = "0.15", default-features = false }
+rustix = { version = "1.1", default-features = false, features = ["std", "event", "fs", "time"] }
 xkbcommon = { version = "0.9", default-features = false }
 trybuild = "1"
+# Pinned to a commit on emblema's main, not 0.2.0 from crates.io: it carries
+# BlendMode and TileMode numbered as upstream (jwinarske/emblema#225) and
+# draw_shadow in device pixels (#227), a colored analytic blur
+# premultiplied (#234), a shader's local transform (#235), a paint's
+# opacity on every shader (#236), a sweep's angle measured as upstream's
+# (#237), a tint blended in dart:ui's order (#238), an image's tile mode
+# per axis (#239), an atlas faded after its blend (#240), a glyph key's
+# subpixel bucket (#241), a blurred convex path's shadow mesh (#242), an
+# atlas resident from the start (#243), pipelines built ahead of the
+# first frame (#245), a rounded fill tessellated once the pass is
+# multisampled (#246) and its shader compiled per variant (#247). Back to
+# a registry version once one includes them.
+emblema = { git = "https://github.com/jwinarske/emblema", rev = "7aacc5753a77c021545c210fe10165ae6e80d3d7", default-features = false }
+emblema-hal = { git = "https://github.com/jwinarske/emblema", rev = "7aacc5753a77c021545c210fe10165ae6e80d3d7" }
+emblema-present-drm = { git = "https://github.com/jwinarske/emblema", rev = "7aacc5753a77c021545c210fe10165ae6e80d3d7" }
 
 fl-dart-sys = { path = "crates/fl-dart-sys", version = "0.1.0", default-features = false }
 fl-dart-vm = { path = "crates/fl-dart-vm", version = "0.1.0", default-features = false }

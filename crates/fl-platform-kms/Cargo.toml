@@ -1,6 +1,6 @@
 [package]
 name = "fl-platform-kms"
-description = "fl-engine on KMS, through drmkit: so far the XKB keymap its key events are resolved against"
+description = "fl-engine on KMS, through drmkit: the seat, the display, and the XKB keymap its key events are resolved against"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -9,11 +9,22 @@ license.workspace = true
 
 [dependencies]
 fl-input = { workspace = true }
-# The keymap alone: drmkit-input's libinput half, and with it libinput and
-# libudev, comes with the seat at stage 6. `xkb` links the system's
-# libxkbcommon; nothing is built.
+# The keymap and the compose tables: `xkb` links the system's libxkbcommon;
+# nothing is built. drmkit-input's libinput half comes with the devices.
 drmkit-input = { workspace = true, features = ["xkb"] }
 xkbcommon = { workspace = true }
+# The seat (libseat, linked from the system) and the display it hands out.
+drmkit-session = { workspace = true }
+drmkit-core = { workspace = true }
+drmkit-display = { workspace = true }
+drmkit-modeset = { workspace = true }
+drm = { workspace = true }
+rustix = { workspace = true }
+# The trait the display implements (brief M4 D9), and its types: emblema's
+# presentation crate alone, with no rendering backend. emblema renders in
+# fl-raster.
+emblema-present-drm = { workspace = true }
+emblema-hal = { workspace = true }
 
 [lints]
 workspace = true

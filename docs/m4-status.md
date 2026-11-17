@@ -246,6 +246,46 @@ Differences from the brief:
 
 Open: stage 6, the boards. With it the lanes get the devices' thread under TSan, hotplug, and tap-to-frame latency on the Pi 5.
 
+## Stage 6: the display (2026-11-16)
+
+The first part of stage 6, with the Pi 5 back: `fl-dart run-app --kms` draws an app to a display held through the seat, its frames begun at the display's vertical blanks. Devices, the cursor and `kms` by default are the parts to come.
+
+* **`fl-platform-kms::Seat`**: the session, through drmkit-session (libseat). libseat's connection is one thread's, so the seat has a thread, which opens what it is asked for and hears the session paused and resumed. A descriptor it hands out is a duplicate of the seat's own. No seat is an error that says what is missing; nothing opens a node directly
+* **`fl-platform-kms::Display`**: emblema's `ScanoutOutput` over drmkit (D9). drmkit-display finds the connector's CRTC and primary plane (`--connector HDMI-A-1`, or the first with a display), drmkit-core holds the properties and makes the commits, drmkit-modeset delivers the flips. emblema's ring of buffers is imported as framebuffers; each frame is one nonblocking atomic commit, the first setting the mode
+* **fl-raster, feature `scanout`**: the raster thread's device with emblema's `DrmScanoutTarget` for a target, in the offscreen surface's place. What both share (the context, the images, the glyph atlas, the recording of a scene) is one `Device`. The thread waits on the display's flips, not on a clock
+* **Vsync is the display's** (`Wake::vsync`): each flip gives the loop the time of a vertical blank, from the kernel, and the mode's period, and frames are begun on the blanks from then on. A blank that moves by its jitter from one flip to the next is not begun twice: the next tick is at least half a period after the last
+* **A switch of terminals** takes the card: frames drawn meanwhile are dropped and counted, at the clock's rate; on the switch back the card is taken again on the seat's new descriptor, the output says everything is to be rebuilt, and the ring is made again. A commit refused for want of DRM master ahead of the seat's saying so is the same; one refused before any flip is an error naming a compositor
+* `run-app --kms [--connector NAME] [@dpr]`: the view is the mode's size and rate. `kms: card=… mode=WxH@Hz flips=… vblanks=… dropped=…` at the end
+
+Measured on the Pi 5 (Raspberry Pi 5 Model B Rev 1.0, Debian 13, Mesa 26.2.2 V3D 7.1.7.0, seatd 0.9.1, over ssh), cross-built on x64:
+
+| display | mode | run | flips | vertical blanks spanned |
+|---|---|---|---|---|
+| HDMI-A-1 (`vc4`) | 1280x1440 at 59.995 Hz | `ticker`, 600 frames, three runs | 599, 599, 599 | 598, 598, 598 |
+| DSI-2 (`rp1-dsi`) | 800x1280 at 60.079 Hz | `ticker`, 600 frames, three runs | 599, 599, 599 | 598, 598, 598 |
+
+* A frame at every blank for ten seconds on each controller, none missed: what emblema measured with its own drm-rs output (its `docs/on-a-board.md`) holds through drmkit, as D9 was to check. The 600th frame's flip is after the report
+* `counter` at DPR 2 on HDMI, tapped three times by script: 73 frames over 202 blanks, drawn only when asked for; the frames the taps asked for done within 15,272 us of their events on the UI thread
+* A switch to terminal 2 and back, a second fl-dart on that terminal switching back: 204 frames dropped while away, the card retaken, 395 of 600 frames shown, no error. Driven by a hook since removed: nothing at the board can ask for the switch until a keyboard's keys come through the seat
+
+Found on the way:
+
+* **emblema's submission that returns a fence does not take a multisampled pass**, and a canvas antialiases by multisampling. So each frame is drawn and waited for on the raster thread and committed with no fence, where the kernel would otherwise latch the flip when the drawing is done. It keeps every blank at these sizes; the fence is emblema's to add
+* **emblema renders to `AR24`, `AB24` and `XR30`.** A primary plane that takes only `XR24` does not negotiate. The Pi 5's two take `AR24`
+* A disabled session cannot ask seatd to switch back (`EAGAIN`); the terminal it left has to
+* A Pi's `v3d` is a card with no connectors, and refuses universal planes: skipped, not an error
+* Over ssh the seat is had: seatd binds a client to the terminal in front. Its socket is the `video` group's on Debian, so that group is still needed there, for the socket and not for the card
+
+Differences from the brief:
+
+* **pkg-config at build time, for the `kms` feature only**: libseat-sys finds libseat with it. The workspace's rule against it stands for everything the default build has; brief §7 has the platform's libraries "as they are", linked and not built. A cross build gives it `.pc` files for the board's libraries
+* fl-platform-kms depends on emblema's `emblema-present-drm` and `emblema-hal`, for the trait, and on no rendering backend
+* **No frame is read back from a display**: `--png` and `--frames-dir` with `--kms` are refused
+
+Tests: the clock on a display's blanks (fl-shell); a mode's rate from its timings, the flips counted, a kernel timestamp as an `Instant` (fl-platform-kms); and the raster thread over an output that is no card, which takes the ring's buffers, loses them once as a retaken card does, and has every frame committed and every buffer given back (fl-raster's `scanout` test). That last needs a driver that exports dma-bufs with modifiers: lavapipe at Mesa 26.2 does, and the hosted runner's 25.2 does not, so in the app lane it says it is skipped and checks nothing yet; it passes here on lavapipe 26 and on a hardware driver. KMS itself is the boards'.
+
+Open, for the rest of stage 6: the devices through drmkit-input under the same seat, with the keys that switch terminals; the cursor plane and `flutter/mousecursor`; hotplug; `kms` by default and the board kit's display check; the VisionFive 2. Then drmkit-input's gaps: touchpad gestures, and devices added and removed.
+
 ## Decisions taken 2026-11-16
 
 D1 (devices and a script, no window), D4 (clipboard in the process), D5 and D6 (no system IME), each with what the stock Linux embedder does in its place (brief §13). D5 as taken: no recordings from the stock embedder; the engine's unit tests ported for each layer, and the same scripted input given to `flutter_tester` and to fl-dart end to end.

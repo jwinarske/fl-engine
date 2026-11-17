@@ -45,8 +45,11 @@
 //! ahead of the next key, so the framework sees each key's text before the
 //! key after it.
 //!
-//! Vsync here is a fixed-interval clock: ticks `period` apart from when the
-//! `Wake` was made, the frame clock's zero. On KMS the flip event will take its place (stage 6).
+//! Vsync is a clock: ticks `period` apart from when the `Wake` was made,
+//! the frame clock's zero, until a display says otherwise. On KMS each flip
+//! says when a vertical blank was and how far apart they are
+//! ([`Wake::vsync`]), and the ticks are the blanks from then on: a frame is
+//! begun at one, as `VsyncWaiter` fires at one.
 //!
 //! The VM is told when the loop expects to be idle, as `Animator` tells it:
 //! when a frame is asked for, until the last frame's deadline; and when a
@@ -194,6 +197,8 @@ struct Pending {
     /// The loop is waiting with nothing to do. Cleared by whatever gives
     /// it something.
     idle: bool,
+    /// A vertical blank of the display, and the time between two.
+    vsync: Option<(Instant, Duration)>,
 }
 
 /// A source's way in to the loop ([`Wake::input`]). While one is alive the
@@ -366,6 +371,20 @@ impl Wake {
         }
     }
 
+    /// The display's vertical blanks: one was at `at`, and they are
+    /// `period` apart. Frames are begun on them from now on, not on the
+    /// loop's own clock. From any thread, at each flip.
+    pub fn vsync(&self, at: Instant, period: Duration) {
+        let mut p = self.inner.lock();
+        p.vsync = Some((at, period));
+        let waiting = p.frame.is_some();
+        drop(p);
+        // A frame waiting for its tick waits for the display's.
+        if waiting {
+            self.inner.changed.notify_one();
+        }
+    }
+
     /// A frame at the next vsync: what `ScheduleFrame` does.
     pub fn request_frame(&self) {
         let mut p = self.inner.lock();
@@ -496,7 +515,7 @@ fn run_steps(
 ) -> Result<Report, DartError> {
     connect(wake);
     let inner = &wake.inner;
-    let clock = Clock::new(inner.epoch, period);
+    let mut clock = Clock::new(inner.epoch, period);
     // The engine's `PointerDataPacketConverter`: which pointers there are,
     // where, and whether down. This thread's.
     let mut pointers = Converter::new();
@@ -541,6 +560,9 @@ fn run_steps(
                 if let (Some(d), false) = (deadline, awaited) {
                     awaited = true;
                     break Step::NotifyIdle(d);
+                }
+                if let Some((at, period)) = p.vsync {
+                    clock.sync(at, period);
                 }
                 let due = clock.tick_at_or_after(asked, last_tick);
                 let now = Instant::now();
@@ -882,9 +904,11 @@ fn frame(s: &mut HandleScope<'_>, time_us: i64, number: i64) -> Result<(), DartE
     s.run_microtasks()
 }
 
-/// Ticks `period` apart from `start`.
+/// Ticks `period` apart, one of them at `phase`; times are told from
+/// `start`.
 struct Clock {
     start: Instant,
+    phase: Instant,
     period: Duration,
 }
 
@@ -892,29 +916,44 @@ impl Clock {
     fn new(start: Instant, period: Duration) -> Clock {
         Clock {
             start,
+            phase: start,
             // A zero period would make every instant a tick, and a loop that
             // never waits. One microsecond is the clock's own resolution.
             period: period.max(Duration::from_micros(1)),
         }
     }
 
-    /// The first tick at or after `t`, and after `last` if there was one.
-    fn tick_at_or_after(&self, t: Instant, last: Option<Instant>) -> Instant {
-        let since = t.saturating_duration_since(self.start).as_nanos();
-        let p = self.period.as_nanos();
-        let n = since.div_ceil(p);
-        let mut tick = self.at(n);
-        if let Some(last) = last {
-            if tick <= last {
-                tick = last + self.period;
-            }
-        }
-        tick
+    /// The ticks are a display's from now on: one at `at`, `period` apart.
+    fn sync(&mut self, at: Instant, period: Duration) {
+        self.phase = at;
+        self.period = period.max(Duration::from_micros(1));
     }
 
-    fn at(&self, n: u128) -> Instant {
-        let nanos = n.saturating_mul(self.period.as_nanos());
-        self.start + Duration::from_nanos(u64::try_from(nanos).unwrap_or(u64::MAX))
+    /// The first tick at or after `t`, and after `last` if there was one.
+    fn tick_at_or_after(&self, t: Instant, last: Option<Instant>) -> Instant {
+        let p = self.period.as_nanos();
+        let tick = if t >= self.phase {
+            let n = t.duration_since(self.phase).as_nanos().div_ceil(p);
+            self.phase + nanos(n.saturating_mul(p))
+        } else {
+            // Among the ticks before the phase: the earliest not before `t`.
+            let n = self.phase.duration_since(t).as_nanos() / p;
+            self.phase
+                .checked_sub(nanos(n.saturating_mul(p)))
+                .unwrap_or(self.phase)
+        };
+        let Some(last) = last else {
+            return tick;
+        };
+        // The tick `last` was, or one that is it by another reckoning: a
+        // display's blanks move by its jitter from one flip to the next,
+        // and half a period apart is not the next blank.
+        let after = last + self.period / 2;
+        if tick >= after {
+            return tick;
+        }
+        let n = after.duration_since(tick).as_nanos().div_ceil(p).max(1);
+        tick + nanos(n.saturating_mul(p))
     }
 
     fn micros(&self, t: Instant) -> i64 {
@@ -922,9 +961,43 @@ impl Clock {
     }
 }
 
+fn nanos(n: u128) -> Duration {
+    Duration::from_nanos(u64::try_from(n).unwrap_or(u64::MAX))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_display_s_blanks_are_the_ticks_once_it_says_when_they_are() {
+        let mut c = Clock::new(Instant::now(), Duration::from_millis(10));
+        let t0 = c.start;
+        let ms = Duration::from_millis;
+        // A blank at 103 ms, 16 ms apart: the grid is the display's.
+        c.sync(t0 + ms(103), ms(16));
+        assert_eq!(c.tick_at_or_after(t0 + ms(104), None), t0 + ms(119));
+        assert_eq!(c.tick_at_or_after(t0 + ms(103), None), t0 + ms(103));
+        // Asked before the blank it was told of: the blanks before it.
+        assert_eq!(c.tick_at_or_after(t0 + ms(80), None), t0 + ms(87));
+        assert_eq!(c.tick_at_or_after(t0 + ms(87), None), t0 + ms(87));
+        // The next flip puts the blank a little later than the last grid
+        // had it. The frame begun on that blank is not begun again.
+        let last = Some(t0 + ms(119));
+        c.sync(t0 + ms(119) + Duration::from_micros(40), ms(16));
+        assert_eq!(
+            c.tick_at_or_after(t0 + ms(119), last),
+            t0 + ms(135) + Duration::from_micros(40)
+        );
+        // Nor when it puts it a little earlier.
+        c.sync(t0 + ms(119) - Duration::from_micros(40), ms(16));
+        assert_eq!(
+            c.tick_at_or_after(t0 + ms(120), last),
+            t0 + ms(135) - Duration::from_micros(40)
+        );
+        // Times are still told from the loop's zero.
+        assert_eq!(c.micros(t0 + ms(135)), 135_000);
+    }
 
     #[test]
     fn ticks_are_on_the_grid_and_never_repeat() {

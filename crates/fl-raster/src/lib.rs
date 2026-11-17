@@ -31,6 +31,8 @@ use fl_ui::{
 mod glyphs;
 mod gradients;
 mod images;
+#[cfg(feature = "scanout")]
+pub mod scanout;
 
 pub use glyphs::Glyphs;
 pub use images::GpuImages;
@@ -63,6 +65,85 @@ impl From<emblema::Error> for RasterError {
     }
 }
 
+/// The device and what lives on it across frames: images and the glyph
+/// atlas. Shared by both targets; what differs is where a frame goes.
+struct Device {
+    ctx: Context,
+    images: GpuImages,
+    glyphs: Glyphs,
+    width: u32,
+    height: u32,
+}
+
+impl Device {
+    fn new() -> Result<Device, RasterError> {
+        Ok(Device {
+            ctx: Context::new(BackendPreference::Vulkan)?,
+            images: GpuImages::default(),
+            glyphs: Glyphs::default(),
+            width: 0,
+            height: 0,
+        })
+    }
+
+    fn upload(&mut self, image: &Arc<ImageData>) -> Result<(), RasterError> {
+        self.images.upload(&mut self.ctx, image)
+    }
+
+    /// emblema frees nothing on drop; images go before their context.
+    fn clear(&mut self) {
+        self.images.clear(&mut self.ctx);
+        self.glyphs.clear(&mut self.ctx);
+    }
+}
+
+/// `scene` as one recording over transparent black, and the images its
+/// paints name, by slot. Over a device's fields, not the device: the target
+/// draws with the context while the slots still borrow the images.
+///
+/// Images nothing refers to any more are destroyed first; images the scene
+/// draws and an upload has not seen are uploaded.
+fn record<'a>(
+    ctx: &mut Context,
+    images: &'a mut GpuImages,
+    glyphs: &'a mut Glyphs,
+    (width, height): (u32, u32),
+    scene: &Scene,
+) -> Result<(emblema::Recording, Slots<'a>), RasterError> {
+    images.sweep(ctx);
+    let mut found = Vec::new();
+    for op in &scene.ops {
+        if let LayerOp::AddPicture { picture, .. } = op {
+            images_in(picture, &mut found);
+        }
+    }
+    for image in &found {
+        images.upload(ctx, image)?;
+    }
+    // The first replay finds and rasterizes the frame's glyphs; the atlas
+    // goes up once; the second draws.
+    glyphs.begin_frame();
+    {
+        let mut canvas = Canvas::new(Extent2D::new(width, height));
+        let mut slots = Slots::preparing(images, glyphs);
+        replay(&mut canvas, scene, &mut slots)?;
+    }
+    glyphs.upload(ctx)?;
+    let (images, glyphs): (&'a GpuImages, &'a Glyphs) = (images, glyphs);
+    let mut canvas = Canvas::new(Extent2D::new(width, height));
+    canvas.clear(Color::TRANSPARENT);
+    let mut slots = Slots::drawing(images, glyphs);
+    replay(&mut canvas, scene, &mut slots)?;
+    Ok((canvas.finish(), slots))
+}
+
+/// Where the raster thread's frames go: a target it draws `scene` into.
+trait Target {
+    /// Draws `scene`; the frame's pixels if the target keeps them.
+    fn draw(&mut self, scene: &Scene) -> Result<Option<Vec<u8>>, RasterError>;
+    fn device(&mut self) -> &mut Device;
+}
+
 /// An offscreen target of one size, on Vulkan (decision D4).
 ///
 /// Not `Send`: it holds the device, and the device belongs to the raster
@@ -70,33 +151,29 @@ impl From<emblema::Error> for RasterError {
 /// cross. emblema's own types would allow the move, so this is where the
 /// placement is decided.
 pub struct Offscreen {
-    ctx: Context,
+    device: Device,
     surface: Option<Surface>,
-    images: GpuImages,
-    glyphs: Glyphs,
-    width: u32,
-    height: u32,
     _raster_thread: PhantomData<*const ()>,
 }
 
 impl Offscreen {
     /// `width` by `height` physical pixels, RGBA8.
     pub fn new(width: u32, height: u32) -> Result<Offscreen, RasterError> {
-        let mut ctx = Context::new(BackendPreference::Vulkan)?;
-        let surface = ctx.create_surface(Extent2D::new(width, height), PixelFormat::Rgba8Unorm)?;
+        let mut device = Device::new()?;
+        device.width = width;
+        device.height = height;
+        let surface = device
+            .ctx
+            .create_surface(Extent2D::new(width, height), PixelFormat::Rgba8Unorm)?;
         Ok(Offscreen {
-            ctx,
+            device,
             surface: Some(surface),
-            images: GpuImages::default(),
-            glyphs: Glyphs::default(),
-            width,
-            height,
             _raster_thread: PhantomData,
         })
     }
 
     pub fn size(&self) -> (u32, u32) {
-        (self.width, self.height)
+        (self.device.width, self.device.height)
     }
 
     /// Builds the pipelines a first frame needs, ahead of it: source-over
@@ -110,6 +187,7 @@ impl Offscreen {
     /// without it is correct.
     pub fn prepare(&mut self) -> Result<(), RasterError> {
         Ok(self
+            .device
             .ctx
             .prepare_pipelines(PixelFormat::Rgba8Unorm, CANVAS_SAMPLES)?)
     }
@@ -120,47 +198,40 @@ impl Offscreen {
     /// Images nothing refers to any more are destroyed first; images the
     /// scene draws and [`Offscreen::upload`] has not seen are uploaded.
     pub fn render(&mut self, scene: &Scene) -> Result<Vec<u8>, RasterError> {
-        self.images.sweep(&mut self.ctx);
-        let mut found = Vec::new();
-        for op in &scene.ops {
-            if let LayerOp::AddPicture { picture, .. } = op {
-                images_in(picture, &mut found);
-            }
-        }
-        for image in &found {
-            self.images.upload(&mut self.ctx, image)?;
-        }
-        // The first replay finds and rasterizes the frame's glyphs; the
-        // atlas goes up once; the second draws.
-        self.glyphs.begin_frame();
-        {
-            let mut canvas = Canvas::new(Extent2D::new(self.width, self.height));
-            let mut slots = Slots::preparing(&self.images, &mut self.glyphs);
-            replay(&mut canvas, scene, &mut slots)?;
-        }
-        self.glyphs.upload(&mut self.ctx)?;
-        let mut canvas = Canvas::new(Extent2D::new(self.width, self.height));
-        canvas.clear(Color::TRANSPARENT);
-        let mut slots = Slots::drawing(&self.images, &self.glyphs);
-        replay(&mut canvas, scene, &mut slots)?;
-        let recording = canvas.finish();
+        let Device {
+            ctx,
+            images,
+            glyphs,
+            width,
+            height,
+        } = &mut self.device;
+        let (recording, slots) = record(ctx, images, glyphs, (*width, *height), scene)?;
         let surface = self
             .surface
             .as_mut()
             .ok_or_else(|| RasterError::Unsupported("a destroyed target".into()))?;
-        self.ctx
-            .draw_with_images(surface, &recording, &slots.table)?;
-        Ok(self.ctx.read(surface)?)
+        ctx.draw_with_images(surface, &recording, &slots.table)?;
+        Ok(ctx.read(surface)?)
     }
 
     /// Puts `image` on the device ahead of the frame that draws it.
     pub fn upload(&mut self, image: &Arc<ImageData>) -> Result<(), RasterError> {
-        self.images.upload(&mut self.ctx, image)
+        self.device.upload(image)
     }
 
     /// The images on the device.
     pub fn images(&self) -> &GpuImages {
-        &self.images
+        &self.device.images
+    }
+}
+
+impl Target for Offscreen {
+    fn draw(&mut self, scene: &Scene) -> Result<Option<Vec<u8>>, RasterError> {
+        self.render(scene).map(Some)
+    }
+
+    fn device(&mut self) -> &mut Device {
+        &mut self.device
     }
 }
 
@@ -168,10 +239,9 @@ impl Drop for Offscreen {
     /// emblema frees nothing on drop; images and the surface go before
     /// their context.
     fn drop(&mut self) {
-        self.images.clear(&mut self.ctx);
-        self.glyphs.clear(&mut self.ctx);
+        self.device.clear();
         if let Some(surface) = self.surface.take() {
-            self.ctx.destroy_surface(surface);
+            self.device.ctx.destroy_surface(surface);
         }
     }
 }
@@ -224,6 +294,7 @@ pub struct RasterThread {
     tx: Option<Sender<Work>>,
     scenes: Arc<InFlight>,
     thread: Option<JoinHandle<Rastered>>,
+    size: (u32, u32),
 }
 
 enum Work {
@@ -303,28 +374,37 @@ impl RasterThread {
         height: u32,
         capture: Option<PathBuf>,
     ) -> Result<RasterThread, RasterError> {
+        RasterThread::spawn_with(move || Offscreen::new(width, height), capture)
+    }
+
+    /// Starts the thread with a display as its target: each frame is drawn
+    /// into one of the buffers `output` scans out and committed to it, and
+    /// the thread waits on the display's flips, not on a clock (brief M4
+    /// D9). The target is the size of the output's mode
+    /// ([`RasterThread::size`]); no frame's pixels are kept.
+    #[cfg(feature = "scanout")]
+    pub fn spawn_scanout(output: scanout::Output) -> Result<RasterThread, RasterError> {
+        RasterThread::spawn_with(move || scanout::Scanout::new(output), None)
+    }
+
+    fn spawn_with<T: Target>(
+        make: impl FnOnce() -> Result<T, RasterError> + Send + 'static,
+        capture: Option<PathBuf>,
+    ) -> Result<RasterThread, RasterError> {
         let (tx, rx) = mpsc::channel::<Work>();
-        let (ready_tx, ready_rx) = mpsc::channel::<Result<(), RasterError>>();
+        let (ready_tx, ready_rx) = mpsc::channel::<Result<(u32, u32), RasterError>>();
         let scenes = Arc::new(InFlight::default());
         let in_flight = Arc::clone(&scenes);
         let thread = std::thread::Builder::new()
             .name("fl-raster".into())
-            .spawn(move || {
-                raster_main(
-                    width,
-                    height,
-                    capture.as_deref(),
-                    &rx,
-                    &ready_tx,
-                    &in_flight,
-                )
-            })
+            .spawn(move || raster_main(make, capture.as_deref(), &rx, &ready_tx, &in_flight))
             .map_err(|e| RasterError::Unsupported(format!("raster thread: {e}")))?;
         match ready_rx.recv() {
-            Ok(Ok(())) => Ok(RasterThread {
+            Ok(Ok(size)) => Ok(RasterThread {
                 tx: Some(tx),
                 scenes,
                 thread: Some(thread),
+                size,
             }),
             Ok(Err(e)) => {
                 let _ = thread.join();
@@ -337,6 +417,11 @@ impl RasterThread {
                 ))
             }
         }
+    }
+
+    /// The target's size in physical pixels.
+    pub fn size(&self) -> (u32, u32) {
+        self.size
     }
 
     /// Queues `scene` to be drawn; waits while one is already queued. False
@@ -418,17 +503,19 @@ impl Drop for RasterThread {
     }
 }
 
-fn raster_main(
-    width: u32,
-    height: u32,
+/// Makes the thread's target with `make`, says on `ready` whether it was
+/// made and at what size, and draws what arrives on `rx` into it.
+fn raster_main<T: Target>(
+    make: impl FnOnce() -> Result<T, RasterError>,
     capture: Option<&Path>,
     rx: &Receiver<Work>,
-    ready: &mpsc::Sender<Result<(), RasterError>>,
+    ready: &mpsc::Sender<Result<(u32, u32), RasterError>>,
     in_flight: &InFlight,
 ) -> Rastered {
-    let mut target = match Offscreen::new(width, height) {
-        Ok(t) => {
-            let _ = ready.send(Ok(()));
+    let mut target = match make() {
+        Ok(mut t) => {
+            let d = t.device();
+            let _ = ready.send(Ok((d.width, d.height)));
             t
         }
         Err(e) => {
@@ -436,6 +523,7 @@ fn raster_main(
             return Rastered::default();
         }
     };
+    let (width, height) = (target.device().width, target.device().height);
     let mut r = Rastered {
         width,
         height,
@@ -450,7 +538,7 @@ fn raster_main(
                 // A failed upload is retried, and named, by the frame that
                 // draws the image.
                 if r.error.is_none() {
-                    let _ = target.upload(&image);
+                    let _ = target.device().upload(&image);
                 }
                 continue;
             }
@@ -458,7 +546,7 @@ fn raster_main(
         let drawn = if r.error.is_some() {
             None
         } else {
-            Some(target.render(&scene))
+            Some(target.draw(&scene))
         };
         drop(scene);
         let Some(drawn) = drawn else {
@@ -470,13 +558,14 @@ fn raster_main(
                 r.frames += 1;
                 // The frame before goes first: once a scene is done, one
                 // frame's pixels are held, what `wait_drawn` measures by.
-                r.last = Some(pixels);
+                r.last = pixels;
                 // Before the scene counts as drawn, so a sample after
                 // `wait_drawn` sees this frame's.
+                let glyphs = &target.device().glyphs;
                 *in_flight.atlas.lock().unwrap_or_else(|e| e.into_inner()) = AtlasCounts {
-                    compactions: target.glyphs.atlas().compactions(),
-                    growths: target.glyphs.atlas().growths(),
-                    overflow_pages: target.glyphs.overflow_alive(),
+                    compactions: glyphs.atlas().compactions(),
+                    growths: glyphs.atlas().growths(),
+                    overflow_pages: glyphs.overflow_alive(),
                 };
                 in_flight.done();
                 if let (Some(dir), Some(pixels)) = (capture, r.last.as_ref()) {
@@ -493,13 +582,14 @@ fn raster_main(
         }
     }
     // What is still referenced once the UI side is done: a leak shows here.
-    target.images.sweep(&mut target.ctx);
-    r.gpu_images = target.images().len();
-    r.gpu_bytes = target.images().bytes();
-    r.atlas_side = target.glyphs.atlas().size();
-    r.atlas_glyphs = target.glyphs.atlas().len();
-    r.atlas_placements = target.glyphs.placements();
-    r.atlas_uploads = target.glyphs.uploads();
+    let d = target.device();
+    d.images.sweep(&mut d.ctx);
+    r.gpu_images = d.images.len();
+    r.gpu_bytes = d.images.bytes();
+    r.atlas_side = d.glyphs.atlas().size();
+    r.atlas_glyphs = d.glyphs.atlas().len();
+    r.atlas_placements = d.glyphs.placements();
+    r.atlas_uploads = d.glyphs.uploads();
     r
 }
 
