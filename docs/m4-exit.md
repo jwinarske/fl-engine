@@ -1,6 +1,6 @@
 # Milestone 4 exit report
 
-State of the §11 exit criteria and the §15 list of the brief (docs/m4-input.md), with the evidence for each. Evidence is a CI lane, a test, or a recorded finding. Pin: Dart 3.13.7, Flutter 3.47.8, drmkit 0.1.4. References: the stock engine's `flutter_tester` given the same input, and the engine's own unit tests, ported (D5).
+State of the §11 exit criteria and the §15 list of the brief (docs/m4-input.md), with the evidence for each. Evidence is a CI lane, a test, or a recorded finding. Pin: Dart 3.13.7, Flutter 3.47.8, drmkit 0.1.5, emblema `7d4253a`. References: the stock engine's `flutter_tester` given the same input, and the engine's own unit tests, ported (D5).
 
 Open: the VisionFive 2, on which nothing of stage 6 has run. Every exit criterion is met, and every §15 limit has a test that crosses it. On the Pi 5 the devices were made through `/dev/uinput`; a real mouse aside, no real keyboard, touchpad or touch screen has been tried.
 

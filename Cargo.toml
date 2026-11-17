@@ -31,14 +31,14 @@ unimplemented = "deny"
 thiserror = "1"
 # drmkit (brief M4 D3, D9), with its C libraries as they are: linked from the
 # system, never built. Only fl-platform-kms depends on it.
-drmkit-input = { version = "0.1.4", default-features = false }
-drmkit-core = "0.1.4"
-drmkit-display = "0.1.4"
-drmkit-modeset = "0.1.4"
-drmkit-cursor = "0.1.4"
-drmkit-capture = "0.1.4"
-drmkit-planes = "0.1.4"
-drmkit-session = "0.1.4"
+drmkit-input = { version = "0.1.5", default-features = false }
+drmkit-core = "0.1.5"
+drmkit-display = "0.1.5"
+drmkit-modeset = "0.1.5"
+drmkit-cursor = "0.1.5"
+drmkit-capture = "0.1.5"
+drmkit-planes = "0.1.5"
+drmkit-session = "0.1.5"
 drm = { version = "0.15", default-features = false }
 rustix = { version = "1.1", default-features = false, features = ["std", "event", "fs", "time"] }
 xkbcommon = { version = "0.9", default-features = false }
@@ -55,9 +55,9 @@ trybuild = "1"
 # first frame (#245), a rounded fill tessellated once the pass is
 # multisampled (#246) and its shader compiled per variant (#247). Back to
 # a registry version once one includes them.
-emblema = { git = "https://github.com/jwinarske/emblema", rev = "7aacc5753a77c021545c210fe10165ae6e80d3d7", default-features = false }
-emblema-hal = { git = "https://github.com/jwinarske/emblema", rev = "7aacc5753a77c021545c210fe10165ae6e80d3d7" }
-emblema-present-drm = { git = "https://github.com/jwinarske/emblema", rev = "7aacc5753a77c021545c210fe10165ae6e80d3d7" }
+emblema = { git = "https://github.com/jwinarske/emblema", rev = "7d4253a7314172925059587e5c600ddfde3d7483", default-features = false }
+emblema-hal = { git = "https://github.com/jwinarske/emblema", rev = "7d4253a7314172925059587e5c600ddfde3d7483" }
+emblema-present-drm = { git = "https://github.com/jwinarske/emblema", rev = "7d4253a7314172925059587e5c600ddfde3d7483" }
 
 fl-dart-sys = { path = "crates/fl-dart-sys", version = "0.1.0", default-features = false }
 fl-dart-vm = { path = "crates/fl-dart-vm", version = "0.1.0", default-features = false }

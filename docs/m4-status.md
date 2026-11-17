@@ -395,7 +395,7 @@ Found on the way:
 * **Red and blue were exchanged on the Pi 5's screen**, in every frame since stage 6's first. The first capture read back showed it: a cell drawn `2D3748` was scanned out as `48372D`. emblema named its ten-bit buffer `XR30` to KMS, and its bits are `XB30`'s: Vulkan's `A2B10G10R10`, red lowest. vc4 offers both and took what it was told. Fixed in emblema (emblema#248); the same frame then reads back `2D3748`. Nothing here had looked at a color on the board: the frames compared with goldens are offscreen ones, and the board's checks counted flips
 * **drmkit-capture could not read a ten-bit plane**, so the first capture was the cursor on nothing. It reads the four packed ten-bit formats since drmkit#132
 
-Open: both fixes are in their repositories' pull requests, not yet in the versions pinned here. Until they are, a capture on the Pi 5 has the cursor alone and the screen's red and blue are exchanged.
+Both are pinned here: drmkit 0.1.5, and emblema at `7d4253a`. Built from the pins, a capture on the Pi 5 has the frame and the cursor, and the cell reads back `2D3748`.
 
 ## Decisions taken 2026-11-16
 
