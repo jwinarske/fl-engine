@@ -234,6 +234,10 @@ impl Target for Scanout {
     fn device(&mut self) -> &mut Device {
         &mut self.device
     }
+
+    fn loses_its_frame(&self) -> bool {
+        true
+    }
 }
 
 impl Drop for Scanout {

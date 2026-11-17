@@ -857,6 +857,12 @@ fn screen_for(app: &mut AppArgs) -> Result<Raster, Failure> {
     });
     let raster = fl_raster::RasterThread::spawn_scanout(Box::new(display))
         .map_err(|e| Failure::Other(format!("--kms: {e}")))?;
+    // Back from another terminal, the display has nothing of ours on it,
+    // and an app with nothing new to say draws nothing: its last frame is
+    // shown again.
+    if let Some(kms) = KMS.lock().unwrap_or_else(|e| e.into_inner()).as_ref() {
+        kms.seat.on_resume(raster.redrawer());
+    }
     Ok((Some(std::sync::Arc::new(raster)), Some(screen)))
 }
 

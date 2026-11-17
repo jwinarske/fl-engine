@@ -348,6 +348,10 @@ pub struct Display {
     /// Set when the card went with the session: the session's count of
     /// resumes then. The card is taken again once it has come back since.
     lost: Option<u64>,
+    /// The session's count of its comings back when the card was last
+    /// taken: one since says the card went and came back with nobody
+    /// looking, as under an app that draws nothing meanwhile.
+    taken_at: u64,
     /// Whether the next commit has to set the mode whatever it asks.
     modeset: bool,
     events: Arc<Mutex<Vec<PageFlipEvent>>>,
@@ -392,6 +396,7 @@ impl Display {
                     framebuffers: HashMap::new(),
                     in_flight: None,
                     lost: None,
+                    taken_at: seat.activity().resumes(),
                     modeset: false,
                     events,
                     pending: Vec::new(),
@@ -459,6 +464,13 @@ impl Display {
             self.lose();
             return;
         }
+        // Away and back between two looks: the card held is the old one.
+        if self.lost.is_none() && self.activity.resumes() != self.taken_at {
+            self.lost = Some(self.taken_at);
+            if let Some(fb) = self.in_flight.take() {
+                self.pending.push(OutputEvent::FlipComplete { fb });
+            }
+        }
         if let Some(at) = self.lost {
             if self.activity.resumes() != at {
                 self.retake();
@@ -496,6 +508,7 @@ impl Display {
     /// The session is back: the card again, on the descriptor the seat has
     /// for it now. Nothing made on the old one is left.
     fn retake(&mut self) {
+        let now = self.activity.resumes();
         let again = self
             .seat
             .take_device(&self.path)
@@ -508,6 +521,7 @@ impl Display {
         let Ok(Some(pipeline)) = again else {
             return;
         };
+        self.taken_at = now;
         self.pipeline = pipeline;
         self.framebuffers.clear();
         self.in_flight = None;

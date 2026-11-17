@@ -410,6 +410,7 @@ The second board: a StarFive VisionFive 2 v1.3B (JH7110, four U74 cores, PowerVR
 
 Found on the way:
 
+* **A switch of terminals under an app that was drawing nothing did not come back.** Ctrl+Alt+F2 and Ctrl+Alt+F1 with `cursors` on the display: the seat resumed and the screen stayed the console's. The display took its card again only when a frame was next shown, and noticed the switch only if it had looked during it; an app at rest shows none. The session's coming back now has the last frame drawn again (`Seat::on_resume`, `RasterThread::redrawer`), and the display knows a switch it did not watch by the session's count. The Pi 5's switch had been made under `keys`, where the next key drew. Seen on the Pi 5 since, the display read back after the switch: `cursors`, as before it
 * The card's HDMI read no EDID until the board was started again: `EDID has corrupt header`, the connector connected with no mode, two cables alike. fl-dart said so (`no connector of any card has a display with a mode`). After a reboot it lists sixteen
 * cross.yml's riscv64 leg failed once on main, qemu-user crashing in its own code in the one test that ran fl-dart without the harness's rerun
 

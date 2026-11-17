@@ -18,6 +18,14 @@ pub fn capture(seat: &Seat, target: &CursorTarget, path: &Path) -> Result<(u32, 
         .take_device(&target.path)
         .map_err(|e| format!("{}: {e}", target.path.display()))?;
     let device = Device::from_owned_fd(fd);
+    // The planes and where they are, which the kernel shows a client that
+    // asked for both. The display asked on this card already, but after a
+    // switch of terminals the seat's descriptor is a new one, and may be
+    // read here before the display has taken it again.
+    device
+        .enable_universal_planes()
+        .and_then(|()| device.enable_atomic())
+        .map_err(|e| format!("{}: {e}", target.path.display()))?;
     let image = drmkit_capture::snapshot(&device, target.crtc_id).map_err(|e| e.to_string())?;
     drmkit_capture::write_png(&image, path).map_err(|e| format!("{}: {e}", path.display()))?;
     Ok((image.width(), image.height()))
