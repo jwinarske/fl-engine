@@ -5,6 +5,8 @@
 #   tar xJf fl-dart-board-kit-<target>.tar.xz && cd fl-dart-board-kit-<target>
 #   ./run.sh | tee report.txt
 #   ./run.sh --input          and the devices, with someone at the board
+#   ./run.sh --mode 1280x720  the display at one of its modes, where its
+#                             preferred one is more than the board draws at
 #
 # One PASS or FAIL line per check, a summary, exit 0 only if all pass. A
 # check of something the board has not (a display, a seat) is a SKIP, said
@@ -15,7 +17,15 @@
 cd "$(dirname "$0")" || exit 1
 
 input=0
-[ "$1" = "--input" ] && input=1
+mode=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --input) input=1 ;;
+    --mode) mode="$2"; shift ;;
+    *) echo "run.sh: unknown option $1" >&2; exit 2 ;;
+  esac
+  shift
+done
 
 fails=0
 passes=0
@@ -129,7 +139,7 @@ for prog in hello burst; do
     rss_ok=1
   fi
   if [ $rc -eq 0 ] && [ $rss_ok -eq 1 ] && [ "$fdw" = "$fde" ] && [ "$ph" = 0 ]; then
-    pass "6  1,000 isolate cycles of $prog: RSS +$((end - tenth)) kB, fds $fde, handles 0"
+    pass "6  1,000 isolate cycles of $prog: RSS $(printf '%+d' $((end - tenth))) kB, fds $fde, handles 0"
   else
     fail "6  1,000 isolate cycles of $prog (exit $rc)" "$line$(cat "$err")"
   fi
@@ -154,7 +164,8 @@ fi
 # fl-dart with the KMS platform, which links the board's libseat, libinput,
 # libudev and libxkbcommon; it needs a seat (seatd, or a login on the
 # console) and no compositor on the card.
-kms() { ./fl-dart-kms "$@" > "$out" 2> "$err"; rc=$?; }
+# shellcheck disable=SC2086 # --mode and its value, or nothing
+kms() { ./fl-dart-kms "$@" ${mode:+--mode $mode} > "$out" 2> "$err"; rc=$?; }
 # val_of <name>: the number after name= on the run's `kms:` line.
 val_of() { sed -n 's/^kms: //p' "$out" | tr ' ' '\n' | sed -n "s/^$1=//p"; }
 shown=0
@@ -188,7 +199,8 @@ fi
 # looks for the pattern in what it prints.
 heard() {
   echo "ASK   $3 (20 s)"
-  timeout 20 ./fl-dart-kms run-app "$1" --kms > "$out" 2> "$err"
+  # shellcheck disable=SC2086
+  timeout 20 ./fl-dart-kms run-app "$1" --kms ${mode:+--mode $mode} > "$out" 2> "$err"
   grep -q "$2" "$out"
 }
 if [ $input -eq 1 ] && [ $shown -eq 1 ]; then

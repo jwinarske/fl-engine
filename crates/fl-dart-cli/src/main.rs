@@ -3,7 +3,7 @@
 //! ```text
 //! fl-dart run hello.dill [args...]       # JIT, dev hosts (--features jit)
 //! fl-dart run-aot hello.aot [args...]    # precompiled runtime, every target
-//! fl-dart run-app libapp.so [WxH[@dpr]] [--assets DIR] [--png out.png] [--frames-dir DIR] [--ops] [--natives] [--styles] [--font FAMILY=PATH]... [--message CHANNEL[=TEXT]]... [--input SCRIPT] [--keymap LAYOUT[:VARIANT]] [--compose LOCALE] [--frames N] [--hz H] [--kms [--connector NAME] [--capture out.png]]
+//! fl-dart run-app libapp.so [WxH[@dpr]] [--assets DIR] [--png out.png] [--frames-dir DIR] [--ops] [--natives] [--styles] [--font FAMILY=PATH]... [--message CHANNEL[=TEXT]]... [--input SCRIPT] [--keymap LAYOUT[:VARIANT]] [--compose LOCALE] [--frames N] [--hz H] [--kms [--connector NAME] [--mode WxH[@HZ]] [--capture out.png]]
 //!                                       # a Flutter app, through dart:ui (M2);
 //!                                       # JIT takes the app's kernel instead
 //! fl-dart app-cycle libapp.so <n> [run-app options]
@@ -109,7 +109,7 @@ fn usage() -> ExitCode {
         "libapp.so"
     };
     eprintln!(
-        "       fl-dart run-app <{app}> [WxH[@dpr]] [--assets DIR] [--png out.png] [--frames-dir DIR] [--ops] [--natives] [--styles] [--font FAMILY=PATH]... [--message CHANNEL[=TEXT]]... [--input SCRIPT] [--keymap LAYOUT[:VARIANT]] [--compose LOCALE] [--frames N] [--hz H] [--kms [--connector NAME] [--capture out.png]]\n       fl-dart app-cycle <{app}> <n> [run-app options]\n       fl-dart prepare"
+        "       fl-dart run-app <{app}> [WxH[@dpr]] [--assets DIR] [--png out.png] [--frames-dir DIR] [--ops] [--natives] [--styles] [--font FAMILY=PATH]... [--message CHANNEL[=TEXT]]... [--input SCRIPT] [--keymap LAYOUT[:VARIANT]] [--compose LOCALE] [--frames N] [--hz H] [--kms [--connector NAME] [--mode WxH[@HZ]] [--capture out.png]]\n       fl-dart app-cycle <{app}> <n> [run-app options]\n       fl-dart prepare"
     );
     ExitCode::from(64)
 }
@@ -825,7 +825,13 @@ fn screen_for(app: &mut AppArgs) -> Result<Raster, Failure> {
     use fl_platform_kms::{Display, Seat};
     let kms = |e: &dyn std::fmt::Display| Failure::Other(format!("--kms: {e}"));
     let seat = std::sync::Arc::new(Seat::open().map_err(|e| kms(&e))?);
-    let mut display = Display::open(&seat, app.connector.as_deref()).map_err(|e| kms(&e))?;
+    let mut display = Display::open(
+        &seat,
+        app.connector.as_deref(),
+        app.mode
+            .map(|(width, height, hz)| fl_platform_kms::WantedMode { width, height, hz }),
+    )
+    .map_err(|e| kms(&e))?;
     let (w, h) = display.size();
     let hz = display.refresh_hz();
     display.on_flip(|flip| {
@@ -851,6 +857,12 @@ fn screen_for(app: &mut AppArgs) -> Result<Raster, Failure> {
     });
     let raster = fl_raster::RasterThread::spawn_scanout(Box::new(display))
         .map_err(|e| Failure::Other(format!("--kms: {e}")))?;
+    // Back from another terminal, the display has nothing of ours on it,
+    // and an app with nothing new to say draws nothing: its last frame is
+    // shown again.
+    if let Some(kms) = KMS.lock().unwrap_or_else(|e| e.into_inner()).as_ref() {
+        kms.seat.on_resume(raster.redrawer());
+    }
     Ok((Some(std::sync::Arc::new(raster)), Some(screen)))
 }
 
@@ -984,11 +996,14 @@ struct AppArgs {
     /// `--connector`: which display, `HDMI-A-1`; the first with one if not
     /// given.
     connector: Option<String>,
+    /// `--mode`: the display's mode of this size, and of the rate nearest
+    /// this one; its preferred mode if not given.
+    mode: Option<(u32, u32, Option<f64>)>,
     /// `--capture`: Print Screen writes what the display shows here.
     capture: Option<std::path::PathBuf>,
 }
 
-/// `[WxH[@dpr]] [--assets DIR] [--png out.png] [--frames-dir DIR] [--ops] [--natives] [--styles] [--font FAMILY=PATH]... [--message CHANNEL[=TEXT]]... [--input SCRIPT] [--keymap LAYOUT[:VARIANT]] [--compose LOCALE] [--frames N] [--hz H] [--kms [--connector NAME] [--capture out.png]]`,
+/// `[WxH[@dpr]] [--assets DIR] [--png out.png] [--frames-dir DIR] [--ops] [--natives] [--styles] [--font FAMILY=PATH]... [--message CHANNEL[=TEXT]]... [--input SCRIPT] [--keymap LAYOUT[:VARIANT]] [--compose LOCALE] [--frames N] [--hz H] [--kms [--connector NAME] [--mode WxH[@HZ]] [--capture out.png]]`,
 /// in any order; no size is the default view. Sizes are physical pixels.
 /// `--assets` names the app's asset bundle; without it, `<app>.assets` beside
 /// the program is used if it is there, as `tools/flutter-app/build.sh` puts
@@ -1006,8 +1021,9 @@ struct AppArgs {
 /// feature); `--frames` stops after N frames rendered;
 /// `--hz` sets the vsync rate (60 by default). `--kms` draws to a display, held through the seat,
 /// at its mode's size and rate, a size given being ignored but for its `@dpr`, which may stand
-/// alone; `--connector` names the display (`HDMI-A-1`), the first with one if not given (needs the
-/// `kms` feature). With `--kms` and no `--input` the seat's keyboards, mice and touch screens are
+/// alone; `--connector` names the display (`HDMI-A-1`), the first with one if not given, and
+/// `--mode` one of its modes by size, at the rate nearest the one said or its fastest, where its
+/// preferred mode is more than the board draws at (needs the `kms` feature). With `--kms` and no `--input` the seat's keyboards, mice and touch screens are
 /// the app's input, on `--keymap`'s layout, and the app runs until `--frames` or until it is
 /// stopped; `--capture` then makes Print Screen write what the display shows, the mouse's cursor
 /// with it, to a PNG, the first as named and those after numbered.
@@ -1048,6 +1064,15 @@ fn app_args(args: &[&str]) -> Option<AppArgs> {
             "--hz" => app.view.refresh_rate = it.next()?.parse().ok().filter(|v: &f64| *v > 0.0)?,
             "--kms" => app.kms = true,
             "--capture" => app.capture = Some(std::path::PathBuf::from(it.next()?)),
+            "--mode" => {
+                let said = it.next()?;
+                let (size, hz) = match said.split_once('@') {
+                    Some((size, hz)) => (size, Some(hz.parse().ok().filter(|v: &f64| *v > 0.0)?)),
+                    None => (*said, None),
+                };
+                let (w, h) = size.split_once('x')?;
+                app.mode = Some((w.parse().ok()?, h.parse().ok()?, hz));
+            }
             "--connector" => {
                 app.connector = Some(it.next().filter(|c| !c.is_empty())?.to_string());
             }

@@ -10,13 +10,16 @@ Not published, no versions yet.
 * `fl-input`: events as data in `embedder.h`'s shape, sent from any thread; the Linux embedder's pointer, scrolling and touch managers, its key path and its text input model, ported with their unit tests
 * `fl_ui::pointer`: `PointerData` packets and the engine's packet converter; `flutter/keyevent`, `flutter/keyboard`, `flutter/textinput`, the clipboard on `flutter/platform`, `flutter/mousecursor`
 * `fl-input-script` and `run-app --input`: scripted input for CI. `counter` tapped, `text_field`, `keys`, `pointer` and `scroll` match the stock framework given the same input
-* `fl-platform-kms` and `run-app --kms`, behind the `kms` feature: the seat (libseat), the display as emblema's scanout output, frames begun at the display's blanks, the seat's keyboards, mice, touchpads and touch screens (libinput), XKB keymaps and compose tables, the mouse cursor on the card's cursor plane, terminal switches, hotplug. All through drmkit 0.1.5
+* `fl-platform-kms` and `run-app --kms`, behind the `kms` feature: the seat (libseat), the display as emblema's scanout output, frames begun at the display's blanks, the seat's keyboards, mice, touchpads and touch screens (libinput), XKB keymaps and compose tables, the mouse cursor on the card's cursor plane, terminal switches, hotplug. All through drmkit 0.1.6
 * A touchpad's pinch as a zoom and a rotation; a mouse unplugged takes its pointer
 * Board kit: `fl-dart-kms` and the display's check; `run.sh --input`
 * Lanes: soak with input, input latency reported and held to two frames, fuzz targets for the script, the input state and the channel decoders, the apps with input under ASan and TSan
 * The no-C++ lane builds `fl-dart` with `kms`: the four system libraries linked, no C built
 * `apps/cursors`, a cell for every system mouse cursor, in the app lane; `run-app --kms --capture`: Print Screen writes what the display shows, the cursor with it, to a PNG
 * Ten-bit scanout with red and blue in their places (emblema 0.3.0): they were exchanged on the Pi 5's screen
+* A display controller apart from the GPU: where it takes no buffer of the renderer's, its own card's through GBM. `run-app --kms --mode WxH[@HZ]`
+* A switch of terminals under an app at rest brings its frame back; a cursor near the top and left edges of a display that reads its buffer as it scans is whole (drmkit 0.1.6)
+* VisionFive 2 (RISC-V): the board kit's ten checks pass, the display at 1280x720 and 60 Hz with no blank missed
 * Raspberry Pi 5: 60 Hz with no blank missed, input latency under one frame
 
 ### Milestone 3: images and text (in progress)
@@ -78,5 +81,4 @@ Not published, no versions yet.
 
 ### Not yet
 
-* Real-board runs (Raspberry Pi 5, VisionFive 2)
 * dart:ui and rendering (milestone 2)

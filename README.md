@@ -10,7 +10,7 @@ Status: milestone 4 (input). A Flutter app's libapp.so, drawn and given input, w
 * dart:ui drawn by emblema (Vulkan): shapes, images, text. Frames checked against the stock engine's
 * Input: keys, text input, mouse, touch, touchpad and scrolling, from the seat's devices or a script
 * KMS on a board: display, seat, input devices and the mouse cursor through drmkit
-* Tested on x86_64, on aarch64 and riscv64 under qemu, and on a Raspberry Pi 5. VisionFive 2 not yet
+* Tested on x86_64, on aarch64 and riscv64 under qemu, and on a Raspberry Pi 5 and a VisionFive 2
 
 ## Crates
 
@@ -136,6 +136,7 @@ On the board:
     cd fl-dart-board-kit-aarch64-unknown-linux-gnu
     ./run.sh | tee report.txt
     ./run.sh --input | tee report.txt    # with someone at the board
+    ./run.sh --mode 1280x720             # the display at one of its other modes
 
 * One PASS/FAIL line per check: criteria 2-6. Exit 0 only if all pass
 * The display: 300 frames of an app on KMS, none dropped and no blank missed. It needs a seat (seatd, or a login on the console) and no compositor on the card; a board with no display or no seat is a SKIP, said and counted
@@ -154,8 +155,8 @@ On the board:
 * [docs/m3-exit.md](docs/m3-exit.md) - milestone 3 exit criteria and their evidence
 * [docs/m4-input.md](docs/m4-input.md) - milestone 4 brief: input, and KMS on the boards
 * [docs/m4-status.md](docs/m4-status.md) - milestone 4 progress and findings
-* [docs/m4-exit.md](docs/m4-exit.md) - milestone 4 exit criteria and their evidence. Open: VisionFive 2
-* [docs/m1-exit.md](docs/m1-exit.md) - milestone 1 exit criteria and their evidence. Open: board runs
+* [docs/m4-exit.md](docs/m4-exit.md) - milestone 4 exit criteria and their evidence
+* [docs/m1-exit.md](docs/m1-exit.md) - milestone 1 exit criteria and their evidence
 * [docs/m1-status.md](docs/m1-status.md) - decisions and findings since the brief. Newer where they disagree
 * [docs/m1-s15-findings.md](docs/m1-s15-findings.md) - open embedding questions, answered from Dart and Flutter source
 

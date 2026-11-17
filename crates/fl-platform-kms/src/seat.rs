@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 
 use drmkit_session::{LibseatBackend, Session, SessionError, SessionEvent};
@@ -50,10 +50,20 @@ impl std::error::Error for SeatError {}
 
 /// Whether a seat's session has its devices, for the threads that use
 /// them.
-#[derive(Debug)]
 pub struct Activity {
     active: AtomicBool,
     resumes: AtomicU64,
+    /// Told when the session comes back, on the seat's thread.
+    resumed: Mutex<Option<Box<dyn Fn() + Send>>>,
+}
+
+impl std::fmt::Debug for Activity {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Activity")
+            .field("active", &self.active)
+            .field("resumes", &self.resumes)
+            .finish_non_exhaustive()
+    }
 }
 
 impl Activity {
@@ -104,6 +114,7 @@ impl Seat {
         let activity = Arc::new(Activity {
             active: AtomicBool::new(true),
             resumes: AtomicU64::new(0),
+            resumed: Mutex::new(None),
         });
         let (thread_wake, thread_active) = (Arc::clone(&wake), Arc::clone(&activity));
         let thread = std::thread::Builder::new()
@@ -138,6 +149,19 @@ impl Seat {
     /// from this terminal and the switch back.
     pub fn is_active(&self) -> bool {
         self.activity.is_active()
+    }
+
+    /// Calls `f` each time the session comes back from a switch of
+    /// terminals, on the seat's thread, once its devices are read again.
+    /// What was on the display is not there any more: an app that draws
+    /// only when something changes has to be drawn again then. `f` must
+    /// not wait on the seat.
+    pub fn on_resume(&self, f: impl Fn() + Send + 'static) {
+        *self
+            .activity
+            .resumed
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = Some(Box::new(f));
     }
 
     /// What says whether the session has its devices, for a thread that
@@ -315,6 +339,10 @@ fn seat_main(
                         activity.active.store(true, Ordering::Release);
                         if let Some(d) = devices.as_mut() {
                             d.resume();
+                        }
+                        let resumed = activity.resumed.lock().unwrap_or_else(|e| e.into_inner());
+                        if let Some(f) = resumed.as_ref() {
+                            f();
                         }
                     }
                     Some(_) => {}

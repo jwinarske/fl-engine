@@ -12,7 +12,10 @@ jit = ["fl-ui/jit"]
 aot = ["fl-ui/aot"]
 # A display as the target (brief M4 D9): emblema's scanout presentation,
 # over an output the platform gives. Pure Rust, as emblema's `drm` is.
-scanout = ["emblema/drm", "dep:emblema-hal"]
+# With emblema's `gbm`: a ring whose buffers the display's own card allocates,
+# for a display controller that takes no buffer of the GPU's (a VisionFive
+# 2's). libgbm is opened when that ring is asked for, not linked.
+scanout = ["emblema/drm", "dep:emblema-hal", "dep:emblema-present-drm"]
 
 [dependencies]
 fl-ui = { workspace = true }
@@ -21,6 +24,9 @@ fl-ui = { workspace = true }
 emblema = { workspace = true, features = ["vulkan"] }
 # The format types of an output's trait, which the facade does not name.
 emblema-hal = { workspace = true, optional = true }
+# The facade's `drm` is this crate; named for its `gbm` feature alone, which
+# the facade does not pass on.
+emblema-present-drm = { workspace = true, optional = true, features = ["gbm"] }
 png = "0.18"
 # Glyph coverage (brief M3 D2), on skrifa, as emblema's own example names.
 swash = { version = "0.2", default-features = false, features = ["scale", "render", "std"] }

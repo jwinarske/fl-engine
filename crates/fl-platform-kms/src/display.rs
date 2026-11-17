@@ -102,6 +102,34 @@ impl Pacing {
     }
 }
 
+/// A mode asked for by its size, and its rate if that matters: one of the
+/// display's own, the nearest in rate, the fastest with none said.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct WantedMode {
+    pub width: u32,
+    pub height: u32,
+    pub hz: Option<f64>,
+}
+
+/// Of `modes`, each its width, height and rate in millihertz, which one
+/// `wanted` asks for: its size, and the rate nearest the one said, or the
+/// highest. `None` if no mode is that size.
+fn pick_mode(modes: &[(u32, u32, u32)], wanted: WantedMode) -> Option<usize> {
+    let off = |mhz: u32| {
+        let hz = f64::from(mhz) / 1000.0;
+        match wanted.hz {
+            Some(said) if said.is_finite() => (hz - said).abs(),
+            _ => -hz,
+        }
+    };
+    modes
+        .iter()
+        .enumerate()
+        .filter(|(_, (w, h, _))| *w == wanted.width && *h == wanted.height)
+        .min_by(|(_, a), (_, b)| off(a.2).total_cmp(&off(b.2)))
+        .map(|(i, _)| i)
+}
+
 /// One connector's pipeline on an open card: what a commit names.
 struct Pipeline {
     device: Device,
@@ -146,6 +174,7 @@ impl Pipeline {
     fn open(
         fd: OwnedFd,
         connector: Option<&str>,
+        wanted: Option<WantedMode>,
         events: &Arc<Mutex<Vec<PageFlipEvent>>>,
     ) -> Result<Option<Pipeline>, DisplayError> {
         let device = Device::from_owned_fd(fd);
@@ -166,12 +195,40 @@ impl Pipeline {
             None => ScanoutTarget::discover(&device),
         }
         .map_err(|e| card("discovery", e))?;
-        let target = match found {
+        let mut target = match found {
             Ok(t) => t,
             // Named, and here, but not to be driven: say why.
             Err(e) if connector.is_some() => return Err(DisplayError::NoDisplay(e.to_string())),
             Err(_) => return Ok(None),
         };
+        // Its preferred mode, unless another of its own is asked for.
+        if let Some(wanted) = wanted {
+            let all =
+                query_connector_modes(&device, Probe::Cached).map_err(|e| card("connectors", e))?;
+            let modes = all
+                .iter()
+                .find(|c| c.connector_id == target.connector_id)
+                .map_or(&[][..], |c| &c.modes[..]);
+            let sized: Vec<(u32, u32, u32)> = modes
+                .iter()
+                .map(|m| (u32::from(m.size().0), u32::from(m.size().1), refresh_mhz(m)))
+                .collect();
+            target.mode = pick_mode(&sized, wanted).map(|i| modes[i]).ok_or_else(|| {
+                let mut sizes: Vec<String> = Vec::new();
+                for m in modes {
+                    let size = format!("{}x{}", m.size().0, m.size().1);
+                    if !sizes.contains(&size) {
+                        sizes.push(size);
+                    }
+                }
+                DisplayError::NoDisplay(format!(
+                    "the display has no mode {}x{}; it has {}",
+                    wanted.width,
+                    wanted.height,
+                    sizes.join(", ")
+                ))
+            })?;
+        }
         let (connector, crtc, plane) =
             (target.connector_id, target.crtc.id, target.primary_plane_id);
         let mut store = PropertyStore::new();
@@ -283,12 +340,18 @@ pub struct Display {
     activity: Arc<Activity>,
     path: PathBuf,
     connector: Option<String>,
+    /// The mode asked for, for the card opened again after a switch.
+    wanted: Option<WantedMode>,
     pipeline: Pipeline,
     framebuffers: HashMap<u64, Framebuffer>,
     in_flight: Option<FbHandle>,
     /// Set when the card went with the session: the session's count of
     /// resumes then. The card is taken again once it has come back since.
     lost: Option<u64>,
+    /// The session's count of its comings back when the card was last
+    /// taken: one since says the card went and came back with nobody
+    /// looking, as under an app that draws nothing meanwhile.
+    taken_at: u64,
     /// Whether the next commit has to set the mode whatever it asks.
     modeset: bool,
     events: Arc<Mutex<Vec<PageFlipEvent>>>,
@@ -300,7 +363,12 @@ pub struct Display {
 impl Display {
     /// The first card under `/dev/dri` with a display on `connector`
     /// (`HDMI-A-1`), or on any connector, opened through `seat`.
-    pub fn open(seat: &Arc<Seat>, connector: Option<&str>) -> Result<Display, DisplayError> {
+    /// At `mode`, one of the display's own, or at its preferred mode.
+    pub fn open(
+        seat: &Arc<Seat>,
+        connector: Option<&str>,
+        mode: Option<WantedMode>,
+    ) -> Result<Display, DisplayError> {
         let mut cards: Vec<PathBuf> = std::fs::read_dir("/dev/dri")
             .map_err(|e| DisplayError::NoDisplay(format!("/dev/dri: {e}")))?
             .filter_map(|e| e.ok().map(|e| e.path()))
@@ -317,16 +385,18 @@ impl Display {
             let Ok(fd) = seat.take_device(&path) else {
                 continue;
             };
-            if let Some(pipeline) = Pipeline::open(fd, connector, &events)? {
+            if let Some(pipeline) = Pipeline::open(fd, connector, mode, &events)? {
                 return Ok(Display {
                     seat: Arc::clone(seat),
                     activity: seat.activity(),
                     path,
                     connector: connector.map(str::to_owned),
+                    wanted: mode,
                     pipeline,
                     framebuffers: HashMap::new(),
                     in_flight: None,
                     lost: None,
+                    taken_at: seat.activity().resumes(),
                     modeset: false,
                     events,
                     pending: Vec::new(),
@@ -394,6 +464,13 @@ impl Display {
             self.lose();
             return;
         }
+        // Away and back between two looks: the card held is the old one.
+        if self.lost.is_none() && self.activity.resumes() != self.taken_at {
+            self.lost = Some(self.taken_at);
+            if let Some(fb) = self.in_flight.take() {
+                self.pending.push(OutputEvent::FlipComplete { fb });
+            }
+        }
         if let Some(at) = self.lost {
             if self.activity.resumes() != at {
                 self.retake();
@@ -431,16 +508,20 @@ impl Display {
     /// The session is back: the card again, on the descriptor the seat has
     /// for it now. Nothing made on the old one is left.
     fn retake(&mut self) {
+        let now = self.activity.resumes();
         let again = self
             .seat
             .take_device(&self.path)
             .map_err(DisplayError::from)
-            .and_then(|fd| Pipeline::open(fd, self.connector.as_deref(), &self.events));
+            .and_then(|fd| {
+                Pipeline::open(fd, self.connector.as_deref(), self.wanted, &self.events)
+            });
         // Not back yet, or its display gone meanwhile: tried again at the
         // next frame.
         let Ok(Some(pipeline)) = again else {
             return;
         };
+        self.taken_at = now;
         self.pipeline = pipeline;
         self.framebuffers.clear();
         self.in_flight = None;
@@ -514,6 +595,10 @@ impl ScanoutOutput for Display {
 
     fn supported_formats(&self) -> &[FormatModifierSet] {
         &self.pipeline.formats
+    }
+
+    fn device_fd(&self) -> Option<std::os::fd::BorrowedFd<'_>> {
+        Some(self.pipeline.device.as_fd())
     }
 
     fn import_dmabuf(&mut self, buffer: DmaBufPlanes) -> emblema_hal::Result<FbHandle> {
@@ -719,6 +804,41 @@ impl Drop for Display {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_mode_asked_for_is_the_display_s_own_of_that_size() {
+        // A display's modes: width, height, millihertz.
+        let modes = [
+            (3840, 2160, 30_000),
+            (1280, 720, 60_000),
+            (1280, 720, 59_940),
+            (1280, 720, 50_000),
+        ];
+        let ask = |width, height, hz| WantedMode { width, height, hz };
+        let hz = |i: Option<usize>| i.map(|i| modes[i].2);
+        // The fastest of a size with no rate said; the nearest with one.
+        assert_eq!(hz(pick_mode(&modes, ask(1280, 720, None))), Some(60_000));
+        assert_eq!(
+            hz(pick_mode(&modes, ask(1280, 720, Some(50.0)))),
+            Some(50_000)
+        );
+        assert_eq!(
+            hz(pick_mode(&modes, ask(1280, 720, Some(59.9)))),
+            Some(59_940)
+        );
+        assert_eq!(
+            hz(pick_mode(&modes, ask(3840, 2160, Some(60.0)))),
+            Some(30_000)
+        );
+        // A size the display has not is no mode, whatever the rate.
+        assert_eq!(pick_mode(&modes, ask(1920, 1080, None)), None);
+        assert_eq!(pick_mode(&[], ask(1280, 720, None)), None);
+        // A rate that is no number is none said.
+        assert_eq!(
+            hz(pick_mode(&modes, ask(1280, 720, Some(f64::NAN)))),
+            Some(60_000)
+        );
+    }
 
     #[test]
     fn a_mode_s_rate_is_its_timings_not_the_rounded_hertz() {

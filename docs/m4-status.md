@@ -397,6 +397,51 @@ Found on the way:
 
 Both are pinned here: drmkit 0.1.5, and emblema at `7d4253a`. Built from the pins, a capture on the Pi 5 has the frame and the cursor, and the cell reads back `2D3748`. Since emblema 0.3.0 reached crates.io with the fix, the pin is that release and no commit.
 
+## Stage 6: the VisionFive 2 (2026-11-17)
+
+The second board: a StarFive VisionFive 2 v1.3B (JH7110, four U74 cores, PowerVR BXE-4-32 through Imagination's Vulkan 1.3 driver), Ubuntu 24.04.3, Linux 6.12.5-starfive, on HDMI. The cross lane's riscv64 kit as it is built, over ssh. seatd and libseat1 installed from Ubuntu's archive, and GDM stopped: its greeter holds the card.
+
+* **The kit's nine checks pass** (M1's exit criteria 2 to 6, docs/m1-exit.md), the first run of any of this on RISC-V hardware
+* **The display took no buffer of the renderer's.** Its display controller (card0, VeriSilicon) is a card apart from the GPU (card1), and importing the renderer's dma-buf into it is refused: `importing a buffer: Function not implemented`. The Pi 5's two are one driver's. fl-raster now tries the renderer's own ring and, where that is refused, emblema's ring of buffers GBM allocates on the display's card (`DrmScanoutTarget::with_gbm`), which the renderer imports and draws into. The display says which card is its own (`ScanoutOutput::device_fd`). libgbm is opened when that ring is asked for and not linked
+* **`run-app --kms --mode WxH[@HZ]`**: one of the display's own modes by its size, at the rate nearest the one said or its fastest. The monitor's preferred mode is 3840x2160 at 30 Hz, and there `ticker` is shown a frame in two or three blanks (99 flips over 226). `run.sh --mode` passes it on
+* **At 1280x720 and 60 Hz: 299 flips over 298 blanks, none missed**, three runs, and the kit's display check passes: 10 passed, 0 failed
+* **Looked at on the monitor**, by a person: `ticker`'s red to blue, as it should be
+* **The CPU's governor decides that.** As the image boots it is `ondemand`, the cores at 750 MHz of 1,500 while a frame a blank is all they are asked for, and a frame in twelve then took two blanks: 299 flips over 324, at even spacing. With `performance` none does. A board's image is the place for that setting, not the engine
+
+Found on the way:
+
+* **A switch of terminals under an app that was drawing nothing did not come back.** Ctrl+Alt+F2 and Ctrl+Alt+F1 with `cursors` on the display: the seat resumed and the screen stayed the console's. The display took its card again only when a frame was next shown, and noticed the switch only if it had looked during it; an app at rest shows none. The session's coming back now has the last frame drawn again (`Seat::on_resume`, `RasterThread::redrawer`), and the display knows a switch it did not watch by the session's count. The Pi 5's switch had been made under `keys`, where the next key drew. Seen on the Pi 5 since, the display read back after the switch: `cursors`, as before it
+* The card's HDMI read no EDID until the board was started again: `EDID has corrupt header`, the connector connected with no mode, two cables alike. fl-dart said so (`no connector of any card has a display with a mode`). After a reboot it lists sixteen
+* cross.yml's riscv64 leg failed once on main, qemu-user crashing in its own code in the one test that ran fl-dart without the harness's rerun
+
+### Its devices
+
+A keyboard (HP) and a mouse (Logitech, by its receiver) plugged in, a person at the board, each app shown for a minute or two over ssh at 1280x720. The board's kernel has no `/dev/uinput`, so nothing here is synthetic.
+
+* **Keys**: `keys` heard 243 key downs in one run and 155 in another, each with its physical key, logical key and character, two held at once among them
+* **Mouse**: `pointer` heard the mouse added, 2,019 hovers, 11 downs and ups, drags; and in a later run 209 wheel notches, both ways, each a scroll of 53 as on the Pi 5
+* **Cursors**: `cursors`, all 35 cells entered; the cursor changes in each, `wait` and `progress` animate
+* **A capture**: Print Screen with `--capture` wrote the display's frame with the cursor on it, read back through GBM's buffers, the cells `2D3748` and `4A5568` as drawn
+* **A switch of terminals**: Ctrl+Alt+F2 and Ctrl+Alt+F1, twice, the grid back each time and captured after (above, found on the way)
+* **`counter`**, the first app with text and Material's widgets on this board: drawn right, the count going up by the click. It is shown at about 20 frames a second, 199 flips over 620 blanks, where `ticker` holds 60: its frame is multisampled, and emblema's own numbers have this GPU paying for each sample (docs/on-a-board.md there). Its first clicks were not answered while the ripple's shaders compiled
+
+The cursor, on this display controller:
+
+* **Near the top and left edges it broke up**, and came back in the middle; the right and bottom edges were clean. There the cursor's image is redrawn on every move, shifted inside its buffer so the plane need not start off the screen, and on the legacy calls it was redrawn into the one buffer being scanned out. Fixed in drmkit 0.1.6 (drmkit#134), pinned here: a second buffer, drawn into and then set. With that, looked at again: clean at both edges, the capture of it in the corner clean
+* **When it first appears it is sometimes noise: open, and not fixed here.** A mouse nudged once and left shows a scrambled cursor that stays until the mouse is moved further; a larger movement clears it. What was found, each with a person at the board:
+  * The cursor's buffer is right while the monitor shows noise: every capture taken at that moment has a clean arrow, in place
+  * It is not every run. The same build, app and nudge gave scrambled, clean, scrambled in three runs
+  * It is in `pointer`, which asks for no cursor shape and draws no frame as the mouse moves, and in `counter`
+  * Waiting for the app's first frame before touching the mouse does not avoid it
+  * Telling the card the cursor again at the same place, a tick and two ticks later, did not clear it; nor did moving it a pixel aside and back
+  * Walking 24 MB on each core every ten seconds, to put the caches out to memory, did not clear it in fifteen seconds with the mouse untouched
+  * The Pi 5 has not shown it
+
+  It may be the board's display driver, the vendor's for this kernel (6.12.5-starfive), and nothing to be fixed from here; neither change tried is kept. Tracked as #29
+* `counter`'s button keeps the arrow: the framework asks for `basic` over it, off the web, as a script's mouse shows here too
+
+Not done on this board: latency as a number (the longest alone is printed, and `counter`'s is its first frame's shaders, 1.9 s), hotplug, a touch screen. `run.sh --input` was not run as such; its two checks are the keys and the pointer downs above.
+
 ## Decisions taken 2026-11-16
 
 D1 (devices and a script, no window), D4 (clipboard in the process), D5 and D6 (no system IME), each with what the stock Linux embedder does in its place (brief §13). D5 as taken: no recordings from the stock embedder; the engine's unit tests ported for each layer, and the same scripted input given to `flutter_tester` and to fl-dart end to end.

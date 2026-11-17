@@ -176,9 +176,9 @@ dependencies = [
 
 [[package]]
 name = "drmkit-capture"
-version = "0.1.5"
+version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f61b84be43169a11544a0f8a3bd889e62a1931e1cc2bcb67f89097083bacb75d"
+checksum = "72aa1860cf8f7b761a979ae6cf1385d5ea2420e423c00357cd6e8519f5a87e28"
 dependencies = [
  "drm",
  "drmkit-core",
@@ -191,9 +191,9 @@ dependencies = [
 
 [[package]]
 name = "drmkit-core"
-version = "0.1.5"
+version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fa3e41dd1fbfc5c224e8765d87abf3f7863f69eaf61c3d9bd69a90bc4164b779"
+checksum = "a991cff9697cd97ab297b5a77822dafe60cfecddd877e8a9109845424280834c"
 dependencies = [
  "drm",
  "drm-ffi",
@@ -204,9 +204,9 @@ dependencies = [
 
 [[package]]
 name = "drmkit-cursor"
-version = "0.1.5"
+version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b6559fdb836222fde7f95f5c53b94f3f9682d87b16bb84d82f9c2e5346fc23bd"
+checksum = "42c5c24b5d3075ecd929cfb5094518ece0b1725e24fec3eab98a860971121c74"
 dependencies = [
  "drm",
  "drmkit-core",
@@ -218,9 +218,9 @@ dependencies = [
 
 [[package]]
 name = "drmkit-display"
-version = "0.1.5"
+version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4f9873b556368ff9fb153913094ae46e4c08991131cd698ba01146257cb2d289"
+checksum = "a130ddf8e9d287962f0cd0bed7819fb72bf1f41d751cdf5c7896a9b31985ab09"
 dependencies = [
  "drm",
  "drmkit-core",
@@ -233,9 +233,9 @@ dependencies = [
 
 [[package]]
 name = "drmkit-dumb"
-version = "0.1.5"
+version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "acebb41a02a43d935d125e01af94e22a6b0cca3573846535389263e85ea91fef"
+checksum = "5eff700fe77629eea7f4d2c91b8d3aa4b6eed0f6a06eebab714f9d645bae7d60"
 dependencies = [
  "drm",
  "drm-ffi",
@@ -247,15 +247,26 @@ dependencies = [
 
 [[package]]
 name = "drmkit-fmt"
-version = "0.1.5"
+version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "38690d60a00be5899c86f52cf2186d50571d79eefeef6d59e56b2228a667c9c0"
+checksum = "08ecca428031df2e766153cd4a65b97b4df3deb5a152a89ed9a8850ede6ccd6d"
+
+[[package]]
+name = "drmkit-gbm"
+version = "0.1.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c1cb5f18d701922411c2144111e359ae0bf2e84cd33b25a524bc6589785f1035"
+dependencies = [
+ "libloading",
+ "rustix",
+ "thiserror 2.0.21",
+]
 
 [[package]]
 name = "drmkit-input"
-version = "0.1.5"
+version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "21c38e2fd2de7e880dc50627b56e8fa705867f63bb001aae072be8a902ec474c"
+checksum = "c3d0e580a0c62a7cfdc272507c0e6f890f970a91dbed12a73fc76d3d2aa7332f"
 dependencies = [
  "drmkit-log",
  "input",
@@ -266,15 +277,15 @@ dependencies = [
 
 [[package]]
 name = "drmkit-log"
-version = "0.1.5"
+version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "94615156f67b9cc6c68d520c5e17396eca2b9acf3cefa6fb007fa09373a35843"
+checksum = "bebc4dc5c946c0f9e593b60a9c923451462798468d9ffcafbd5553f5c85645a4"
 
 [[package]]
 name = "drmkit-modeset"
-version = "0.1.5"
+version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "403be5c4107455d81045ff0312cbc436ce86c8c03634aff3bd9346b561595871"
+checksum = "73f2f09200836a3105c545aeb3dfe04e8df15e8431bb5783d07ef7a4d9a6453d"
 dependencies = [
  "drm",
  "drmkit-core",
@@ -285,9 +296,9 @@ dependencies = [
 
 [[package]]
 name = "drmkit-planes"
-version = "0.1.5"
+version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "da562dbe32b1b1b78d89fac6b2154562b49012763c61077b43f57622276b7bb0"
+checksum = "4d749bd6cec6b33c5febedfeb6391a70bf4d468080aea7f5aad265b3812b6cd6"
 dependencies = [
  "drm",
  "drmkit-core",
@@ -298,9 +309,9 @@ dependencies = [
 
 [[package]]
 name = "drmkit-session"
-version = "0.1.5"
+version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "51c31745da8a1819c4748581c52eb232e1b1328a7ac403b20b5fb1592d041671"
+checksum = "a6ca16c7d1cf2415d9a56c5aaa5b4b844147f4c9002079c81bd3ec766e811d35"
 dependencies = [
  "drmkit-log",
  "libseat",
@@ -309,9 +320,9 @@ dependencies = [
 
 [[package]]
 name = "drmkit-time"
-version = "0.1.5"
+version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2326e1a64c2499d65bbf9a63e8ac6bf4310c4d9ef313e1827bc4dbcdab5e39e9"
+checksum = "421dd12dbf60be5e00f7a8e6365fa7a17786a217d81757586b34d6250946d3f0"
 dependencies = [
  "rustix",
 ]
@@ -409,6 +420,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "db391459604610c20b1157e388656865659b723fc54901569daee1d307954c1a"
 dependencies = [
  "drm",
+ "drmkit-gbm",
  "emblema-core",
  "emblema-hal",
  "emblema-present",
@@ -566,6 +578,7 @@ version = "0.1.0"
 dependencies = [
  "emblema",
  "emblema-hal",
+ "emblema-present-drm",
  "fl-text",
  "fl-ui",
  "png",

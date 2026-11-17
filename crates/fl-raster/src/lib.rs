@@ -142,6 +142,12 @@ trait Target {
     /// Draws `scene`; the frame's pixels if the target keeps them.
     fn draw(&mut self, scene: &Scene) -> Result<Option<Vec<u8>>, RasterError>;
     fn device(&mut self) -> &mut Device;
+    /// Whether what it shows can be lost under it, so that the last scene
+    /// is kept to be drawn again ([`RasterThread::redrawer`]). A display
+    /// can: its session is switched away from and back.
+    fn loses_its_frame(&self) -> bool {
+        false
+    }
 }
 
 /// An offscreen target of one size, on Vulkan (decision D4).
@@ -300,6 +306,13 @@ pub struct RasterThread {
 enum Work {
     Scene(Arc<Scene>),
     Upload(Arc<ImageData>),
+    /// The last scene once more: what the target showed is gone.
+    Again,
+    /// Nothing more is coming from the thread's owner: what is queued
+    /// before this is drawn, and the thread ends. Said, not left to the
+    /// channel's closing, since an uploader or a redrawer handed out may
+    /// hold a way in for as long as whoever has it lives.
+    Finish,
 }
 
 /// Scenes submitted and not yet drawn, and the glyph atlas as the last
@@ -479,13 +492,28 @@ impl RasterThread {
         }
     }
 
+    /// What has the last scene drawn again, where the target is one that
+    /// can lose what it shows: a display, when its session comes back from
+    /// a switch of terminals, and the app has nothing new to draw. Never
+    /// waits, and is no frame of the app's: it counts as none.
+    pub fn redrawer(&self) -> impl Fn() + Send + 'static {
+        let tx = self.tx.clone();
+        move || {
+            if let Some(tx) = &tx {
+                let _ = tx.send(Work::Again);
+            }
+        }
+    }
+
     /// Draws what is queued, stops the thread and says what it did.
     pub fn finish(mut self) -> Rastered {
         self.stop()
     }
 
     fn stop(&mut self) -> Rastered {
-        drop(self.tx.take());
+        if let Some(tx) = self.tx.take() {
+            let _ = tx.send(Work::Finish);
+        }
         match self.thread.take().map(JoinHandle::join) {
             Some(Ok(r)) => r,
             Some(Err(_)) => Rastered {
@@ -531,9 +559,26 @@ fn raster_main<T: Target>(
     };
     // Until the UI side hangs up. After a failure the rest are taken and
     // dropped, so the UI thread is never left waiting on a full queue.
+    let keeps = target.loses_its_frame();
+    let mut last_scene: Option<Arc<Scene>> = None;
     for work in rx {
         let scene = match work {
-            Work::Scene(s) => s,
+            Work::Scene(s) => {
+                if keeps {
+                    last_scene = Some(Arc::clone(&s));
+                }
+                s
+            }
+            Work::Finish => break,
+            Work::Again => {
+                // Not a frame of the app's, and its failing is not the
+                // run's: the card may not be back, and the next scene, or
+                // the next of these, finds out.
+                if let (None, Some(scene)) = (&r.error, &last_scene) {
+                    let _ = target.draw(scene);
+                }
+                continue;
+            }
             Work::Upload(image) => {
                 // A failed upload is retried, and named, by the frame that
                 // draws the image.
