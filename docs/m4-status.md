@@ -356,6 +356,22 @@ Differences from the brief:
 
 Open: the VisionFive 2, on which nothing of stage 6 has run. A display plugged in or unplugged while an app runs is not handled: the app keeps the connector it started on.
 
+## Stage 6: a touchpad's pinch, and a mouse unplugged (2026-11-16)
+
+drmkit-input's two gaps, closed there (drmkit 0.1.4: `InputEvent::Gesture` and `InputEvent::Device`) and read here.
+
+* **A pinch** is the embedder's zoom and rotation at once, as GTK's two gestures are: a pan-zoom that starts with the pinch, an update with the fingers' distance against where they began and one with the turn, and an end. libinput says each step of the turn in degrees; the embedder is told the whole, in radians, clockwise as the framework's is
+* A pinch that is canceled ends: the framework has no cancel for a pan-zoom. One the devices going cuts short ends too
+* A pinch is said where the mouse last was, and before any mouse has moved that is where the pointer starts, the middle of the view. The embedder's starts at the corner
+* A swipe of three fingers or more and a hold are nothing to the framework, as they are nothing to the embedder
+* **A mouse unplugged** takes its pointer from the framework and its cursor from the screen. libinput let go of a removed device's keys, buttons and fingers already; the pointer it had moved stayed, hovering where it was left, with its cursor. The device is known by its name, which each move carries: two mice of one name are one to this, and unplugging either takes the pointer until the other moves
+
+Seen on the Pi 5 with a touchpad and a mouse made through `/dev/uinput`, in `pointer`: a pinch out as a trackpad pointer added, a pan-zoom started, nine updates to a scale of 2.3 and its end; the mouse added by its first move, and removed as it was unplugged.
+
+Tests (fl-platform-kms, two more cases): a pinch's zoom and turn as one gesture, with an update that has no begin, a device that says nothing sensible, a cancel and the devices going; the pointer leaving with the mouse that moved it, and not with a keyboard or another mouse.
+
+Not seen: a real touchpad, and a rotation from a device (the script's fingers moved apart on a line).
+
 ## Decisions taken 2026-11-16
 
 D1 (devices and a script, no window), D4 (clipboard in the process), D5 and D6 (no system IME), each with what the stock Linux embedder does in its place (brief §13). D5 as taken: no recordings from the stock embedder; the engine's unit tests ported for each layer, and the same scripted input given to `flutter_tester` and to fl-dart end to end.
