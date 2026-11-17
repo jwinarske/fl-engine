@@ -2,13 +2,15 @@
 
 Rust port of the Flutter engine for embedded Linux.
 
-Status: milestone 1 (Dart VM hosted from Rust).
+Status: milestone 4 (input). A Flutter app's libapp.so, drawn and given input, with no display server.
 
 * AOT and JIT runtimes
 * Runs libapp.so from the Flutter tooling
 * FFI both directions: Dart to Rust, Rust to Dart from any thread
-* Tested on x86_64, and on aarch64 and riscv64 under qemu. Real boards not yet
-* No dart:ui beyond print, no rendering. A real Flutter app stops at its first other dart:ui call
+* dart:ui drawn by emblema (Vulkan): shapes, images, text. Frames checked against the stock engine's
+* Input: keys, text input, mouse, touch, touchpad and scrolling, from the seat's devices or a script
+* KMS on a board: display, seat, input devices and the mouse cursor through drmkit
+* Tested on x86_64, on aarch64 and riscv64 under qemu, and on a Raspberry Pi 5. VisionFive 2 not yet
 
 ## Crates
 
@@ -71,7 +73,7 @@ libapp.so from `flutter build linux --release`, using the Flutter release that p
 
     fl-dart run-aot build/linux/x64/release/bundle/lib/libapp.so
 
-Flutter app, through dart:ui (milestone 2, in progress). Built with the pinned Flutter release's compilers; one line per frame:
+Flutter app, through dart:ui. Built with the pinned Flutter release's compilers; one line per frame:
 
     tools/flutter-app/build.sh /path/to/flutter apps/colored_box out
     fl-dart run-app out/colored_box.so 800x600@2
@@ -143,6 +145,12 @@ On the board:
 * [docs/m1-fl-dart-vm.md](docs/m1-fl-dart-vm.md) - milestone 1 brief
 * [docs/m2-dart-ui.md](docs/m2-dart-ui.md) - milestone 2 brief: dart:ui, first frame through emblema
 * [docs/m2-status.md](docs/m2-status.md) - milestone 2 progress and findings
+* [docs/m3-images-text.md](docs/m3-images-text.md) - milestone 3 brief: images and text
+* [docs/m3-status.md](docs/m3-status.md) - milestone 3 progress and findings
+* [docs/m3-exit.md](docs/m3-exit.md) - milestone 3 exit criteria and their evidence
+* [docs/m4-input.md](docs/m4-input.md) - milestone 4 brief: input, and KMS on the boards
+* [docs/m4-status.md](docs/m4-status.md) - milestone 4 progress and findings
+* [docs/m4-exit.md](docs/m4-exit.md) - milestone 4 exit criteria and their evidence. Open: VisionFive 2
 * [docs/m1-exit.md](docs/m1-exit.md) - milestone 1 exit criteria and their evidence. Open: board runs
 * [docs/m1-status.md](docs/m1-status.md) - decisions and findings since the brief. Newer where they disagree
 * [docs/m1-s15-findings.md](docs/m1-s15-findings.md) - open embedding questions, answered from Dart and Flutter source
