@@ -199,7 +199,8 @@ fn run_app(path: &str, mut app: AppArgs) -> Result<(), Failure> {
         }
         println!("{}", screen.line());
     }
-    if app.input.is_some() {
+    // A script's input, or with `--kms` the seat's devices'.
+    if app.input.is_some() || app.kms {
         println!(
             "{}",
             input_line(&run.report.input_latency_us, run.input_dropped)
