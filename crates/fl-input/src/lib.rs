@@ -7,6 +7,7 @@
 //! [`EventSink`], which the shell implements. Everything after the sink is
 //! the same for every source.
 
+mod cursor;
 mod key;
 pub mod pointer;
 pub mod text;
@@ -14,6 +15,7 @@ pub mod xkb;
 
 use std::time::Duration;
 
+pub use cursor::{cursor_name, MouseCursor, FALLBACK_CURSOR};
 pub use key::{KeyData, KeyEvent, KeyEventType};
 
 /// `FlutterPointerPhase`: what a pointer did.

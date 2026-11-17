@@ -169,7 +169,7 @@ Found on the way:
 * Return in a one-line field is not handled by the framework: it reaches the handler, which sends `TextInputClient.performAction`, and the field submits. Space is not handled either, and types
 * A message sent with `run-app --message` arrives after the first frame, by which time an autofocused field has the keyboard: the seed's text goes back to the engine as `setEditingState`, which is the path the second script is there for
 
-Open: `flutter/mousecursor` (exit criterion 5's last channel) comes with the cursor, stage 6; other `flutter/platform` methods are still dropped unanswered, as before. A system input method (IBus, Fcitx) is a later `InputMethod` (D6). Typing in the soak, its build-time budget, and fuzzing the JSON and the editing-state decoder are stage 7's lanes; the decoders' malformed-input tests are here.
+Open: `flutter/mousecursor` (exit criterion 5's last channel) came with the cursor, stage 6; other `flutter/platform` methods are still dropped unanswered, as before. A system input method (IBus, Fcitx) is a later `InputMethod` (D6). Typing in the soak, its build-time budget, and fuzzing the JSON and the editing-state decoder are stage 7's lanes; the decoders' malformed-input tests are here.
 
 ## Stage 5: scroll and touch (2026-11-16)
 
@@ -315,7 +315,32 @@ Differences from the brief:
 * **A device's time is the loop's clock when it is read**, not libinput's stamp, which is of another epoch
 * **A touch has a cancel `fl_touch_manager` has not**, for brief §15's device removed
 
-Open: the pointer is not drawn until the cursor plane. A touchpad's pan and a tablet were not made on the board (a touchpad needs more of a device than the tool describes), and no real keyboard or touch screen has been tried, the mouse on the board aside.
+Open: a touchpad's pan and a tablet were not made on the board (a touchpad needs more of a device than the tool describes), and no real keyboard or touch screen has been tried, the mouse on the board aside.
+
+## Stage 6: the cursor (2026-11-16)
+
+The third part of stage 6: a mouse's pointer is drawn, on the card's cursor plane, in the shape the framework asks for.
+
+* **`flutter/mousecursor`** (fl-ui `mouse_cursor`, exit criterion 5's last channel): `activateSystemCursor` decoded from `StandardMethodCodec`, its kind turned into a cursor theme's name by the Linux embedder's table (fl-input `cursor_name`, 35 kinds, the default for one it has not), and answered: success, or the embedder's `Bad Arguments` with no kind. Another method is no method. The platform's cursor is behind `fl_input::MouseCursor`; with none set the calls are answered and nothing is shown
+* **`Cursor`** (fl-platform-kms): drmkit-cursor's renderer on the CRTC of the display, on a thread of its own with the seat's descriptor for the card duplicated. XCursor themes are found and read by drmkit-cursor, in Rust (`XCURSOR_THEME`, `XCURSOR_PATH`); the size is 24 logical pixels at the view's scale, within the card's cursor size
+* **It follows the mouse**: the device source sends each position it holds the pointer to. Nothing is shown until the mouse first moves; a finger down hides it until the mouse moves again, and so do the devices going. `none` hides it; an animated cursor is stepped while it is shown
+* **A switch of terminals**: the renderer is paused with the session and resumed on the card's new descriptor, with what was asked meanwhile
+* Asks pile up in a channel and are taken together, the last position the one shown; a shape's name is bounded to 64 bytes before it is sent, and drmkit refuses one that is not a file's name
+
+Seen on the Pi 5, on HDMI, with the mouse made through `/dev/uinput`:
+
+* the card's cursor plane (type Cursor) on the display's CRTC with a framebuffer once the mouse moved, and again after Ctrl+Alt+F2 and back
+* `ticker` over 420 frames with the mouse moved 400 times: 419 flips over 420 blanks, none dropped; without the mouse 419 over 418. Showing the cursor the first time costs two blanks, moving it none
+* `counter`: the pointer taken to the button and clicked
+
+Tests: the channel (a kind shown by its name, every call answered, a call cut short or changed anywhere), the kind table, the asks taken together and held over a pause, and the device source's moves and hides (fl-ui, fl-input, fl-platform-kms).
+
+Differences from the brief:
+
+* **The cursor is not committed with the frame** (D9). It is moved by the legacy cursor calls, which the kernel applies without waiting for a blank; drmkit-cursor's atomic path commits the plane alone and blocking, and on vc4 that cost the scanout blanks while the pointer moved. A card whose cursor those calls do not drive has no cursor: the run says so and goes on
+* **No cursor with `--input`**: a script's pointer is not drawn, the devices not being read
+
+Open: the cursor's shape has not been looked at on the screen by a person (the plane and its framebuffer were read from the card). Hotplug of a display; `kms` by default and the board kit's display check; the VisionFive 2.
 
 ## Decisions taken 2026-11-16
 

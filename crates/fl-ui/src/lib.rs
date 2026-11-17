@@ -24,6 +24,7 @@ mod gradient;
 mod image;
 mod json;
 pub mod key;
+mod mouse_cursor;
 mod painting;
 mod path;
 mod platform;
@@ -41,6 +42,7 @@ pub use image::{
     awaiting_decodes, clear_image_sink, set_image_sink, set_max_image_pixels, ImageData,
     ImageShader,
 };
+pub use mouse_cursor::set_mouse_cursor;
 pub use painting::{Cap, ClipOp, Draw, Join, Paint, Picture, Shader, Style};
 pub use path::{Affine, FillType, Path, Point, RRect, Seg};
 pub use platform::{

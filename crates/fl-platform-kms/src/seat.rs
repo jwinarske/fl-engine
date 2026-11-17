@@ -337,7 +337,10 @@ fn seat_main(
     }
 }
 
-fn take(session: &mut Session<LibseatBackend>, path: &Path) -> Result<OwnedFd, SeatError> {
+pub(crate) fn take(
+    session: &mut Session<LibseatBackend>,
+    path: &Path,
+) -> Result<OwnedFd, SeatError> {
     let device = session.take_device(path).map_err(|e| seat_error(&e))?;
     // SAFETY: the seat holds this descriptor open until the device is
     // released or the session ends, neither of which happens in this call.
