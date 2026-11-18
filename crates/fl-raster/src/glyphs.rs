@@ -70,6 +70,12 @@ impl Page {
         }
     }
 
+    /// Whether [`Page::upload`] would make or write the device's image.
+    fn pending(&self) -> bool {
+        let size = self.atlas.size();
+        self.image.as_ref().is_none_or(|(_, s)| *s != size) || self.atlas.is_dirty()
+    }
+
     /// Puts the atlas on the device if anything went in; whether it wrote.
     fn upload(&mut self, ctx: &mut Context) -> Result<bool, RasterError> {
         let size = self.atlas.size();
@@ -384,6 +390,16 @@ impl Glyphs {
                 self.refused.insert(key);
             }
         }
+    }
+
+    /// Whether [`Glyphs::upload`] would write, make or free a device image:
+    /// what a frame still being drawn may be sampling.
+    pub(crate) fn pending(&self) -> bool {
+        self.cache.pending()
+            || self.overflow[..self.overflow_used]
+                .iter()
+                .any(Page::pending)
+            || self.overflow.len() > self.overflow_used
     }
 
     /// Puts the cache and this frame's overflow pages on the device, each

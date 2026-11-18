@@ -160,9 +160,13 @@ pub struct Stages {
     /// Waiting for a buffer to draw into: with a display, for the frame
     /// before to be shown. None offscreen.
     pub wait: Stage,
-    /// The recording drawn by the GPU, waited for.
+    /// The recording handed to the GPU. Offscreen its drawing is waited
+    /// for here; a display's frame is drawn while the thread goes on, and
+    /// this is the handing over alone.
     pub draw: Stage,
-    /// The frame handed on: committed to the display, or read back.
+    /// The frame handed on: committed to the display, or read back. A
+    /// display that takes no fence with its commit has the drawing waited
+    /// for here.
     pub show: Stage,
 }
 
@@ -172,13 +176,22 @@ pub struct Stages {
 ///
 /// Images nothing refers to any more are destroyed first; images the scene
 /// draws and an upload has not seen are uploaded.
+///
+/// `settle` is called before an image a frame before may be drawn from is
+/// destroyed or written: an image nothing refers to now, the glyph atlas when
+/// this frame adds to it. A target that waits for each frame has nothing to
+/// settle; one that does not waits for its frames there.
 fn record<'a>(
     ctx: &mut Context,
     images: &'a mut GpuImages,
     glyphs: &'a mut Glyphs,
     (width, height): (u32, u32),
     scene: &Scene,
+    settle: &mut dyn FnMut() -> Result<(), RasterError>,
 ) -> Result<(emblema::Recording, Slots<'a>), RasterError> {
+    if images.has_dead() {
+        settle()?;
+    }
     images.sweep(ctx);
     let mut found = Vec::new();
     for op in &scene.ops {
@@ -196,6 +209,9 @@ fn record<'a>(
         let mut canvas = Canvas::new(Extent2D::new(width, height));
         let mut slots = Slots::preparing(images, glyphs);
         replay(&mut canvas, scene, &mut slots)?;
+    }
+    if glyphs.pending() {
+        settle()?;
     }
     glyphs.upload(ctx)?;
     let (images, glyphs): (&'a GpuImages, &'a Glyphs) = (images, glyphs);
@@ -216,6 +232,14 @@ trait Target {
     /// can: its session is switched away from and back.
     fn loses_its_frame(&self) -> bool {
         false
+    }
+    /// Waits for the frames it is still drawing, before an image one of
+    /// them may be drawn from is destroyed. Nothing, for a target that waits
+    /// for each frame.
+    fn settle(&mut self) {}
+    /// [`Rastered::fence_waits`].
+    fn fence_waits(&self) -> u64 {
+        0
     }
 }
 
@@ -282,7 +306,14 @@ impl Offscreen {
             stages,
         } = &mut self.device;
         let begun = Instant::now();
-        let (recording, slots) = record(ctx, images, glyphs, (*width, *height), scene)?;
+        let (recording, slots) = record(
+            ctx,
+            images,
+            glyphs,
+            (*width, *height),
+            scene,
+            &mut || Ok(()),
+        )?;
         stages.record.add(begun);
         let surface = self
             .surface
@@ -447,6 +478,11 @@ pub struct Rastered {
     pub atlas_uploads: u64,
     /// Where the frames' time went.
     pub stages: Stages,
+    /// Frames a display committed after waiting for their drawing itself,
+    /// the commit carrying no fence for the kernel to wait on: the first,
+    /// which sets the mode, and every one where the card or the driver takes
+    /// none. 0 offscreen.
+    pub fence_waits: u64,
 }
 
 impl RasterThread {
@@ -662,6 +698,9 @@ fn raster_main<T: Target>(
                 // A failed upload is retried, and named, by the frame that
                 // draws the image.
                 if r.error.is_none() {
+                    // An upload can free a dead image whose address the new
+                    // one has.
+                    target.settle();
                     let _ = target.device().upload(&image);
                 }
                 continue;
@@ -706,6 +745,7 @@ fn raster_main<T: Target>(
         }
     }
     // What is still referenced once the UI side is done: a leak shows here.
+    target.settle();
     let d = target.device();
     d.images.sweep(&mut d.ctx);
     r.gpu_images = d.images.len();
@@ -715,6 +755,7 @@ fn raster_main<T: Target>(
     r.atlas_placements = d.glyphs.placements();
     r.atlas_uploads = d.glyphs.uploads();
     r.stages = d.stages;
+    r.fence_waits = target.fence_waits();
     r
 }
 
