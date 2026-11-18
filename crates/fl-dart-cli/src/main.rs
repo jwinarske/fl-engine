@@ -3,7 +3,7 @@
 //! ```text
 //! fl-dart run hello.dill [args...]       # JIT, dev hosts (--features jit)
 //! fl-dart run-aot hello.aot [args...]    # precompiled runtime, every target
-//! fl-dart run-app libapp.so [WxH[@dpr]] [--assets DIR] [--png out.png] [--frames-dir DIR] [--ops] [--natives] [--styles] [--font FAMILY=PATH]... [--message CHANNEL[=TEXT]]... [--input SCRIPT] [--keymap LAYOUT[:VARIANT]] [--compose LOCALE] [--frames N] [--hz H] [--kms [--connector NAME] [--mode WxH[@HZ]] [--capture out.png]]
+//! fl-dart run-app libapp.so [WxH[@dpr]] [--assets DIR] [--png out.png] [--frames-dir DIR] [--ops] [--natives] [--styles] [--font FAMILY=PATH]... [--message CHANNEL[=TEXT]]... [--input SCRIPT] [--keymap LAYOUT[:VARIANT]] [--compose LOCALE] [--frames N] [--hz H] [--times] [--kms [--connector NAME] [--mode WxH[@HZ]] [--capture out.png]]
 //!                                       # a Flutter app, through dart:ui (M2);
 //!                                       # JIT takes the app's kernel instead
 //! fl-dart app-cycle libapp.so <n> [run-app options]
@@ -109,7 +109,7 @@ fn usage() -> ExitCode {
         "libapp.so"
     };
     eprintln!(
-        "       fl-dart run-app <{app}> [WxH[@dpr]] [--assets DIR] [--png out.png] [--frames-dir DIR] [--ops] [--natives] [--styles] [--font FAMILY=PATH]... [--message CHANNEL[=TEXT]]... [--input SCRIPT] [--keymap LAYOUT[:VARIANT]] [--compose LOCALE] [--frames N] [--hz H] [--kms [--connector NAME] [--mode WxH[@HZ]] [--capture out.png]]\n       fl-dart app-cycle <{app}> <n> [run-app options]\n       fl-dart prepare"
+        "       fl-dart run-app <{app}> [WxH[@dpr]] [--assets DIR] [--png out.png] [--frames-dir DIR] [--ops] [--natives] [--styles] [--font FAMILY=PATH]... [--message CHANNEL[=TEXT]]... [--input SCRIPT] [--keymap LAYOUT[:VARIANT]] [--compose LOCALE] [--frames N] [--hz H] [--times] [--kms [--connector NAME] [--mode WxH[@HZ]] [--capture out.png]]\n       fl-dart app-cycle <{app}> <n> [run-app options]\n       fl-dart prepare"
     );
     ExitCode::from(64)
 }
@@ -212,7 +212,15 @@ fn run_app(path: &str, mut app: AppArgs) -> Result<(), Failure> {
     if app.natives {
         println!("natives: {}", fl_ui::resolved().join(","));
     }
-    finish_raster(raster, &app).map(|_| ())
+    let times = app.times;
+    let rastered = finish_raster(raster, &app)?;
+    if times {
+        println!("{}", build_line(&run.builds_us));
+        if rastered.frames > 0 {
+            println!("{}", raster_line(&rastered));
+        }
+    }
+    Ok(())
 }
 
 /// The L5 harness for apps: `n` start-and-stop cycles of one app in one VM,
@@ -896,6 +904,35 @@ fn finish_raster(
     Ok(r)
 }
 
+/// `build: frames=… median_us=… max_us=…`: the UI thread's time a frame,
+/// `_beginFrame` to `render`.
+fn build_line(builds_us: &[u64]) -> String {
+    let mut us = builds_us.to_vec();
+    us.sort_unstable();
+    format!(
+        "build: frames={} median_us={} max_us={}",
+        us.len(),
+        us.get(us.len() / 2).copied().unwrap_or(0),
+        us.last().copied().unwrap_or(0)
+    )
+}
+
+/// `raster: frames=… record_us=… wait_us=… draw_us=… show_us=…`: the raster
+/// thread's time a frame by stage, each the median and the longest of its
+/// last frames (`fl_raster::Stages`).
+fn raster_line(r: &fl_raster::Rastered) -> String {
+    let stage = |s: &fl_raster::Stage| format!("{}/{}", s.median_us(), s.max_us());
+    let s = &r.stages;
+    format!(
+        "raster: frames={} record_us={} wait_us={} draw_us={} show_us={}",
+        r.frames,
+        stage(&s.record),
+        stage(&s.wait),
+        stage(&s.draw),
+        stage(&s.show)
+    )
+}
+
 /// `vsync: frames=… interval_us=…`: how many frames were begun at vsync, and
 /// the spacing of their times, each interval in microseconds. `None` with
 /// fewer than two.
@@ -1001,9 +1038,11 @@ struct AppArgs {
     mode: Option<(u32, u32, Option<f64>)>,
     /// `--capture`: Print Screen writes what the display shows here.
     capture: Option<std::path::PathBuf>,
+    /// `--times`: where the frames' time went, at the end.
+    times: bool,
 }
 
-/// `[WxH[@dpr]] [--assets DIR] [--png out.png] [--frames-dir DIR] [--ops] [--natives] [--styles] [--font FAMILY=PATH]... [--message CHANNEL[=TEXT]]... [--input SCRIPT] [--keymap LAYOUT[:VARIANT]] [--compose LOCALE] [--frames N] [--hz H] [--kms [--connector NAME] [--mode WxH[@HZ]] [--capture out.png]]`,
+/// `[WxH[@dpr]] [--assets DIR] [--png out.png] [--frames-dir DIR] [--ops] [--natives] [--styles] [--font FAMILY=PATH]... [--message CHANNEL[=TEXT]]... [--input SCRIPT] [--keymap LAYOUT[:VARIANT]] [--compose LOCALE] [--frames N] [--hz H] [--times] [--kms [--connector NAME] [--mode WxH[@HZ]] [--capture out.png]]`,
 /// in any order; no size is the default view. Sizes are physical pixels.
 /// `--assets` names the app's asset bundle; without it, `<app>.assets` beside
 /// the program is used if it is there, as `tools/flutter-app/build.sh` puts
@@ -1019,7 +1058,8 @@ struct AppArgs {
 /// for meanwhile printed as `mouse cursor: NAME`; `--keymap` names the XKB layout, and a
 /// variant of it, that the script's keys are resolved against (`us` by default; needs the `kms`
 /// feature); `--frames` stops after N frames rendered;
-/// `--hz` sets the vsync rate (60 by default). `--kms` draws to a display, held through the seat,
+/// `--hz` sets the vsync rate (60 by default); `--times` prints, at the end, where the frames'
+/// time went: the UI thread's builds and the raster thread's stages. `--kms` draws to a display, held through the seat,
 /// at its mode's size and rate, a size given being ignored but for its `@dpr`, which may stand
 /// alone; `--connector` names the display (`HDMI-A-1`), the first with one if not given, and
 /// `--mode` one of its modes by size, at the rate nearest the one said or its fastest, where its
@@ -1063,6 +1103,7 @@ fn app_args(args: &[&str]) -> Option<AppArgs> {
             "--frames" => app.frames = Some(it.next()?.parse().ok().filter(|n| *n > 0)?),
             "--hz" => app.view.refresh_rate = it.next()?.parse().ok().filter(|v: &f64| *v > 0.0)?,
             "--kms" => app.kms = true,
+            "--times" => app.times = true,
             "--capture" => app.capture = Some(std::path::PathBuf::from(it.next()?)),
             "--mode" => {
                 let said = it.next()?;

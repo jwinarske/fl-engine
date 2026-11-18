@@ -364,6 +364,30 @@ The second replay: text_churn on the Pi, the first replay with its new glyphs ra
 * Steady state, emblema's bench on the Pi: Vulkan 12 to 36% faster a row, the mixed frame 14.04 ms to 9.72; GLES 34 to 62%, 19.70 ms to 9.49
 * `fl-dart prepare` stays, now optional: an app's first frames pay a fraction of a second without it
 
+## Follow-ups: the VisionFive 2 (2026-11-17)
+
+VisionFive 2 (JH7110, four U74 cores, PowerVR BXE-4-32, IMG's Vulkan 1.3), Ubuntu 24.04.3, kernel 6.12.5, the governor at `performance`, cross-compiled on x64 (fl-dart by the cross lane's board kit, apps by `tools/flutter-app/build.sh`). emblema 0.3.0. `run-app --times`, the stages the Pi's numbers were taken by, now kept in fl-dart: per raster frame, the median of the last 256.
+
+Offscreen at 1920x1080, as the Pi's table:
+
+| app | first replay, atlas, second replay | GPU draw | readback |
+|---|---|---|---|
+| text_churn, 300 frames | 6.1 ms | 16.5 ms | 68 to 73 ms |
+| counter, at rest | 1.7 ms | 16.6 ms | 74 ms |
+
+To the display at 1280x720 and 60 Hz, no readback:
+
+| app | first replay, atlas, second replay | GPU draw | frames in blanks |
+|---|---|---|---|
+| ticker | 0.08 ms | 12.1 ms | 299 in 298 |
+| text_churn | 6.2 ms | 12.5 ms | 299 in 340 |
+
+* The GPU's draw is nearly the same for a frame with one rectangle and a frame of text, at either size: 12 ms at 720p, 16.5 at 1080p. It is a cost a frame, not a cost of what is drawn, and it is most of a 60 Hz frame; text_churn's 6 ms of glyphs beside it misses one blank in eight. Looked into under M4 (m4-status.md)
+* Recording is five to six times the Pi's (text_churn 1.05 ms there): the U74 against the A76
+* UI side: text_churn's build 1.3 ms at the median and 4.6 ms at most over 299 frames, against the 4 ms budget for its mean
+* The text app is two frames and has no steady state to measure: its first frame records in 65 ms, every glyph of the page rasterized, and draws in 1.32 s, the same on a second run. IMG's driver keeps no shader cache between runs, so every run compiles; `fl-dart prepare` cannot fill one
+* Readback, `--png`, is 70 ms a 1080p frame; a display has none
+
 ## Follow-ups: script runs (2026-11-13)
 
 * A style block was shaped as one run, its script guessed from its first letter. OneLineShaper hands SkShaper a script iterator (`SkUnicodeHbScriptRunIterator`), so the stock engine shapes a run per script: Common and Inherited characters join the run they are in, a run takes its first real script, and one of only those is `Zyyy`
