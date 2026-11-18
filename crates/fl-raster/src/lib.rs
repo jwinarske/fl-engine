@@ -104,7 +104,7 @@ impl Device {
 const STAGE_FRAMES: usize = 256;
 
 /// One part of a frame's time on the raster thread, over the last
-/// [`STAGE_FRAMES`] frames: a run's first frames, where the driver compiles
+/// 256 frames: a run's first frames, where the driver compiles
 /// its shaders, are out of a long run's figures.
 #[derive(Debug, Clone, Copy)]
 pub struct Stage {
