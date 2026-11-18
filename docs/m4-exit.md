@@ -35,7 +35,7 @@ Criterion 8: gcc is in the lane as the linker driver rustc calls. `kms` is a fea
 | Hotplug | done | Pi 5: a keyboard unplugged with a key down, its up; a mouse with a button down, the pointer's up; a touch screen with a finger down, a cancel. `the_pointer_leaves_with_the_mouse_that_moved_it`, `a_finger_is_a_pointer_from_its_down_to_its_up` |
 | Latency | done | soak: the 90th percentile of the frames input asked for held to two frames (33,334 us); counter 16,989 us, 17,056 at most |
 | Typing | done | soak: text_field, 10,000 characters, a frame each, built in 891 us on average against 4,000 |
-| Boards | open | Pi 5: 20 frames asked for by a click in each of three runs, the longest 16.7, 16.7 and 16.2 ms, none dropped. VisionFive 2: `counter` at about 20 frames a second, no latency figure but its first frame's |
+| Boards | open | Pi 5: 20 frames asked for by a click in each of three runs, the longest 16.7, 16.7 and 16.2 ms, none dropped. VisionFive 2: `counter`'s frame 15.5 ms of 16.7, each begun a blank after the last when tapped by a script; 11.2 ms with jwinarske/emblema#251, not yet released. No latency figure but its first frame's |
 
 The other limits crossed (exit criterion 7): fl-input-script `a_script_is_bounded_in_size_and_its_errors_in_length` (a megabyte; waits, positions, notches and fingers); fl-ui JSON's depth of 32; fl-input's 128 touch ids.
 
@@ -46,7 +46,7 @@ The other limits crossed (exit criterion 7): fl-input-script `a_script_is_bounde
 
 ## Open, carried forward
 
-* On the VisionFive 2: the cursor is sometimes noise when it first appears, until the mouse is moved further, its buffer right all the while; perhaps the board's display driver (#29, m4-status.md). Hotplug, a touch screen, a latency figure; `counter` at 60 Hz, which its GPU does not reach with a multisampled frame
+* On the VisionFive 2: the cursor is sometimes noise when it first appears, until the mouse is moved further, its buffer right all the while; perhaps the board's display driver (#29, m4-status.md). Hotplug, a touch screen, a latency figure. A frame's draw is 12 to 14 ms there whatever is drawn, a third of it two buffers emblema made and freed each frame: kept in jwinarske/emblema#251, 9 ms, to be taken with emblema's next release (m4-status.md, its frame)
 * The cursor's shape was looked at on the Pi 5's screen on 2026-11-17, a real mouse taken across `apps/cursors`: it changes in each cell. Each shape against its name is not recorded one by one
 * A real keyboard, touchpad and touch screen; a rotation and a canceled pinch from a device
 * The devices' thread under TSan: CI's runners have no devices, so the sanitizer lanes run the script's thread. The device source's state is driven in fl-platform-kms's tests with drmkit-input's events
