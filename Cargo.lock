@@ -345,9 +345,9 @@ checksum = "0e9c71c2167ca323c882b99918929403426e2373ea17242ff5653e0d5e1058be"
 
 [[package]]
 name = "emblema"
-version = "0.3.2"
+version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3e9b1fcf8f9e415da547aa1396345f7c2c51f9fb4e4c7bb6eeed9289ea8e6ff3"
+checksum = "fae2cc12d27640c7279183814077acf010fa28bf13507ec89cc24e9fb77dfbec"
 dependencies = [
  "emblema-core",
  "emblema-hal",
@@ -359,9 +359,9 @@ dependencies = [
 
 [[package]]
 name = "emblema-core"
-version = "0.3.2"
+version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8b7becd0784cba9e4c759e1bca771e2b79071ece134d4c9739539be6c71098f1"
+checksum = "d5afc512bcbed3d797fff2923b71f9bd04572cf12ea7b74eb8387848c886728d"
 dependencies = [
  "emblema-geometry",
  "emblema-hal",
@@ -373,9 +373,9 @@ dependencies = [
 
 [[package]]
 name = "emblema-geometry"
-version = "0.3.2"
+version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aa0f2961937dc4b4a8c802df701ce9236dae18e1a8a9b7b60b6f6287743f2375"
+checksum = "637e69b3186f537213b5da26bfd01dab2f73a0419e13b851fe33aae73af55e55"
 dependencies = [
  "earcutr",
  "glam",
@@ -384,18 +384,18 @@ dependencies = [
 
 [[package]]
 name = "emblema-hal"
-version = "0.3.2"
+version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "16253ae12e8bc8ab7cbcd2a90a9a6338eb0d67526c0329b7916548e537347584"
+checksum = "e5f3cf7e602e07eb7e2b1a982989b60366a423db68f9ca278726a1de84155266"
 dependencies = [
  "thiserror 1.0.69",
 ]
 
 [[package]]
 name = "emblema-hal-vulkan"
-version = "0.3.2"
+version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "83ef43b99744f88cbd720b1b7dd342169c58cb59bd5766e89e21889207398878"
+checksum = "e9d74e7efb8cdbbf45890c5f1b2129f61e2cce81fd248476b56bf2f4029afa91"
 dependencies = [
  "ash",
  "emblema-hal",
@@ -405,9 +405,9 @@ dependencies = [
 
 [[package]]
 name = "emblema-present"
-version = "0.3.2"
+version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e20e1283f5420b263a62ff53e248601fcfbffad14106d525a48bded583c39703"
+checksum = "f1f948473a95a9357d0fca0a5b8e2bd8b63756c16911fd7cbcbca05f070e659d"
 dependencies = [
  "emblema-hal",
  "log",
@@ -415,9 +415,9 @@ dependencies = [
 
 [[package]]
 name = "emblema-present-drm"
-version = "0.3.2"
+version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "16343d60c6a0cc08d2b00193956b2ce7bb208ed74f64231c94396675f7e617d2"
+checksum = "259372482c98bbc66d93edf95c9e62de30e56a807457480d474204ecc6a15d9f"
 dependencies = [
  "drm",
  "drmkit-gbm",
@@ -430,9 +430,9 @@ dependencies = [
 
 [[package]]
 name = "emblema-renderer"
-version = "0.3.2"
+version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2fb1013ff88bcb3e1de2d71e1df80965a585cf236639484dca5dd764917b3453"
+checksum = "006594df963fdb9ed9fc9eaac50ecf6080b2c9aa0396e4849f8857fa2f19bed5"
 dependencies = [
  "emblema-geometry",
  "emblema-hal",
@@ -441,18 +441,18 @@ dependencies = [
 
 [[package]]
 name = "emblema-shaders"
-version = "0.3.2"
+version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1f02a3963d83b3a8290adaf2f64564f2d1aa886a149ba584f49594a00bfb70ed"
+checksum = "6c686077524d2edef5bb471d5d186409e4f4c5622940fa44161c264118675557"
 dependencies = [
  "naga",
 ]
 
 [[package]]
 name = "emblema-text"
-version = "0.3.2"
+version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bcce8d00232581380763f7b33f7861b28104fecd3ee37e40d8b9fed57566dbb9"
+checksum = "f5461eebe81217817e58fc1b782253540da1ae203c005a3baf45ddfd8c3d4927"
 
 [[package]]
 name = "equivalent"

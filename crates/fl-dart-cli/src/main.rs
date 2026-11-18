@@ -79,7 +79,13 @@ fn main() -> ExitCode {
 /// (m3-status.md, first-use compiles).
 fn prepare() -> ExitCode {
     let started = std::time::Instant::now();
-    match fl_raster::Offscreen::new(1, 1).and_then(|mut t| t.prepare()) {
+    let made = fl_raster::Offscreen::new(1, 1).and_then(|mut t| {
+        if let Some(path) = fl_raster::compiled::default_path() {
+            t.keep_pipelines(path);
+        }
+        t.prepare()
+    });
+    match made {
         Ok(()) => {
             println!("prepared in {} ms", started.elapsed().as_millis());
             ExitCode::SUCCESS
@@ -863,8 +869,11 @@ fn screen_for(app: &mut AppArgs) -> Result<Raster, Failure> {
         cursor_target: display.cursor_target(),
         cursor: None,
     });
-    let raster = fl_raster::RasterThread::spawn_scanout(Box::new(display))
-        .map_err(|e| Failure::Other(format!("--kms: {e}")))?;
+    let raster = fl_raster::RasterThread::spawn_scanout(
+        Box::new(display),
+        fl_raster::compiled::default_path(),
+    )
+    .map_err(|e| Failure::Other(format!("--kms: {e}")))?;
     // Back from another terminal, the display has nothing of ours on it,
     // and an app with nothing new to say draws nothing: its last frame is
     // shown again.
@@ -925,13 +934,14 @@ fn raster_line(r: &fl_raster::Rastered) -> String {
     let stage = |s: &fl_raster::Stage| format!("{}/{}", s.median_us(), s.max_us());
     let s = &r.stages;
     format!(
-        "raster: frames={} record_us={} wait_us={} draw_us={} show_us={} fence_waits={}",
+        "raster: frames={} record_us={} wait_us={} draw_us={} show_us={} fence_waits={} pipelines={}",
         r.frames,
         stage(&s.record),
         stage(&s.wait),
         stage(&s.draw),
         stage(&s.show),
-        r.fence_waits
+        r.fence_waits,
+        if r.pipelines_loaded { "kept" } else { "new" }
     )
 }
 

@@ -140,7 +140,11 @@ fn frames_go_to_the_output_and_the_ring_is_rebuilt_when_it_says_so() {
         rebuild_at: Some(3),
         next: 0,
     };
-    let raster = match RasterThread::spawn_scanout(Box::new(fake)) {
+    // Where the run keeps its pipelines: nothing there at the start.
+    let kept = std::env::temp_dir().join(format!("fl-scanout-{}", std::process::id()));
+    let pipelines = kept.join("pipelines");
+    let _ = std::fs::remove_dir_all(&kept);
+    let raster = match RasterThread::spawn_scanout(Box::new(fake), Some(pipelines.clone())) {
         Ok(r) => r,
         // A driver that exports no dma-buf with a modifier has no ring to
         // test: lavapipe at Mesa 25.2, which a hosted runner has. Said,
@@ -188,6 +192,16 @@ fn frames_go_to_the_output_and_the_ring_is_rebuilt_when_it_says_so() {
         done.fence_waits
     );
     println!("fenced={} fence_waits={}", log.fenced, done.fence_waits);
+    // The frames built pipelines, and the driver's bytes for them are in
+    // the file, the owner's alone; there was no file to take any from.
+    assert!(!done.pipelines_loaded);
+    let meta = std::fs::metadata(&pipelines).expect("the pipelines' file");
+    assert!(meta.len() > 0);
+    assert_eq!(
+        std::os::unix::fs::PermissionsExt::mode(&meta.permissions()) & 0o777,
+        0o600
+    );
+    let _ = std::fs::remove_dir_all(&kept);
     // And every buffer given back by the end.
     assert!(log.live.is_empty(), "{:?}", log.live);
 }
