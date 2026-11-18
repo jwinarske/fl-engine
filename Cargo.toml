@@ -63,3 +63,15 @@ fl-input = { path = "crates/fl-input", version = "0.1.0" }
 fl-input-script = { path = "crates/fl-input-script", version = "0.1.0" }
 fl-platform-kms = { path = "crates/fl-platform-kms", version = "0.1.0" }
 fl-text = { path = "crates/fl-text", version = "0.1.0" }
+
+[patch.crates-io]
+emblema = { git = "https://github.com/jwinarske/emblema", branch = "probe-times" }
+emblema-core = { git = "https://github.com/jwinarske/emblema", branch = "probe-times" }
+emblema-geometry = { git = "https://github.com/jwinarske/emblema", branch = "probe-times" }
+emblema-hal = { git = "https://github.com/jwinarske/emblema", branch = "probe-times" }
+emblema-hal-vulkan = { git = "https://github.com/jwinarske/emblema", branch = "probe-times" }
+emblema-present = { git = "https://github.com/jwinarske/emblema", branch = "probe-times" }
+emblema-present-drm = { git = "https://github.com/jwinarske/emblema", branch = "probe-times" }
+emblema-renderer = { git = "https://github.com/jwinarske/emblema", branch = "probe-times" }
+emblema-shaders = { git = "https://github.com/jwinarske/emblema", branch = "probe-times" }
+emblema-text = { git = "https://github.com/jwinarske/emblema", branch = "probe-times" }
