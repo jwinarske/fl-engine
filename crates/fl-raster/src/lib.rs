@@ -16,7 +16,7 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread::JoinHandle;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use emblema::{
     Affine2, BackendPreference, BlendMode, Canvas, Color, Context, Extent2D, FillRule, Layer,
@@ -29,6 +29,7 @@ use fl_ui::{
     RRect, Scene, Seg, Shader, Style,
 };
 
+pub mod compiled;
 mod glyphs;
 mod gradients;
 mod images;
@@ -75,11 +76,14 @@ struct Device {
     width: u32,
     height: u32,
     stages: Stages,
+    /// The file its pipelines are kept in between runs, if any.
+    compiled: Option<compiled::Compiled>,
 }
 
 impl Device {
     fn new() -> Result<Device, RasterError> {
         Ok(Device {
+            compiled: None,
             ctx: Context::new(BackendPreference::Vulkan)?,
             images: GpuImages::default(),
             glyphs: Glyphs::default(),
@@ -93,12 +97,33 @@ impl Device {
         self.images.upload(&mut self.ctx, image)
     }
 
+    /// Takes the pipelines kept in `path` by a run before, and keeps this
+    /// run's there.
+    fn keep_pipelines(&mut self, path: PathBuf) {
+        self.compiled = Some(compiled::Compiled::load(&mut self.ctx, path));
+    }
+
+    /// Whether a pipeline has been built that the file has not got.
+    fn pipelines_stale(&self) -> bool {
+        self.compiled.as_ref().is_some_and(|c| c.stale(&self.ctx))
+    }
+
+    fn save_pipelines(&mut self) {
+        if let Some(compiled) = &mut self.compiled {
+            compiled.save(&self.ctx);
+        }
+    }
+
     /// emblema frees nothing on drop; images go before their context.
     fn clear(&mut self) {
         self.images.clear(&mut self.ctx);
         self.glyphs.clear(&mut self.ctx);
     }
 }
+
+/// How long the raster thread has nothing to draw before it writes the
+/// pipelines built since the file was.
+const PIPELINES_SETTLE: Duration = Duration::from_secs(1);
 
 /// How many of the last frames a [`Stage`] remembers.
 const STAGE_FRAMES: usize = 256;
@@ -285,10 +310,20 @@ impl Offscreen {
     /// thread's start, where it only delayed the first frames. Drawing
     /// without it is correct.
     pub fn prepare(&mut self) -> Result<(), RasterError> {
-        Ok(self
-            .device
+        self.device
             .ctx
-            .prepare_pipelines(PixelFormat::Rgba8Unorm, CANVAS_SAMPLES)?)
+            .prepare_pipelines(PixelFormat::Rgba8Unorm, CANVAS_SAMPLES)?;
+        self.device.save_pipelines();
+        Ok(())
+    }
+
+    /// Takes the pipelines a run before kept in `path`
+    /// ([`compiled::default_path`]) and keeps there what this one builds,
+    /// written by [`Offscreen::prepare`]: for a driver that keeps nothing it
+    /// compiled itself. Whether the file's were taken.
+    pub fn keep_pipelines(&mut self, path: PathBuf) -> bool {
+        self.device.keep_pipelines(path);
+        self.device.compiled.as_ref().is_some_and(|c| c.loaded)
     }
 
     /// Draws `scene` over transparent black and reads the pixels back:
@@ -304,6 +339,7 @@ impl Offscreen {
             width,
             height,
             stages,
+            compiled: _,
         } = &mut self.device;
         let begun = Instant::now();
         let (recording, slots) = record(
@@ -483,6 +519,9 @@ pub struct Rastered {
     /// which sets the mode, and every one where the card or the driver takes
     /// none. 0 offscreen.
     pub fence_waits: u64,
+    /// Whether the pipelines a run before kept were taken at the start
+    /// (`RasterThread::spawn_scanout`).
+    pub pipelines_loaded: bool,
 }
 
 impl RasterThread {
@@ -510,9 +549,17 @@ impl RasterThread {
     /// the thread waits on the display's flips, not on a clock (brief M4
     /// D9). The target is the size of the output's mode
     /// ([`RasterThread::size`]); no frame's pixels are kept.
+    ///
+    /// With `pipelines` ([`compiled::default_path`]) what the driver compiles
+    /// is kept in that file and taken from it by the next run: written once
+    /// the thread has had nothing to draw for a second after a pipeline was
+    /// built, and when it finishes.
     #[cfg(feature = "scanout")]
-    pub fn spawn_scanout(output: scanout::Output) -> Result<RasterThread, RasterError> {
-        RasterThread::spawn_with(move || scanout::Scanout::new(output), None)
+    pub fn spawn_scanout(
+        output: scanout::Output,
+        pipelines: Option<PathBuf>,
+    ) -> Result<RasterThread, RasterError> {
+        RasterThread::spawn_with(move || scanout::Scanout::new(output, pipelines), None)
     }
 
     fn spawn_with<T: Target>(
@@ -676,7 +723,24 @@ fn raster_main<T: Target>(
     // dropped, so the UI thread is never left waiting on a full queue.
     let keeps = target.loses_its_frame();
     let mut last_scene: Option<Arc<Scene>> = None;
-    for work in rx {
+    loop {
+        // A pipeline built since the file was written: it is written once
+        // nothing has been asked for a while, not in an animation's frames.
+        let work = if target.device().pipelines_stale() {
+            match rx.recv_timeout(PIPELINES_SETTLE) {
+                Ok(work) => work,
+                Err(mpsc::RecvTimeoutError::Timeout) => {
+                    target.device().save_pipelines();
+                    continue;
+                }
+                Err(mpsc::RecvTimeoutError::Disconnected) => break,
+            }
+        } else {
+            match rx.recv() {
+                Ok(work) => work,
+                Err(_) => break,
+            }
+        };
         let scene = match work {
             Work::Scene(s) => {
                 if keeps {
@@ -755,6 +819,8 @@ fn raster_main<T: Target>(
     r.atlas_placements = d.glyphs.placements();
     r.atlas_uploads = d.glyphs.uploads();
     r.stages = d.stages;
+    d.save_pipelines();
+    r.pipelines_loaded = d.compiled.as_ref().is_some_and(|c| c.loaded);
     r.fence_waits = target.fence_waits();
     r
 }

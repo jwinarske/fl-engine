@@ -131,9 +131,16 @@ pub(crate) struct Scanout {
 
 impl Scanout {
     /// A ring of the output's mode's size, in a format both sides take.
-    pub(crate) fn new(output: Output) -> Result<Scanout, RasterError> {
+    pub(crate) fn new(
+        output: Output,
+        pipelines: Option<std::path::PathBuf>,
+    ) -> Result<Scanout, RasterError> {
+        let mut device = Device::new()?;
+        if let Some(path) = pipelines {
+            device.keep_pipelines(path);
+        }
         let mut scanout = Scanout {
-            device: Device::new()?,
+            device,
             target: None,
             output: Arc::new(Mutex::new(output)),
             reconfigured: Arc::default(),
@@ -188,6 +195,7 @@ impl Scanout {
             width,
             height,
             stages,
+            compiled: _,
         } = &mut self.device;
         let target = self
             .target
