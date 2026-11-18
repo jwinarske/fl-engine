@@ -462,7 +462,7 @@ Not done on this board: latency as a number (the longest alone is printed, and `
 | text_churn | 12.5 ms | 9.2 ms | 299 in 298 |
 | counter, tapped | 13.7 ms | 9.4 ms | as before |
 
-* text_churn holds 60 Hz with it, and `counter`'s frame is 11.2 ms. Not in fl-engine until emblema releases it
+* text_churn holds 60 Hz with it, and `counter`'s frame is 11.2 ms. Released as emblema 0.3.1 and pinned here
 * What is left of the 9 ms: 5.5 to 6 the GPU's, waited for on the raster thread, which a submission that returns a fence for a multisampled pass would take off it; 1.8 recording commands and 0.9 freeing the frame's vertex, index and material buffers and its descriptor pools, made anew each frame as well
 
 ## Decisions taken 2026-11-16

@@ -43,13 +43,15 @@ drm = { version = "0.15", default-features = false }
 rustix = { version = "1.1", default-features = false, features = ["std", "event", "fs", "time"] }
 xkbcommon = { version = "0.9", default-features = false }
 trybuild = "1"
-# emblema 0.3.0, from the registry: the first release with what dart:ui
+# emblema 0.3.1, from the registry. 0.3.0 was the first release with what dart:ui
 # needs of it (blend and tile modes numbered as upstream, a shader's local
 # transform, per-axis tile modes, a glyph key's subpixel bucket, pipelines
 # built ahead of the first frame) and ten-bit scanout under its own fourcc.
-emblema = { version = "0.3.0", default-features = false }
-emblema-hal = "0.3.0"
-emblema-present-drm = "0.3.0"
+# 0.3.1 keeps a pass's multisample and stencil buffers between frames, a
+# third of a frame's draw on a VisionFive 2.
+emblema = { version = "0.3.1", default-features = false }
+emblema-hal = "0.3.1"
+emblema-present-drm = "0.3.1"
 
 fl-dart-sys = { path = "crates/fl-dart-sys", version = "0.1.0", default-features = false }
 fl-dart-vm = { path = "crates/fl-dart-vm", version = "0.1.0", default-features = false }

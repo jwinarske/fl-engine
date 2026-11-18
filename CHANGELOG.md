@@ -22,6 +22,7 @@ Not published, no versions yet.
 * VisionFive 2 (RISC-V): the board kit's ten checks pass, the display at 1280x720 and 60 Hz with no blank missed
 * Raspberry Pi 5: 60 Hz with no blank missed, input latency under one frame
 * `run-app --times`: where the frames' time went, the UI thread's builds and the raster thread's stages
+* emblema 0.3.1: a frame's draw on the VisionFive 2 from 12 to 14 ms to 9, the pass's multisample and stencil buffers kept between frames; `text_churn` holds 60 Hz there
 
 ### Milestone 3: images and text (in progress)
 
