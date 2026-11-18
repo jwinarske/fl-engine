@@ -189,13 +189,18 @@ impl Scanout {
             height,
             stages,
         } = &mut self.device;
-        let begun = Instant::now();
-        let (recording, slots) = record(ctx, images, glyphs, (*width, *height), scene)?;
-        stages.record.add(begun);
         let target = self
             .target
             .as_mut()
             .ok_or_else(|| RasterError::Unsupported("a destroyed target".into()))?;
+        let begun = Instant::now();
+        // The frame before may still be drawing: it is waited for only if
+        // this one destroys or writes an image it may be drawn from.
+        let (recording, slots) =
+            record(ctx, images, glyphs, (*width, *height), scene, &mut || {
+                Ok(target.wait_for_rendering()?)
+            })?;
+        stages.record.add(begun);
         let vk = match ctx {
             Context::Vulkan(vk) => vk,
             #[allow(unreachable_patterns)]
@@ -212,15 +217,15 @@ impl Scanout {
                 )),
             })
             .collect::<Result<Vec<&VulkanTexture>, RasterError>>()?;
-        // Drawn and waited for here, then committed with no fence. The
-        // canvas antialiases by multisampling, and emblema's submission
-        // that returns a fence for the kernel to wait on instead does not
-        // take a multisampled pass yet.
+        // Handed to the GPU and not waited for: the frame's fence goes with
+        // its commit, for the kernel to wait on before the flip, and the
+        // next frame is recorded while this one is drawn. Where the card or
+        // the driver takes no fence, emblema waits before it commits.
         let begun = Instant::now();
-        let buffer = target.acquire(vk)?;
+        target.acquire(vk)?;
         stages.wait.add(begun);
         let begun = Instant::now();
-        emblema::execute::<VulkanHal>(vk, buffer, &recording, &textures)?;
+        target.submit_recording(vk, &recording, &textures)?;
         stages.draw.add(begun);
         let begun = Instant::now();
         target.present(vk)?;
@@ -247,6 +252,18 @@ impl Target for Scanout {
 
     fn loses_its_frame(&self) -> bool {
         true
+    }
+
+    fn fence_waits(&self) -> u64 {
+        self.target.as_ref().map_or(0, DrmScanoutTarget::cpu_waits)
+    }
+
+    fn settle(&mut self) {
+        // A wait that fails is the next frame's to report: it submits to the
+        // same ring.
+        if let Some(target) = &self.target {
+            let _ = target.wait_for_rendering();
+        }
     }
 }
 

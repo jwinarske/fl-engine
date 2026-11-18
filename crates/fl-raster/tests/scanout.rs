@@ -31,6 +31,10 @@ struct Log {
     live: HashSet<u64>,
     commits: usize,
     refused: usize,
+    /// Commits that came with a fence for the card to wait on, and those of
+    /// them that also set the mode, which a card is not asked to do.
+    fenced: usize,
+    fenced_modesets: usize,
 }
 
 struct Fake {
@@ -84,6 +88,12 @@ impl ScanoutOutput for Fake {
             return Err(Error::Unsupported("a framebuffer of the card before"));
         }
         log.commits += 1;
+        // A card waits on the fence before it flips. This is no card, and
+        // says the flip is done at once; the frame is drawn regardless.
+        if request.in_fence_fd.is_some() {
+            log.fenced += 1;
+            log.fenced_modesets += usize::from(request.allow_modeset);
+        }
         self.pending
             .push(OutputEvent::FlipComplete { fb: request.fb });
         Ok(())
@@ -166,6 +176,18 @@ fn frames_go_to_the_output_and_the_ring_is_rebuilt_when_it_says_so() {
         "{:?}",
         log.shapes
     );
+    // A frame is not waited for by the raster thread: its fence goes with
+    // its commit, or, where there is none to give (the commit that sets the
+    // mode, a driver that exports none, a frame already drawn), it was
+    // waited for and counted. The ring after the card was lost counts anew.
+    assert_eq!(log.fenced_modesets, 0);
+    assert!(
+        log.fenced as u64 + done.fence_waits <= 8,
+        "{} fenced, {} waited for",
+        log.fenced,
+        done.fence_waits
+    );
+    println!("fenced={} fence_waits={}", log.fenced, done.fence_waits);
     // And every buffer given back by the end.
     assert!(log.live.is_empty(), "{:?}", log.live);
 }

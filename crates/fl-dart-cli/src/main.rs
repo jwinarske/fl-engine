@@ -917,19 +917,21 @@ fn build_line(builds_us: &[u64]) -> String {
     )
 }
 
-/// `raster: frames=… record_us=… wait_us=… draw_us=… show_us=…`: the raster
-/// thread's time a frame by stage, each the median and the longest of its
-/// last frames (`fl_raster::Stages`).
+/// `raster: frames=… record_us=… wait_us=… draw_us=… show_us=… fence_waits=…`:
+/// the raster thread's time a frame by stage, each the median and the longest
+/// of its last frames (`fl_raster::Stages`), and the frames a display
+/// committed only after waiting for their drawing itself.
 fn raster_line(r: &fl_raster::Rastered) -> String {
     let stage = |s: &fl_raster::Stage| format!("{}/{}", s.median_us(), s.max_us());
     let s = &r.stages;
     format!(
-        "raster: frames={} record_us={} wait_us={} draw_us={} show_us={}",
+        "raster: frames={} record_us={} wait_us={} draw_us={} show_us={} fence_waits={}",
         r.frames,
         stage(&s.record),
         stage(&s.wait),
         stage(&s.draw),
-        stage(&s.show)
+        stage(&s.show),
+        r.fence_waits
     )
 }
 

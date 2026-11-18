@@ -23,6 +23,7 @@ Not published, no versions yet.
 * Raspberry Pi 5: 60 Hz with no blank missed, input latency under one frame
 * `run-app --times`: where the frames' time went, the UI thread's builds and the raster thread's stages
 * emblema 0.3.1: a frame's draw on the VisionFive 2 from 12 to 14 ms to 9, the pass's multisample and stencil buffers kept between frames; `text_churn` holds 60 Hz there
+* A display's frame is handed to the GPU and not waited for (emblema 0.3.2): its fence goes with the commit, and the next frame is recorded while it is drawn. The raster thread's 9 ms a frame on the VisionFive 2 is 3.5. `--times` counts the commits the thread waited for itself
 
 ### Milestone 3: images and text (in progress)
 

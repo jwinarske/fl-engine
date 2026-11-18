@@ -115,6 +115,11 @@ impl GpuImages {
             .map(|e| (&e.image, e.size))
     }
 
+    /// Whether [`GpuImages::sweep`] has anything to destroy.
+    pub(crate) fn has_dead(&self) -> bool {
+        self.map.values().any(|e| e.data.strong_count() == 0)
+    }
+
     /// Destroys the images nothing refers to any more.
     pub(crate) fn sweep(&mut self, ctx: &mut Context) {
         let dead: Vec<usize> = self

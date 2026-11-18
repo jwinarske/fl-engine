@@ -90,7 +90,7 @@ With `--capture shot.png`, Print Screen writes what the display shows, the curso
 
     fl-dart run-app out/cursors.so --kms --capture shot.png
 
-With `--times`, a run ends by saying where its frames' time went: the UI thread's builds, and the raster thread's stages (the scene recorded, the wait for a buffer, the GPU's draw, the frame committed or read back), each the median and the longest of the last 256 frames, in microseconds:
+With `--times`, a run ends by saying where its frames' time went: the UI thread's builds, and the raster thread's stages (the scene recorded, the wait for a buffer, the frame handed to the GPU, the frame committed or read back), each the median and the longest of the last 256 frames, in microseconds. A display's frame is not waited for: its fence goes with the commit for the kernel to wait on, and `fence_waits` counts the commits that took none, the thread waiting in the kernel's place. The first, which sets the mode, is always one:
 
     fl-dart run-app out/counter.so --kms --frames 600 --times
 

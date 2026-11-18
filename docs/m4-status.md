@@ -463,7 +463,18 @@ Not done on this board: latency as a number (the longest alone is printed, and `
 | counter, tapped | 13.7 ms | 9.4 ms | as before |
 
 * text_churn holds 60 Hz with it, and `counter`'s frame is 11.2 ms. Released as emblema 0.3.1 and pinned here
-* What is left of the 9 ms: 5.5 to 6 the GPU's, waited for on the raster thread, which a submission that returns a fence for a multisampled pass would take off it; 1.8 recording commands and 0.9 freeing the frame's vertex, index and material buffers and its descriptor pools, made anew each frame as well
+* What was left of the 9 ms: 5.5 to 6 the GPU's, waited for on the raster thread; 1.8 recording commands and 0.9 freeing the frame's vertex, index and material buffers and its descriptor pools, made anew each frame as well
+* The GPU's part taken off the thread (jwinarske/emblema#254, emblema 0.3.2): the frame is submitted for a fence, which goes with the commit as the plane's `IN_FENCE_FD`, and the kernel waits on it before the flip. The same runs, the thread's time between a scene and its commit:
+
+| app | recorded | buffer | submitted | all, before | after | frames in blanks |
+|---|---|---|---|---|---|---|
+| ticker | 0.08 ms | 1.2 ms | 2.2 ms | 9.0 ms | 3.5 ms | 299 in 298 |
+| text_churn | 6.1 ms | 1.1 ms | 2.3 ms | 15.4 ms | 9.5 ms | 299 in 298 |
+| counter, tapped | 1.8 ms | 1.2 ms | 2.3 ms | 11.2 ms | 5.3 ms | as before |
+
+* The buffer's 1.1 ms was nothing before: it is the frame before retired, its buffers freed, where the next buffer is picked up. The GPU's 5.5 ms is as long as it was, and runs while the thread records the next frame; a frame is on the screen no sooner for a thread that waits less, but the thread has 13 ms of a 16.7 ms period for recording a scene where it had 7.5 (no scene that long has been tried)
+* `fence_waits=1` in each run, the commit that sets the mode: the kernel waited for every other. On the Pi 5 as well, where a frame's submission is 0.1 ms
+* The frame before is waited for in two cases, both before anything is written: a glyph the atlas has not got, since the page is written in place, and an image destroyed, since the frame may be drawn from it. A screen of text that does not change waits for neither
 
 ## Decisions taken 2026-11-16
 
