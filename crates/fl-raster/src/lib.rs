@@ -16,6 +16,7 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread::JoinHandle;
+use std::time::Instant;
 
 use emblema::{
     Affine2, BackendPreference, BlendMode, Canvas, Color, Context, Extent2D, FillRule, Layer,
@@ -73,6 +74,7 @@ struct Device {
     glyphs: Glyphs,
     width: u32,
     height: u32,
+    stages: Stages,
 }
 
 impl Device {
@@ -83,6 +85,7 @@ impl Device {
             glyphs: Glyphs::default(),
             width: 0,
             height: 0,
+            stages: Stages::default(),
         })
     }
 
@@ -95,6 +98,72 @@ impl Device {
         self.images.clear(&mut self.ctx);
         self.glyphs.clear(&mut self.ctx);
     }
+}
+
+/// How many of the last frames a [`Stage`] remembers.
+const STAGE_FRAMES: usize = 256;
+
+/// One part of a frame's time on the raster thread, over the last
+/// [`STAGE_FRAMES`] frames: a run's first frames, where the driver compiles
+/// its shaders, are out of a long run's figures.
+#[derive(Debug, Clone, Copy)]
+pub struct Stage {
+    us: [u32; STAGE_FRAMES],
+    n: u64,
+}
+
+impl Default for Stage {
+    fn default() -> Stage {
+        Stage {
+            us: [0; STAGE_FRAMES],
+            n: 0,
+        }
+    }
+}
+
+impl Stage {
+    fn add(&mut self, from: Instant) {
+        self.put(u32::try_from(from.elapsed().as_micros()).unwrap_or(u32::MAX));
+    }
+
+    fn put(&mut self, us: u32) {
+        // Bounded by the remainder, and `usize` holds it.
+        let at = usize::try_from(self.n % STAGE_FRAMES as u64).unwrap_or(0);
+        self.us[at] = us;
+        self.n += 1;
+    }
+
+    fn kept(&self) -> &[u32] {
+        let n = usize::try_from(self.n).map_or(STAGE_FRAMES, |n| n.min(STAGE_FRAMES));
+        &self.us[..n]
+    }
+
+    /// The median of the frames remembered, in microseconds; 0 with none.
+    pub fn median_us(&self) -> u32 {
+        let mut us = self.kept().to_vec();
+        us.sort_unstable();
+        us.get(us.len() / 2).copied().unwrap_or(0)
+    }
+
+    /// The longest of the frames remembered, in microseconds.
+    pub fn max_us(&self) -> u32 {
+        self.kept().iter().copied().max().unwrap_or(0)
+    }
+}
+
+/// Where the raster thread's frames spent their time.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct Stages {
+    /// The scene walked into a recording: its glyphs found and rasterized,
+    /// the atlas uploaded, its draws recorded.
+    pub record: Stage,
+    /// Waiting for a buffer to draw into: with a display, for the frame
+    /// before to be shown. None offscreen.
+    pub wait: Stage,
+    /// The recording drawn by the GPU, waited for.
+    pub draw: Stage,
+    /// The frame handed on: committed to the display, or read back.
+    pub show: Stage,
 }
 
 /// `scene` as one recording over transparent black, and the images its
@@ -210,14 +279,22 @@ impl Offscreen {
             glyphs,
             width,
             height,
+            stages,
         } = &mut self.device;
+        let begun = Instant::now();
         let (recording, slots) = record(ctx, images, glyphs, (*width, *height), scene)?;
+        stages.record.add(begun);
         let surface = self
             .surface
             .as_mut()
             .ok_or_else(|| RasterError::Unsupported("a destroyed target".into()))?;
+        let begun = Instant::now();
         ctx.draw_with_images(surface, &recording, &slots.table)?;
-        Ok(ctx.read(surface)?)
+        stages.draw.add(begun);
+        let begun = Instant::now();
+        let pixels = ctx.read(surface)?;
+        stages.show.add(begun);
+        Ok(pixels)
     }
 
     /// Puts `image` on the device ahead of the frame that draws it.
@@ -368,6 +445,8 @@ pub struct Rastered {
     pub atlas_glyphs: usize,
     pub atlas_placements: usize,
     pub atlas_uploads: u64,
+    /// Where the frames' time went.
+    pub stages: Stages,
 }
 
 impl RasterThread {
@@ -635,6 +714,7 @@ fn raster_main<T: Target>(
     r.atlas_glyphs = d.glyphs.atlas().len();
     r.atlas_placements = d.glyphs.placements();
     r.atlas_uploads = d.glyphs.uploads();
+    r.stages = d.stages;
     r
 }
 
@@ -1398,6 +1478,22 @@ mod tests {
 
     fn rr(ltrb: [f32; 4], radii: [[f32; 2]; 4]) -> RRect {
         RRect { ltrb, radii }
+    }
+
+    /// A stage's figures are its last frames': a first frame's compile is
+    /// out of them once that many have followed.
+    #[test]
+    fn a_stage_is_its_last_frames() {
+        let mut s = Stage::default();
+        assert_eq!((s.median_us(), s.max_us()), (0, 0));
+        s.put(2_000_000);
+        s.put(10);
+        s.put(30);
+        assert_eq!((s.median_us(), s.max_us()), (30, 2_000_000));
+        for _ in 0..STAGE_FRAMES {
+            s.put(20);
+        }
+        assert_eq!((s.median_us(), s.max_us()), (20, 20));
     }
 
     /// `DlRoundRect`'s `IsRect` and `IsOval` on the radii `Scaled` fits.

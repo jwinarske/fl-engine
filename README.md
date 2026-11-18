@@ -90,6 +90,10 @@ With `--capture shot.png`, Print Screen writes what the display shows, the curso
 
     fl-dart run-app out/cursors.so --kms --capture shot.png
 
+With `--times`, a run ends by saying where its frames' time went: the UI thread's builds, and the raster thread's stages (the scene recorded, the wait for a buffer, the GPU's draw, the frame committed or read back), each the median and the longest of the last 256 frames, in microseconds:
+
+    fl-dart run-app out/counter.so --kms --frames 600 --times
+
 Notes:
 
 * A snapshot from another SDK is refused, with both versions named

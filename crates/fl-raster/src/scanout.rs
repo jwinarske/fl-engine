@@ -9,6 +9,7 @@
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
+use std::time::Instant;
 
 use emblema::drm::{DrmScanoutTarget, DEFAULT_RING_DEPTH};
 use emblema::present::PresentTarget;
@@ -186,8 +187,11 @@ impl Scanout {
             glyphs,
             width,
             height,
+            stages,
         } = &mut self.device;
+        let begun = Instant::now();
         let (recording, slots) = record(ctx, images, glyphs, (*width, *height), scene)?;
+        stages.record.add(begun);
         let target = self
             .target
             .as_mut()
@@ -212,9 +216,15 @@ impl Scanout {
         // canvas antialiases by multisampling, and emblema's submission
         // that returns a fence for the kernel to wait on instead does not
         // take a multisampled pass yet.
+        let begun = Instant::now();
         let buffer = target.acquire(vk)?;
+        stages.wait.add(begun);
+        let begun = Instant::now();
         emblema::execute::<VulkanHal>(vk, buffer, &recording, &textures)?;
+        stages.draw.add(begun);
+        let begun = Instant::now();
         target.present(vk)?;
+        stages.show.add(begun);
         Ok(())
     }
 }

@@ -492,6 +492,38 @@ fn counter_matches_its_golden() {
     );
 }
 
+/// `--times`: after the frames, the UI thread's builds and the raster
+/// thread's stages, a line each. Offscreen nothing is waited for, so that
+/// stage is 0; a frame is recorded, drawn and read back. The warm-up frame
+/// is drawn and is no build: it is begun by no vsync.
+#[test]
+#[ignore = "app lane: needs FLUTTER_ROOT and a Vulkan driver"]
+fn times_are_reported_when_asked_for() {
+    let app = build_app("colored_box");
+    let png = common::out_dir().join("apps/colored_box_times.png");
+    let o = common::fl_dart(&[
+        "run-app".as_ref(),
+        app.as_os_str(),
+        "800x600@2".as_ref(),
+        "--times".as_ref(),
+        "--png".as_ref(),
+        png.as_os_str(),
+    ]);
+    assert!(o.status.success(), "{o:?}");
+    let out = String::from_utf8_lossy(&o.stdout);
+    let lines: Vec<&str> = out.lines().filter(|l| !l.starts_with("frame ")).collect();
+    assert_eq!(lines.len(), 2, "{out}");
+    assert!(lines[0].starts_with("build: frames=1 median_us="), "{out}");
+    assert!(lines[1].starts_with("raster: frames=2 record_us="), "{out}");
+    assert!(lines[1].contains(" wait_us=0/0 draw_us="), "{out}");
+    // Without it, and without a raster thread, neither.
+    let o = common::fl_dart(&["run-app".as_ref(), app.as_os_str(), "800x600@2".as_ref()]);
+    assert!(
+        !String::from_utf8_lossy(&o.stdout).contains("build:"),
+        "{o:?}"
+    );
+}
+
 /// M4 stage 2's bar (exit criterion 1): the counter app, unmodified, counts
 /// three taps given as a script of input events, and its frame once the
 /// last tap's ripple has run out matches flutter_tester's after the same

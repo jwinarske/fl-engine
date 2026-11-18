@@ -21,6 +21,7 @@ Not published, no versions yet.
 * A switch of terminals under an app at rest brings its frame back; a cursor near the top and left edges of a display that reads its buffer as it scans is whole (drmkit 0.1.6)
 * VisionFive 2 (RISC-V): the board kit's ten checks pass, the display at 1280x720 and 60 Hz with no blank missed
 * Raspberry Pi 5: 60 Hz with no blank missed, input latency under one frame
+* `run-app --times`: where the frames' time went, the UI thread's builds and the raster thread's stages
 
 ### Milestone 3: images and text (in progress)
 
