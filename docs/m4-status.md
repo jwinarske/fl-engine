@@ -423,7 +423,7 @@ A keyboard (HP) and a mouse (Logitech, by its receiver) plugged in, a person at 
 * **Cursors**: `cursors`, all 35 cells entered; the cursor changes in each, `wait` and `progress` animate
 * **A capture**: Print Screen with `--capture` wrote the display's frame with the cursor on it, read back through GBM's buffers, the cells `2D3748` and `4A5568` as drawn
 * **A switch of terminals**: Ctrl+Alt+F2 and Ctrl+Alt+F1, twice, the grid back each time and captured after (above, found on the way)
-* **`counter`**, the first app with text and Material's widgets on this board: drawn right, the count going up by the click. It is shown at about 20 frames a second, 199 flips over 620 blanks, where `ticker` holds 60: its frame is multisampled, and emblema's own numbers have this GPU paying for each sample (docs/on-a-board.md there). Its first clicks were not answered while the ripple's shaders compiled
+* **`counter`**, the first app with text and Material's widgets on this board: drawn right, the count going up by the click. Its 199 flips over 620 blanks were read as about 20 frames a second, which they are not: the blanks between clicks, when it draws nothing, are counted too (its frame, below). Its first clicks were not answered while the ripple's shaders compiled
 
 The cursor, on this display controller:
 
@@ -441,6 +441,29 @@ The cursor, on this display controller:
 * `counter`'s button keeps the arrow: the framework asks for `basic` over it, off the web, as a script's mouse shows here too
 
 Not done on this board: latency as a number (the longest alone is printed, and `counter`'s is its first frame's shaders, 1.9 s), hotplug, a touch screen. `run.sh --input` was not run as such; its two checks are the keys and the pointer downs above.
+
+### Its frame
+
+`run-app --times` on the board, 1280x720 at 60 Hz, emblema 0.3.0, the median of a run's last frames:
+
+| app | recorded | drawn | frames in blanks |
+|---|---|---|---|
+| ticker | 0.08 ms | 12.0 ms | 299 in 298 |
+| text_churn | 6.2 ms | 12.5 ms | 299 in 340 |
+| counter, tapped six times by a script | 1.8 ms | 13.7 ms | its 120 frames each begun a blank after the last |
+
+* `counter` was not at 20 frames a second: tapped by a script, every frame of its ripples is begun at the blank after the one before. Its frame is 15.5 ms of a 16.7 ms period, which a mouse moving, or anything else, takes it past; text_churn's 18.7 ms misses a blank in eight
+* The draw is nearly the same whatever is drawn. Taken apart inside emblema (a build with clocks in it, not kept), ticker's 12 ms: 2.3 ms making the pass's multisample and stencil buffers, 1.7 recording commands, 5.5 waiting for the GPU, 2.1 freeing. At one sample, 0.1 making and 0.9 freeing. So a third of it is two buffers made and freed every frame, and the multisampling itself costs the GPU under a millisecond
+* emblema keeping the two between submissions (jwinarske/emblema#251), the same runs:
+
+| app | drawn, before | after | frames in blanks |
+|---|---|---|---|
+| ticker | 12.0 ms | 8.8 ms | 299 in 298 |
+| text_churn | 12.5 ms | 9.2 ms | 299 in 298 |
+| counter, tapped | 13.7 ms | 9.4 ms | as before |
+
+* text_churn holds 60 Hz with it, and `counter`'s frame is 11.2 ms. Released as emblema 0.3.1 and pinned here
+* What is left of the 9 ms: 5.5 to 6 the GPU's, waited for on the raster thread, which a submission that returns a fence for a multisampled pass would take off it; 1.8 recording commands and 0.9 freeing the frame's vertex, index and material buffers and its descriptor pools, made anew each frame as well
 
 ## Decisions taken 2026-11-16
 

@@ -382,7 +382,7 @@ To the display at 1280x720 and 60 Hz, no readback:
 | ticker | 0.08 ms | 12.1 ms | 299 in 298 |
 | text_churn | 6.2 ms | 12.5 ms | 299 in 340 |
 
-* The GPU's draw is nearly the same for a frame with one rectangle and a frame of text, at either size: 12 ms at 720p, 16.5 at 1080p. It is a cost a frame, not a cost of what is drawn, and it is most of a 60 Hz frame; text_churn's 6 ms of glyphs beside it misses one blank in eight. Looked into under M4 (m4-status.md)
+* The GPU's draw is nearly the same for a frame with one rectangle and a frame of text, at either size: 12 ms at 720p, 16.5 at 1080p. It is a cost a frame, not a cost of what is drawn, and it is most of a 60 Hz frame; text_churn's 6 ms of glyphs beside it misses one blank in eight. Taken apart under M4 (m4-status.md, the VisionFive 2, its frame): a third of it is two buffers emblema made and freed each frame
 * Recording is five to six times the Pi's (text_churn 1.05 ms there): the U74 against the A76
 * UI side: text_churn's build 1.3 ms at the median and 4.6 ms at most over 299 frames, against the 4 ms budget for its mean
 * The text app is two frames and has no steady state to measure: its first frame records in 65 ms, every glyph of the page rasterized, and draws in 1.32 s, the same on a second run. IMG's driver keeps no shader cache between runs, so every run compiles; `fl-dart prepare` cannot fill one
