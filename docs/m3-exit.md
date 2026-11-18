@@ -2,7 +2,7 @@
 
 State of the §11 exit criteria and the §15 list of the brief (docs/m3-images-text.md), with the evidence for each. Evidence is a CI lane, a test, or a recorded finding. Pin: Dart 3.13.7, Flutter 3.47.8, emblema `7914fa3`. Goldens: the stock engine's `flutter_tester` with Impeller, on lavapipe.
 
-Open: first numbers on boards. Every exit criterion is met, and every §15 limit has a test that crosses it.
+Every exit criterion is met, and every §15 limit has a test that crosses it. Both boards have their first numbers.
 
 ## §11 exit criteria
 
@@ -41,13 +41,13 @@ Criterion 6: `Glyphs` and `GpuImages` each carry `PhantomData<*const ()>`, so ne
 | Atlas uploads | done | one upload a frame; soak `atlas_uploads`: text 300 over 600 frames, none on steady-state frames. No region write asked of emblema |
 | Image uploads | done | uploaded when decoded (`RasterThread::uploader`); soak reports `gpu_images`, `gpu_kb` |
 | Decode throughput | done | one worker (D5); no measured case for more |
-| Boards | open | no Pi 5 or VisionFive 2 text-frame numbers yet |
+| Boards | done | text-frame numbers on both: Pi 5 text 3.0 ms recorded and 4.6 ms drawn a 1080p frame; VisionFive 2 text_churn 6.1 and 16.5 ms (m3-status.md, the Pi 5; the VisionFive 2) |
 
 ## Open, carried forward
 
 * Closed 2026-11-11 (m3-status.md, first-use compiles): the text app's slowest frame is the driver compiling shaders in a frame with Mesa's cache empty, not the font scan; `gif_advances_at_its_durations` stalled for the same reason and now runs once untimed first; the second replay measured at 0.03 ms a frame on the Pi 5 and left
 * First frames on a board with an empty shader cache: 3.6 s on Pi 5 V3D before emblema#247, 0.2 to 0.55 s for a whole 5-frame run since; RK3566 (Mali-G52, GLES) 6.3 to 8.7 s, 1.1 to 2.2 s since (m3-status.md, shader variants). `fl-dart prepare` (0.18 s on the Pi) is optional on either board
-* Boards: Pi 5 measured (m3-status.md); counter's GPU draw 9.4 ms against emblema's 5.19 ms, 3.8 ms since rounded rectangles with no radii are drawn as rectangles, as the engine's DisplayList does. A rounded rectangle that is one is tessellated in a multisampled pass since emblema#246: a rounded-corner screen 13.7 ms to 8.9. VisionFive 2 not yet
+* Boards: Pi 5 measured (m3-status.md); counter's GPU draw 9.4 ms against emblema's 5.19 ms, 3.8 ms since rounded rectangles with no radii are drawn as rectangles, as the engine's DisplayList does. A rounded rectangle that is one is tessellated in a multisampled pass since emblema#246: a rounded-corner screen 13.7 ms to 8.9. VisionFive 2 measured 2026-11-17 (m3-status.md): 16.5 ms of GPU draw a 1080p frame whatever is in it, 12 ms at 720p, so 60 Hz is held only by a frame with next to nothing recorded; carried to M4's open items
 * M3's text (m3-status.md, stage 4): script itemization, ICU's line-break and word tailorings and its dictionary breaking closed 2026-11-13 (m3-status.md, script runs; ICU's tailorings; dictionary breaking). Khmer differs from Flutter's ICU at one dictionary boundary in four
 
 ## Soak, as of 2e71c7d
