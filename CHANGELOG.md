@@ -32,6 +32,7 @@ Not published, no versions yet.
 * A Dart VM prebuilt without dart:io's secure sockets, `aot-nossl` for each target, and the feature `no-secure-sockets` that links it: no BoringSSL in `fl-dart`, 8.75 MB on x86_64 where the default is 10.37, 8.45 MB with the image decoders left out too. A TLS connection from Dart throws `ArgumentError`. Published with the pin's release, `cargo xtask fetch-prebuilt --mode aot-nossl`; the L2 suite runs on it too
 * A board kit on that VM, `fl-dart-board-kit-<target>-nossl` (`tools/board-kit/build.sh ... nossl`), built and run under qemu by the cross lane for aarch64 and riscv64
 * On that VM a refused TLS connection closes the socket it had opened: `SecureSocket.connect` and HTTPS threw `ArgumentError` and left it open, a descriptor for every attempt, and a script that tried did not exit. `SecurityContext()` no longer throws by itself; putting a key or a certificate into one does
+* An app's first frame is recorded in 7 ms on the VisionFive 2 where it took 45: the glyph atlas is put on the device when the raster thread starts, a device's first image write being 40 ms there. A frame with no new glyph no longer sets up a font's hinting for each run of text, 1.2 ms of each of the counter's frames on that board
 
 ### Milestone 3: images and text (in progress)
 
