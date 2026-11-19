@@ -66,6 +66,11 @@ jobs:
             cargo test -p fl-image --no-default-features --features "$formats"
           done
           cargo clippy -p fl-dart-cli --no-default-features --features aot --all-targets -- -D warnings
+      # So are the dictionaries Thai, Lao, Khmer and Burmese break by.
+      - name: Dictionaries left out
+        run: |
+          cargo clippy -p fl-text --no-default-features --all-targets -- -D warnings
+          cargo test -p fl-text --no-default-features
       # The input boundary (brief M4 D8): nothing above fl-input names a
       # backend, and fl-input itself depends on nothing.
       - name: Input boundary

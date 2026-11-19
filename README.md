@@ -60,7 +60,9 @@ The JPEG, GIF and WebP decoders are the features `jpeg`, `gif` and `webp`, on by
 
     cargo build --release -p fl-dart-cli --no-default-features --features aot,jpeg
 
-`no-secure-sockets` links a VM whose dart:io has no secure sockets, and so no BoringSSL: 8.75 MB where the default is 10.37, 8.45 MB with the decoders left out too. `SecureSocket` and HTTPS from dart:io then throw `ArgumentError`, so it is for a product that makes no TLS connection from Dart (third_party/dart-prebuilt/README.md):
+`dictionary`, on by default, is ICU's dictionaries for Thai, Lao, Khmer and Burmese, 1.1 MB: without it a run of one of those scripts is one word and wraps only at a space, and every other script is as it was. With the decoders and it left out, 8.97 MB.
+
+`no-secure-sockets` links a VM whose dart:io has no secure sockets, and so no BoringSSL: 8.75 MB where the default is 10.37, 7.35 MB with the decoders and the dictionaries left out too. `SecureSocket` and HTTPS from dart:io then throw `ArgumentError`, so it is for a product that makes no TLS connection from Dart (third_party/dart-prebuilt/README.md):
 
     cargo xtask fetch-prebuilt --mode aot-nossl
     cargo build --release -p fl-dart-cli --features no-secure-sockets

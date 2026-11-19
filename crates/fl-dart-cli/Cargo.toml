@@ -16,8 +16,8 @@ path = "src/main.rs"
 [features]
 # AOT is the primary mode (brief §3); `jit` replaces it on a dev host with
 # `--no-default-features --features jit`.
-default = ["aot", "jpeg", "gif", "webp"]
-jit = ["fl-dart-vm/jit", "fl-shell/jit", "fl-raster/jit", "jpeg", "gif", "webp"]
+default = ["aot", "jpeg", "gif", "webp", "dictionary"]
+jit = ["fl-dart-vm/jit", "fl-shell/jit", "fl-raster/jit", "jpeg", "gif", "webp", "dictionary"]
 aot = ["fl-dart-vm/aot", "fl-shell/aot", "fl-raster/aot"]
 # The image formats decoded besides PNG, each a decoder linked: a product
 # with no images in one builds without it (`--no-default-features --features
@@ -32,6 +32,13 @@ no-secure-sockets = ["fl-dart-vm/no-secure-sockets"]
 jpeg = ["fl-ui/jpeg"]
 gif = ["fl-ui/gif"]
 webp = ["fl-ui/webp"]
+# ICU's dictionaries for Thai, Lao, Khmer and Burmese (fl-text's
+# `dictionary`), 1.1 MB: those scripts have no spaces, and a line or a word
+# breaks inside a run of one where a dictionary word ends. Without it such
+# a run is one word, as UAX #14 and #29 leave it, and wraps only where it
+# has a space; every other script is as it was. For a product with no text
+# in the four.
+dictionary = ["fl-ui/dictionary"]
 # The KMS platform (brief M4 D9): the XKB keymap a script's key steps are
 # resolved against, so `--input` with keys needs it, and the seat and the
 # display `--kms` draws to, with the seat's devices and the cursor. It links
