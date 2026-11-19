@@ -10,7 +10,9 @@
 # aot-nossl is aot with dart:io built without secure sockets (the SDK's
 # dart_disable_secure_socket): nothing in it refers to BoringSSL, so a link
 # leaves BoringSSL out, 1.6 MB of fl-dart on x86_64, and SecureSocket, and so
-# HTTPS from dart:io, throws ArgumentError.
+# HTTPS from dart:io, throws ArgumentError. It is built with
+# patches/secure-socket-unsupported.patch, so that the socket a refused
+# connection had opened is closed.
 #
 # Writes <out-dir>/fl-dart-prebuilt-<version>-<target>-<mode>.tar.xz and a
 # .sha256 beside it. The tarball unpacks over third_party/dart-prebuilt/, in
@@ -68,6 +70,15 @@ case "$mode" in
     grep -q dart_disable_secure_socket "$sdk/runtime/runtime_args.gni" \
       || die "this SDK has no dart_disable_secure_socket GN argument"
     gn_args=(--gn-args dart_disable_secure_socket=true)
+    # The SDK's stubs throw before dart:io's own error path, the one that
+    # closes the socket SecureSocket.connect has connected by then; the patch
+    # says which are quiet instead. The file is compiled for this switch
+    # alone, so the other modes of the same checkout build as before. A pin
+    # the patch no longer fits fails here, not at run time.
+    patch="$here/patches/secure-socket-unsupported.patch"
+    if ! git -C "$sdk" apply --reverse --check "$patch" 2>/dev/null; then
+      git -C "$sdk" apply "$patch" || die "$patch does not apply to this SDK"
+    fi
     ;;
 esac
 base="${mode%%-*}"
