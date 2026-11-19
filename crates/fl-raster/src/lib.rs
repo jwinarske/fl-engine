@@ -313,15 +313,19 @@ impl Offscreen {
     /// without it is correct.
     pub fn prepare(&mut self) -> Result<(), RasterError> {
         let ctx = &mut self.device.ctx;
-        ctx.prepare_pipelines(PixelFormat::Rgba8Unorm, CANVAS_SAMPLES)?;
-        // What a Material app's first frames draw with besides: rounded
-        // rectangles and shadows, and a layer or an image composited.
-        for material in [MaterialVariant::Shape, MaterialVariant::Image] {
-            let variant = ShaderVariant {
-                material,
-                ..ShaderVariant::CORE
-            };
-            ctx.prepare_variant(PixelFormat::Rgba8Unorm, CANVAS_SAMPLES, variant)?;
+        // A pipeline is built for its target's format, and a driver's cache
+        // may keep it by that: this target's and a display's.
+        for format in [PixelFormat::Rgba8Unorm, PixelFormat::Bgra8Unorm] {
+            ctx.prepare_pipelines(format, CANVAS_SAMPLES)?;
+            // What a Material app's first frames draw with besides: rounded
+            // rectangles and shadows, and a layer or an image composited.
+            for material in [MaterialVariant::Shape, MaterialVariant::Image] {
+                let variant = ShaderVariant {
+                    material,
+                    ..ShaderVariant::CORE
+                };
+                ctx.prepare_variant(format, CANVAS_SAMPLES, variant)?;
+            }
         }
         self.device.save_pipelines();
         Ok(())
