@@ -151,3 +151,26 @@ jobs:
           path: kit/fl-dart-board-kit-${{ matrix.target }}.tar.xz
           if-no-files-found: error
           retention-days: 90
+      # The same kit on the VM without dart:io's secure sockets
+      # (`no-secure-sockets`): no BoringSSL in fl-dart. Run under qemu as the
+      # first is, so each target's archive is linked and run.
+      - name: Fetch the prebuilt VM without secure sockets
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: ci/annotate-on-fail.sh cargo xtask fetch-prebuilt --target ${{ matrix.target }} --mode aot-nossl
+      - name: Board kit without secure sockets
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PKG_CONFIG_ALLOW_CROSS: "1"
+          PKG_CONFIG_LIBDIR: /usr/lib/${{ matrix.sys }}/pkgconfig:/usr/share/pkgconfig
+        run: ci/annotate-on-fail.sh tools/board-kit/build.sh ${{ matrix.target }} "$GITHUB_WORKSPACE/dart-sdk/bin/dart" kit "$FLUTTER_ROOT" nossl
+      - name: Board kit without secure sockets under qemu
+        run: |
+          mkdir -p "$RUNNER_TEMP/kit" && tar xJf kit/fl-dart-board-kit-${{ matrix.target }}-nossl.tar.xz -C "$RUNNER_TEMP/kit"
+          ci/annotate-on-fail.sh env FL_DART_TEST_RUNNER="$RUNNER_CMD" dash "$RUNNER_TEMP/kit/fl-dart-board-kit-${{ matrix.target }}-nossl/run.sh"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fl-dart-board-kit-${{ matrix.target }}-nossl
+          path: kit/fl-dart-board-kit-${{ matrix.target }}-nossl.tar.xz
+          if-no-files-found: error
+          retention-days: 90

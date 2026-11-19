@@ -2,7 +2,7 @@
 # Builds the board kit: what exit criterion 2 needs on a real board, so the
 # board session is copy, unpack, run.
 #
-#   build.sh <target> <dart> <out-dir> [flutter-root]
+#   build.sh <target> <dart> <out-dir> [flutter-root] [variant]
 #
 #   target:  aarch64-unknown-linux-gnu | riscv64gc-unknown-linux-gnu
 #   dart:    the pinned stock SDK's dart, which cross-compiles the programs
@@ -11,6 +11,11 @@
 #            and the apps it runs (ticker, keys, pointer) for the target.
 #            The build then links the target's libseat, libinput, libudev
 #            and libxkbcommon, found by pkg-config.
+#   variant: nossl builds both with `--features no-secure-sockets`, the VM
+#            whose dart:io has no secure sockets and so no BoringSSL
+#            (`cargo xtask fetch-prebuilt --mode aot-nossl` first), and names
+#            the kit fl-dart-board-kit-<target>-nossl. Give "" for flutter
+#            to have it without the display's check.
 #
 # The cargo target linker must be set (CARGO_TARGET_<T>_LINKER), as cross.yml
 # does. Writes <out-dir>/fl-dart-board-kit-<target>.tar.xz: fl-dart (release),
@@ -26,6 +31,14 @@ target="$1"
 dart="$2"
 out="$(mkdir -p "$3" && cd "$3" && pwd)"
 flutter="${4:-}"
+variant="${5:-}"
+
+features=()
+case "$variant" in
+  "") ;;
+  nossl) features=(--features no-secure-sockets) ;;
+  *) echo "build.sh: unknown variant $variant" >&2; exit 1 ;;
+esac
 
 case "$target" in
   aarch64-unknown-linux-gnu) arch=arm64 ;;
@@ -33,13 +46,13 @@ case "$target" in
   *) echo "build.sh: unsupported target $target" >&2; exit 1 ;;
 esac
 
-name="fl-dart-board-kit-$target"
+name="fl-dart-board-kit-$target${variant:+-$variant}"
 stage="$(mktemp -d)"
 trap 'rm -rf "$stage"' EXIT
 kit="$stage/$name"
 mkdir -p "$kit"
 
-(cd "$repo" && cargo build --release -p fl-dart-cli --target "$target")
+(cd "$repo" && cargo build --release -p fl-dart-cli "${features[@]}" --target "$target")
 cp "$repo/target/$target/release/fl-dart" "$kit/"
 
 for prog in hello loop ffi throws burst; do
@@ -65,7 +78,7 @@ PY
 # and apps to show there.
 apps=()
 if [[ -n "$flutter" ]]; then
-  (cd "$repo" && cargo build --release -p fl-dart-cli --features kms --target "$target")
+  (cd "$repo" && cargo build --release -p fl-dart-cli --features kms "${features[@]}" --target "$target")
   cp "$repo/target/$target/release/fl-dart" "$kit/fl-dart-kms"
   for app in ticker keys pointer; do
     "$repo/tools/flutter-app/build.sh" "$flutter" "$repo/apps/$app" "$kit" "$target"
@@ -77,6 +90,7 @@ cp "$here/run.sh" "$kit/"
 {
   echo "commit=$(git -C "$repo" rev-parse HEAD)"
   echo "target=$target"
+  [[ -z "$variant" ]] || echo "variant=$variant"
   echo "dart=$("$dart" --version 2>&1)"
   (cd "$kit" && sha256sum fl-dart ./*.aot run.sh)
   if [[ -n "$flutter" ]]; then

@@ -147,6 +147,8 @@ Exit criterion 2 on Raspberry Pi 5 and VisionFive 2. The cross lane builds a kit
 
 With the pinned Flutter release named, the kit has the display's check too: `fl-dart-kms` (fl-dart with `--features kms`, linking the target's libseat, libinput, libudev and libxkbcommon through pkg-config) and the apps it shows.
 
+A fifth argument, `nossl`, builds the kit on the VM without dart:io's secure sockets (`--features no-secure-sockets`; `cargo xtask fetch-prebuilt --target <target> --mode aot-nossl` first). The cross lane keeps that one too, `fl-dart-board-kit-<target>-nossl`.
+
 On the board:
 
     tar xJf fl-dart-board-kit-aarch64-unknown-linux-gnu.tar.xz
