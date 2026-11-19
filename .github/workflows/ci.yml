@@ -94,6 +94,9 @@ jobs:
         include:
           - { mode: aot, flags: "" }
           - { mode: jit, flags: "--no-default-features --features jit" }
+          # The VM without dart:io's secure sockets: the same suite, so the
+          # feature and its archive stay linkable.
+          - { mode: aot-nossl, flags: "--features no-secure-sockets" }
     steps:
       - uses: actions/checkout@v4
       - run: rustup show
