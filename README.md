@@ -33,7 +33,7 @@ Isolate thread affinity, enter/exit pairing and handle lifetime are compile erro
 Built from dart-lang/sdk at a pinned revision, consumed as a prebuilt static archive. Cargo does not build C++.
 
 * Pin: Dart 3.13.7 (`416e33b0`), the `dart_revision` in Flutter stable's engine DEPS
-* Targets: x86_64 (jit, aot, jit-asan, jit-tsan), aarch64 (aot), riscv64 (aot)
+* Targets: x86_64 (jit, aot, jit-asan, jit-tsan), aarch64 (aot), riscv64 (aot); `aot-nossl` for each, `aot` with dart:io built without secure sockets
 * One archive per target/mode: VM, dart:io embedder, ICU, zlib, BoringSSL, libc++. No C++ runtime needed on target
 * Built by `.github/workflows/dart-prebuilt.yml` (`tools/dart-prebuilt/build.sh`), published as a release
 * Downloads are checked against `third_party/dart-prebuilt/<version>/SHA256SUMS`
@@ -59,6 +59,11 @@ A release build, as the board kit's, is built for size (link-time optimized, `op
 The JPEG, GIF and WebP decoders are the features `jpeg`, `gif` and `webp`, on by default; PNG is always read. A build names the ones its images need, and an image in a format left out is refused by name, an exception in the app. With none, 0.3 MB less (JPEG 111 kB, GIF 37 kB, WebP 149 kB):
 
     cargo build --release -p fl-dart-cli --no-default-features --features aot,jpeg
+
+`no-secure-sockets` links a VM whose dart:io has no secure sockets, and so no BoringSSL: 8.75 MB where the default is 10.37, 8.45 MB with the decoders left out too. `SecureSocket` and HTTPS from dart:io then throw `ArgumentError`, so it is for a product that makes no TLS connection from Dart (third_party/dart-prebuilt/README.md):
+
+    cargo xtask fetch-prebuilt --mode aot-nossl
+    cargo build --release -p fl-dart-cli --features no-secure-sockets
 
 Without a VM (lint, docs, compile-fail tests):
 

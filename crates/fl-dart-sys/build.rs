@@ -87,7 +87,15 @@ fn main() {
     // A sanitized Rust build links the VM built with the same sanitizer, in
     // its own directory: `jit-asan`, `jit-tsan`. The variant follows
     // `-Zsanitizer`, so the two halves cannot be paired wrongly by hand.
+    let no_tls = env::var_os("CARGO_FEATURE_NO_SECURE_SOCKETS").is_some();
+    if no_tls && (mode != "aot" || sanitizer.is_some()) {
+        panic!(
+            "fl-dart-sys: `no-secure-sockets` is a build of the `aot` VM, unsanitized: \
+             the pipeline builds no other without secure sockets"
+        );
+    }
     let variant = match sanitizer.as_deref() {
+        None if no_tls => "aot-nossl".to_owned(),
         None => mode.to_owned(),
         Some(s) if mode == "aot" => panic!(
             "fl-dart-sys: -Zsanitizer={s} needs the `jit` feature: sanitized VMs are \

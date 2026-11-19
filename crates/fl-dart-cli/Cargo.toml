@@ -23,6 +23,12 @@ aot = ["fl-dart-vm/aot", "fl-shell/aot", "fl-raster/aot"]
 # with no images in one builds without it (`--no-default-features --features
 # aot`, and the ones it has), and an image in a format left out is refused
 # by name. `jit` is a dev host's and has them all.
+# With `aot`: the VM built without dart:io's secure sockets, and so without
+# BoringSSL, 1.6 MB of fl-dart on x86_64: for a product that makes no TLS
+# connection from Dart. SecureSocket, SecurityContext and HTTPS from dart:io
+# throw ArgumentError, "Secure Sockets unsupported on this platform". Its
+# libraries are fetched with `cargo xtask fetch-prebuilt --mode aot-nossl`.
+no-secure-sockets = ["fl-dart-vm/no-secure-sockets"]
 jpeg = ["fl-ui/jpeg"]
 gif = ["fl-ui/gif"]
 webp = ["fl-ui/webp"]
