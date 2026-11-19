@@ -35,6 +35,11 @@ use fl_text::paint::GlyphRun;
 use swash::scale::{Render, ScaleContext, Source};
 use swash::zeno::{Format, Verb};
 use swash::FontRef;
+pub(crate) static PROBE_GLYPHS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+pub(crate) static PROBE_RENDER_US: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
+pub(crate) static PROBE_SCALER_US: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
 
 use crate::RasterError;
 
@@ -84,13 +89,27 @@ impl Page {
             if let Some((old, _)) = self.image.take() {
                 ctx.destroy_image(old);
             }
+            let t = std::time::Instant::now();
             let image = ctx.create_image(Extent2D::new(size, size), PixelFormat::R8Unorm)?;
+            if std::env::var_os("FL_PROBE").is_some() {
+                eprintln!(
+                    "probe atlas: create {size} in {} us",
+                    t.elapsed().as_micros()
+                );
+            }
             self.image = Some((image, size));
         }
         let mut wrote = false;
         if stale || self.atlas.is_dirty() {
             if let Some((image, _)) = self.image.as_mut() {
+                let t = std::time::Instant::now();
                 ctx.write_image(image, self.atlas.texels())?;
+                if std::env::var_os("FL_PROBE").is_some() {
+                    eprintln!(
+                        "probe atlas: write {size} in {} us",
+                        t.elapsed().as_micros()
+                    );
+                }
                 wrote = true;
             }
             self.atlas.mark_clean();
@@ -326,6 +345,7 @@ impl Glyphs {
         let Some(fref) = FontRef::from_index(data.as_slice(), index as usize) else {
             return;
         };
+        let ts = std::time::Instant::now();
         let mut ctx = self.scaler.borrow_mut();
         let vars: Vec<([u8; 4], f32)> = run.typeface.variations.iter().copied().collect();
         let mut scaler = ctx
@@ -334,6 +354,10 @@ impl Glyphs {
             .hint(true)
             .variations(vars.iter())
             .build();
+        PROBE_SCALER_US.fetch_add(
+            ts.elapsed().as_micros() as u64,
+            std::sync::atomic::Ordering::Relaxed,
+        );
         for (&glyph, pos) in run.glyphs.iter().zip(&run.positions) {
             let at = m.transform_point2(Vec2::new(origin[0] + pos[0], origin[1] + pos[1]));
             let q = quarter_of(&m, at.x);
@@ -354,11 +378,17 @@ impl Glyphs {
                 // On an overflow page already, or refused, this frame.
                 continue;
             }
-            let Some(img) = Render::new(&[Source::Outline])
+            let tr = std::time::Instant::now();
+            let img = Render::new(&[Source::Outline])
                 .format(Format::Alpha)
                 .offset(swash::zeno::Vector::new(f32::from(q) / 4.0, 0.0))
-                .render(&mut scaler, glyph)
-            else {
+                .render(&mut scaler, glyph);
+            PROBE_GLYPHS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            PROBE_RENDER_US.fetch_add(
+                tr.elapsed().as_micros() as u64,
+                std::sync::atomic::Ordering::Relaxed,
+            );
+            let Some(img) = img else {
                 self.refused.insert(key);
                 continue;
             };

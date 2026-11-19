@@ -217,6 +217,8 @@ fn record<'a>(
     if images.has_dead() {
         settle()?;
     }
+    let probe = std::env::var_os("FL_PROBE").is_some();
+    let t0 = Instant::now();
     images.sweep(ctx);
     let mut found = Vec::new();
     for op in &scene.ops {
@@ -229,22 +231,42 @@ fn record<'a>(
     }
     // The first replay finds and rasterizes the frame's glyphs; the atlas
     // goes up once; the second draws.
+    let t1 = Instant::now();
     glyphs.begin_frame();
     {
         let mut canvas = Canvas::new(Extent2D::new(width, height));
         let mut slots = Slots::preparing(images, glyphs);
         replay(&mut canvas, scene, &mut slots)?;
     }
+    let t2 = Instant::now();
     if glyphs.pending() {
         settle()?;
     }
+    let t3 = Instant::now();
     glyphs.upload(ctx)?;
+    let t4 = Instant::now();
     let (images, glyphs): (&'a GpuImages, &'a Glyphs) = (images, glyphs);
     let mut canvas = Canvas::new(Extent2D::new(width, height));
     canvas.clear(Color::TRANSPARENT);
     let mut slots = Slots::drawing(images, glyphs);
     replay(&mut canvas, scene, &mut slots)?;
-    Ok((canvas.finish(), slots))
+    let t5 = Instant::now();
+    let rec = canvas.finish();
+    if probe {
+        eprintln!(
+            "probe record: images={} prepare={} (glyphs {} in {} us, scalers {} us) settle={} upload={} draw={} finish={}",
+            (t1 - t0).as_micros(),
+            (t2 - t1).as_micros(),
+            glyphs::PROBE_GLYPHS.swap(0, std::sync::atomic::Ordering::Relaxed),
+            glyphs::PROBE_RENDER_US.swap(0, std::sync::atomic::Ordering::Relaxed),
+            glyphs::PROBE_SCALER_US.swap(0, std::sync::atomic::Ordering::Relaxed),
+            (t3 - t2).as_micros(),
+            (t4 - t3).as_micros(),
+            (t5 - t4).as_micros(),
+            t5.elapsed().as_micros(),
+        );
+    }
+    Ok((rec, slots))
 }
 
 /// Where the raster thread's frames go: a target it draws `scene` into.
