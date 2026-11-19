@@ -162,12 +162,14 @@ cxx_lib="$(dirname "$cxx_a")"
 # unreadable archive must not read as one with no C++ runtime.
 defined="$(mktemp)"
 "$bin/llvm-nm" --defined-only "$archive" > "$defined" || die "llvm-nm failed on $archive"
-# The switch must be in the objects, not just in the name: dart:io's TLS
-# filter is what refers to BoringSSL, and it is there or it is not.
-if grep 'N4dart3bin9SSLFilter' "$defined" >/dev/null; then
-  [[ "$mode" != aot-nossl ]] || die "$archive defines dart::bin::SSLFilter: built with secure sockets"
+# The switch must be in the objects, not just in the name. dart:io without
+# secure sockets still has an SSLFilter, a stub that answers "unsupported";
+# its Init is the real one's alone, and the real one is what refers to
+# BoringSSL.
+if grep 'N4dart3bin9SSLFilter4InitE' "$defined" >/dev/null; then
+  [[ "$mode" != aot-nossl ]] || die "$archive defines dart::bin::SSLFilter::Init: built with secure sockets"
 else
-  [[ "$mode" == aot-nossl ]] || die "$archive defines no dart::bin::SSLFilter: built without secure sockets"
+  [[ "$mode" == aot-nossl ]] || die "$archive defines no dart::bin::SSLFilter::Init: built without secure sockets"
 fi
 own_cxx=""
 grep -E ' [TWV] __cxa_' "$defined" >/dev/null && own_cxx=1
