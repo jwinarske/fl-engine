@@ -26,6 +26,7 @@ Not published, no versions yet.
 * A display's frame is handed to the GPU and not waited for (emblema 0.3.2): its fence goes with the commit, and the next frame is recorded while it is drawn. The raster thread's 9 ms a frame on the VisionFive 2 is 3.5. `--times` counts the commits the thread waited for itself
 * The pipelines the driver compiles are kept between runs (emblema 0.3.3), in `fl-engine/pipelines` under the user's cache directory, for `run-app --kms` and `prepare`: on the VisionFive 2, whose driver keeps nothing, the first hover and click no longer wait most of a second each
 * `fl-dart prepare` builds what an app's first frames draw with (emblema 0.3.4): rounded rectangles, shadows and layers besides solid colors and text, a clip's mask as it is drawn, for the offscreen format and a display's two. Run once on a VisionFive 2 with nothing kept, 13.9 s, a first run's longest frame is 11.5 ms; it was 830
+* A release build is built for size: link-time optimized, `opt-level = "s"`, stripped. `fl-dart` on x86_64 from 15.0 MB to 10.4, 10.8 with `kms`
 
 ### Milestone 3: images and text (in progress)
 

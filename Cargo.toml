@@ -69,3 +69,15 @@ fl-input = { path = "crates/fl-input", version = "0.1.0" }
 fl-input-script = { path = "crates/fl-input-script", version = "0.1.0" }
 fl-platform-kms = { path = "crates/fl-platform-kms", version = "0.1.0" }
 fl-text = { path = "crates/fl-text", version = "0.1.0" }
+
+# A release build is what goes on a board, so it is built for its size: the
+# whole program optimized as one unit, for size where that costs no speed
+# worth the name, and without its symbol table. fl-dart on x86_64 is 10.4 MB
+# so, 15.0 MB with cargo's defaults and 12.5 MB of that stripped; a frame of
+# text_churn is recorded and drawn in the same time either way. Unwinding
+# stays: a panic at the embedder's boundary is caught and reported.
+[profile.release]
+opt-level = "s"
+lto = "fat"
+codegen-units = 1
+strip = true
