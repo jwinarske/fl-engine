@@ -83,17 +83,17 @@ codegen-units = 1
 strip = true
 
 [patch.crates-io]
-emblema = { git = "https://github.com/jwinarske/emblema", rev = "c91de9ac054521991da2f8d3fcb36db2c81f5f24" }
-emblema-core = { git = "https://github.com/jwinarske/emblema", rev = "c91de9ac054521991da2f8d3fcb36db2c81f5f24" }
-emblema-entity = { git = "https://github.com/jwinarske/emblema", rev = "c91de9ac054521991da2f8d3fcb36db2c81f5f24" }
-emblema-geometry = { git = "https://github.com/jwinarske/emblema", rev = "c91de9ac054521991da2f8d3fcb36db2c81f5f24" }
-emblema-hal = { git = "https://github.com/jwinarske/emblema", rev = "c91de9ac054521991da2f8d3fcb36db2c81f5f24" }
-emblema-hal-gles = { git = "https://github.com/jwinarske/emblema", rev = "c91de9ac054521991da2f8d3fcb36db2c81f5f24" }
-emblema-hal-vulkan = { git = "https://github.com/jwinarske/emblema", rev = "c91de9ac054521991da2f8d3fcb36db2c81f5f24" }
-emblema-present = { git = "https://github.com/jwinarske/emblema", rev = "c91de9ac054521991da2f8d3fcb36db2c81f5f24" }
-emblema-present-drm = { git = "https://github.com/jwinarske/emblema", rev = "c91de9ac054521991da2f8d3fcb36db2c81f5f24" }
-emblema-present-egl = { git = "https://github.com/jwinarske/emblema", rev = "c91de9ac054521991da2f8d3fcb36db2c81f5f24" }
-emblema-present-vk = { git = "https://github.com/jwinarske/emblema", rev = "c91de9ac054521991da2f8d3fcb36db2c81f5f24" }
-emblema-renderer = { git = "https://github.com/jwinarske/emblema", rev = "c91de9ac054521991da2f8d3fcb36db2c81f5f24" }
-emblema-shaders = { git = "https://github.com/jwinarske/emblema", rev = "c91de9ac054521991da2f8d3fcb36db2c81f5f24" }
-emblema-text = { git = "https://github.com/jwinarske/emblema", rev = "c91de9ac054521991da2f8d3fcb36db2c81f5f24" }
+emblema = { git = "https://github.com/jwinarske/emblema", rev = "a4f6d67436c9b619c7d9031281c9f6f29da5af45" }
+emblema-core = { git = "https://github.com/jwinarske/emblema", rev = "a4f6d67436c9b619c7d9031281c9f6f29da5af45" }
+emblema-entity = { git = "https://github.com/jwinarske/emblema", rev = "a4f6d67436c9b619c7d9031281c9f6f29da5af45" }
+emblema-geometry = { git = "https://github.com/jwinarske/emblema", rev = "a4f6d67436c9b619c7d9031281c9f6f29da5af45" }
+emblema-hal = { git = "https://github.com/jwinarske/emblema", rev = "a4f6d67436c9b619c7d9031281c9f6f29da5af45" }
+emblema-hal-gles = { git = "https://github.com/jwinarske/emblema", rev = "a4f6d67436c9b619c7d9031281c9f6f29da5af45" }
+emblema-hal-vulkan = { git = "https://github.com/jwinarske/emblema", rev = "a4f6d67436c9b619c7d9031281c9f6f29da5af45" }
+emblema-present = { git = "https://github.com/jwinarske/emblema", rev = "a4f6d67436c9b619c7d9031281c9f6f29da5af45" }
+emblema-present-drm = { git = "https://github.com/jwinarske/emblema", rev = "a4f6d67436c9b619c7d9031281c9f6f29da5af45" }
+emblema-present-egl = { git = "https://github.com/jwinarske/emblema", rev = "a4f6d67436c9b619c7d9031281c9f6f29da5af45" }
+emblema-present-vk = { git = "https://github.com/jwinarske/emblema", rev = "a4f6d67436c9b619c7d9031281c9f6f29da5af45" }
+emblema-renderer = { git = "https://github.com/jwinarske/emblema", rev = "a4f6d67436c9b619c7d9031281c9f6f29da5af45" }
+emblema-shaders = { git = "https://github.com/jwinarske/emblema", rev = "a4f6d67436c9b619c7d9031281c9f6f29da5af45" }
+emblema-text = { git = "https://github.com/jwinarske/emblema", rev = "a4f6d67436c9b619c7d9031281c9f6f29da5af45" }
