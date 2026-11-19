@@ -56,6 +56,10 @@ A release build, as the board kit's, is built for size (link-time optimized, `op
 
     cargo build --release -p fl-dart-cli
 
+The JPEG, GIF and WebP decoders are the features `jpeg`, `gif` and `webp`, on by default; PNG is always read. A build names the ones its images need, and an image in a format left out is refused by name, an exception in the app. With none, 0.3 MB less (JPEG 111 kB, GIF 37 kB, WebP 149 kB):
+
+    cargo build --release -p fl-dart-cli --no-default-features --features aot,jpeg
+
 Without a VM (lint, docs, compile-fail tests):
 
     FL_DART_SDK_OUT=none cargo clippy --workspace --all-targets

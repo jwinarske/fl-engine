@@ -20,15 +20,20 @@
 //! copy it: each frame's bitstream is given to image-webp as an image of
 //! its own, its size held to the limit first.
 
+#[cfg(any(feature = "gif", feature = "webp"))]
 use std::io::Cursor;
 use std::sync::Arc;
 
-use crate::{buffer, decode_err, expand, format_of, premultiply, rgba_len, Format, Frame};
-use crate::{ImageError, Limits};
+#[cfg(feature = "webp")]
+use crate::expand;
+#[cfg(any(feature = "gif", feature = "webp"))]
+use crate::{buffer, decode_err, rgba_len};
+use crate::{format_of, premultiply, Format, Frame, ImageError, Limits};
 
 /// The default frame limit, past which an animation is refused.
 pub const DEFAULT_MAX_FRAMES: u32 = 1 << 20;
 
+#[cfg(feature = "gif")]
 type GifDecoder = gif::Decoder<Cursor<Arc<[u8]>>>;
 
 /// An encoded image's frames, decoded one at a time.
@@ -42,7 +47,9 @@ pub struct Frames {
     height: u32,
     /// The frame [`Frames::next_frame`] decodes next.
     next: u32,
+    #[cfg(feature = "gif")]
     gif: GifState,
+    #[cfg(feature = "webp")]
     webp: WebpState,
 }
 
@@ -57,6 +64,7 @@ impl std::fmt::Debug for Frames {
 }
 
 /// Where a WebP animation is, and what its frames are drawn on.
+#[cfg(feature = "webp")]
 #[derive(Default)]
 struct WebpState {
     /// The offset of the chunk after the last frame's.
@@ -68,6 +76,7 @@ struct WebpState {
 }
 
 /// A GIF's decoder, mid-stream, and what its frames are drawn on.
+#[cfg(feature = "gif")]
 #[derive(Default)]
 struct GifState {
     decoder: Option<GifDecoder>,
@@ -88,9 +97,12 @@ impl Frames {
         let h = crate::header(&bytes)?;
         limits.check(h.width, h.height)?;
         let (count, repetitions) = match format {
+            #[cfg(feature = "gif")]
             Format::Gif => gif_counts(&bytes, &limits)?,
+            #[cfg(feature = "webp")]
             Format::Webp => webp_counts(&bytes)?,
-            Format::Png | Format::Jpeg => (1, 0),
+            // A format left out of the build was refused by `header`.
+            _ => (1, 0),
         };
         if count > limits.max_frames {
             return Err(ImageError::TooManyFrames {
@@ -107,7 +119,9 @@ impl Frames {
             width: h.width,
             height: h.height,
             next: 0,
+            #[cfg(feature = "gif")]
             gif: GifState::default(),
+            #[cfg(feature = "webp")]
             webp: WebpState::default(),
         })
     }
@@ -134,19 +148,11 @@ impl Frames {
         if self.next >= self.count {
             self.next = 0;
         }
-        if self.next == 0 {
-            self.gif = GifState::default();
-            self.webp = WebpState::default();
-        }
         // A still is decoded whole, premultiplied; an animation's frames
         // come straight off the canvas.
-        let r = match self.format {
-            Format::Gif => self.next_gif(),
-            Format::Webp if self.count > 1 => self.next_webp(),
-            _ => {
-                self.next = self.count;
-                return crate::decode(&self.bytes, None, &self.limits);
-            }
+        let Some(r) = self.next_animated() else {
+            self.next = self.count;
+            return crate::decode(&self.bytes, None, &self.limits);
         };
         // A frame that failed leaves its decoder mid-frame: start over.
         let mut frame = r.inspect_err(|_| self.next = 0)?;
@@ -155,6 +161,28 @@ impl Frames {
         Ok(frame)
     }
 
+    /// An animation's next frame, straight; `None` for a still.
+    fn next_animated(&mut self) -> Option<Result<Frame, ImageError>> {
+        match self.format {
+            #[cfg(feature = "gif")]
+            Format::Gif => {
+                if self.next == 0 {
+                    self.gif = GifState::default();
+                }
+                Some(self.next_gif())
+            }
+            #[cfg(feature = "webp")]
+            Format::Webp if self.count > 1 => {
+                if self.next == 0 {
+                    self.webp = WebpState::default();
+                }
+                Some(self.next_webp())
+            }
+            _ => None,
+        }
+    }
+
+    #[cfg(feature = "gif")]
     fn next_gif(&mut self) -> Result<Frame, ImageError> {
         let (w, h) = (self.width, self.height);
         let s = &mut self.gif;
@@ -213,6 +241,7 @@ impl Frames {
         })
     }
 
+    #[cfg(feature = "webp")]
     fn next_webp(&mut self) -> Result<Frame, ImageError> {
         let (w, h) = (self.width, self.height);
         let s = &mut self.webp;
@@ -260,12 +289,14 @@ impl Frames {
     }
 }
 
+#[cfg(feature = "webp")]
 fn to_u32(n: usize) -> Result<u32, ImageError> {
     u32::try_from(n).map_err(|_| decode_err("webp", "a size past u32"))
 }
 
 /// The RIFF chunk at `at`: its fourcc, its body, and where the next
 /// starts. `None` past the end or for a chunk that runs past it.
+#[cfg(feature = "webp")]
 fn chunk(bytes: &[u8], at: usize) -> Option<([u8; 4], &[u8], usize)> {
     let head = bytes.get(at..at.checked_add(8)?)?;
     let fourcc = [head[0], head[1], head[2], head[3]];
@@ -278,6 +309,7 @@ fn chunk(bytes: &[u8], at: usize) -> Option<([u8; 4], &[u8], usize)> {
 
 /// An ANMF chunk's frame data, its ALPH and VP8 or VP8L chunks, as a WebP
 /// of its own, decoded to straight RGBA8 at `fw`x`fh`.
+#[cfg(feature = "webp")]
 fn webp_frame(data: &[u8], fw: u32, fh: u32, limits: &Limits) -> Result<Vec<u8>, ImageError> {
     let (mut alph, mut image) = (None, None);
     let mut at = 0;
@@ -337,6 +369,7 @@ fn webp_frame(data: &[u8], fw: u32, fh: u32, limits: &Limits) -> Result<Vec<u8>,
 /// Draws a WebP frame at `rect`: blended, an opaque pixel copied, a
 /// transparent one leaving the canvas, the rest source-over; else the
 /// rectangle replaced.
+#[cfg(feature = "webp")]
 fn compose(canvas: &mut [u8], sw: usize, sh: usize, px: &[u8], rect: [usize; 4], blend: bool) {
     let (rows, cols) = clipped(sw, sh, rect);
     let fw = rect[2];
@@ -370,6 +403,7 @@ fn compose(canvas: &mut [u8], sw: usize, sh: usize, px: &[u8], rect: [usize; 4],
 /// A GIF's frame count and `repetitionCount`, its pixel data skipped. The
 /// count stops at the first frame header that does not parse, as Wuffs
 /// counts the frames it can configure; none is an error.
+#[cfg(feature = "gif")]
 fn gif_counts(bytes: &[u8], limits: &Limits) -> Result<(u32, i32), ImageError> {
     let mut o = crate::gif_options(limits);
     o.skip_frame_decoding(true);
@@ -398,6 +432,7 @@ fn gif_counts(bytes: &[u8], limits: &Limits) -> Result<(u32, i32), ImageError> {
 /// A WebP's frame count and `repetitionCount`, from its chunks: a still is
 /// one frame, played once. An animation's loop count n plays n times; 0
 /// is forever (SkWebpCodec).
+#[cfg(feature = "webp")]
 fn webp_counts(bytes: &[u8]) -> Result<(u32, i32), ImageError> {
     let d = image_webp::WebPDecoder::new(Cursor::new(bytes)).map_err(|e| decode_err("webp", e))?;
     if !d.is_animated() {
@@ -416,6 +451,7 @@ fn webp_counts(bytes: &[u8]) -> Result<(u32, i32), ImageError> {
 
 /// `rect` (left, top, width, height) of a `sw`-wide, `sh`-high RGBA8
 /// canvas, clipped to it: the rows it covers, and the columns.
+#[cfg(any(feature = "gif", feature = "webp"))]
 fn clipped(sw: usize, sh: usize, [l, t, w, h]: [usize; 4]) -> (std::ops::Range<usize>, usize) {
     let rows = t.min(sh)..(t + h).min(sh);
     let cols = w.min(sw.saturating_sub(l));
@@ -423,6 +459,7 @@ fn clipped(sw: usize, sh: usize, [l, t, w, h]: [usize; 4]) -> (std::ops::Range<u
 }
 
 /// Clears `rect` of the canvas to transparent.
+#[cfg(any(feature = "gif", feature = "webp"))]
 fn clear(canvas: &mut [u8], sw: usize, sh: usize, rect: [usize; 4]) {
     let (rows, cols) = clipped(sw, sh, rect);
     for y in rows {
@@ -435,6 +472,7 @@ fn clear(canvas: &mut [u8], sw: usize, sh: usize, rect: [usize; 4]) {
 
 /// Draws a frame's straight RGBA8 pixels at `rect` on the canvas: its
 /// transparent pixels leave the canvas as it is, as GIF's do.
+#[cfg(feature = "gif")]
 pub(crate) fn draw(canvas: &mut [u8], sw: usize, sh: usize, px: &[u8], rect: [usize; 4]) {
     let (rows, cols) = clipped(sw, sh, rect);
     let fw = rect[2];

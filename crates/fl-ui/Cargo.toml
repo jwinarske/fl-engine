@@ -8,8 +8,14 @@ publish.workspace = true
 license.workspace = true
 
 [features]
+# The image formats decoded besides PNG (fl-image's features), on unless a
+# build asks for fewer.
+default = ["jpeg", "gif", "webp"]
 jit = ["fl-dart-ffi/jit"]
 aot = ["fl-dart-ffi/aot"]
+jpeg = ["fl-image/jpeg"]
+gif = ["fl-image/gif"]
+webp = ["fl-image/webp"]
 
 [dependencies]
 fl-assets = { workspace = true }

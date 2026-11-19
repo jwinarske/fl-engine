@@ -8,7 +8,8 @@
 //! decoders are safe Rust; a panic in one is caught by the [`Worker`] and is
 //! that job's error.
 //!
-//! Formats: PNG, JPEG, GIF and WebP, one crate each (decision D3).
+//! Formats: PNG, JPEG, GIF and WebP, one crate each (decision D3); the last
+//! three are features, and a format left out is refused by name.
 //! [`decode`] gives an image's first frame; [`Frames`], an animation's
 //! frames one at a time.
 
@@ -36,6 +37,29 @@ pub enum Format {
     Webp,
 }
 
+impl Format {
+    /// The format's name, as an error names it.
+    pub fn name(self) -> &'static str {
+        match self {
+            Format::Png => "PNG",
+            Format::Jpeg => "JPEG",
+            Format::Gif => "GIF",
+            Format::Webp => "WebP",
+        }
+    }
+
+    /// Whether this build decodes the format: PNG always, the others by
+    /// their features.
+    pub fn built(self) -> bool {
+        match self {
+            Format::Png => true,
+            Format::Jpeg => cfg!(feature = "jpeg"),
+            Format::Gif => cfg!(feature = "gif"),
+            Format::Webp => cfg!(feature = "webp"),
+        }
+    }
+}
+
 /// Why an image was not decoded.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ImageError {
@@ -50,6 +74,9 @@ pub enum ImageError {
     OutOfMemory,
     /// The decoder refused the data, or panicked on it.
     Decode(String),
+    /// A format this build was made without (the `jpeg`, `gif` and `webp`
+    /// features).
+    NotBuilt(Format),
 }
 
 impl std::fmt::Display for ImageError {
@@ -69,6 +96,13 @@ impl std::fmt::Display for ImageError {
             }
             ImageError::OutOfMemory => write!(f, "out of memory decoding the image"),
             ImageError::Decode(e) => write!(f, "{e}"),
+            ImageError::NotBuilt(format) => {
+                write!(
+                    f,
+                    "this build of fl-engine does not decode {}",
+                    format.name()
+                )
+            }
         }
     }
 }
@@ -158,6 +192,9 @@ pub fn format_of(bytes: &[u8]) -> Option<Format> {
 /// orientation applied, as Skia's codec reports it.
 pub fn header(bytes: &[u8]) -> Result<Header, ImageError> {
     let format = format_of(bytes).ok_or(ImageError::Unknown)?;
+    if !format.built() {
+        return Err(ImageError::NotBuilt(format));
+    }
     let (width, height) = match format {
         Format::Png => {
             let d = png::Decoder::new_with_limits(
@@ -169,6 +206,7 @@ pub fn header(bytes: &[u8]) -> Result<Header, ImageError> {
             let r = d.read_info().map_err(|e| decode_err("png", e))?;
             r.info().size()
         }
+        #[cfg(feature = "jpeg")]
         Format::Jpeg => {
             let mut d = jpeg_decoder(bytes, &Limits::default());
             d.decode_headers().map_err(|e| decode_err("jpeg", e))?;
@@ -182,17 +220,22 @@ pub fn header(bytes: &[u8]) -> Result<Header, ImageError> {
                 (w, h)
             }
         }
+        #[cfg(feature = "gif")]
         Format::Gif => {
             let d = gif_options(&Limits::default())
                 .read_info(Cursor::new(bytes))
                 .map_err(|e| decode_err("gif", e))?;
             (d.width().into(), d.height().into())
         }
+        #[cfg(feature = "webp")]
         Format::Webp => {
             let d = image_webp::WebPDecoder::new(Cursor::new(bytes))
                 .map_err(|e| decode_err("webp", e))?;
             d.dimensions()
         }
+        // Refused above; an arm for the match's sake.
+        #[cfg(not(all(feature = "jpeg", feature = "gif", feature = "webp")))]
+        other => return Err(ImageError::NotBuilt(other)),
     };
     if width == 0 || height == 0 {
         return Err(decode_err("image", "no pixels"));
@@ -204,6 +247,7 @@ pub fn header(bytes: &[u8]) -> Result<Header, ImageError> {
     })
 }
 
+#[cfg(feature = "jpeg")]
 fn to_u32(n: usize) -> Result<u32, ImageError> {
     u32::try_from(n).map_err(|_| decode_err("image", "a size past u32"))
 }
@@ -223,9 +267,15 @@ pub fn decode(
     }
     let mut frame = match h.format {
         Format::Png => decode_png(bytes, limits)?,
+        #[cfg(feature = "jpeg")]
         Format::Jpeg => decode_jpeg(bytes, limits)?,
+        #[cfg(feature = "gif")]
         Format::Gif => decode_gif(bytes, limits)?,
+        #[cfg(feature = "webp")]
         Format::Webp => decode_webp(bytes, limits)?,
+        // `header` has refused it already.
+        #[cfg(not(all(feature = "jpeg", feature = "gif", feature = "webp")))]
+        other => return Err(ImageError::NotBuilt(other)),
     };
     premultiply(&mut frame.pixels);
     resized(frame, target)
@@ -372,6 +422,7 @@ fn decode_png(bytes: &[u8], limits: &Limits) -> Result<Frame, ImageError> {
     })
 }
 
+#[cfg(feature = "jpeg")]
 fn jpeg_decoder<'a>(
     bytes: &'a [u8],
     limits: &Limits,
@@ -391,6 +442,7 @@ fn jpeg_decoder<'a>(
     )
 }
 
+#[cfg(feature = "jpeg")]
 fn decode_jpeg(bytes: &[u8], limits: &Limits) -> Result<Frame, ImageError> {
     let mut d = jpeg_decoder(bytes, limits);
     d.decode_headers().map_err(|e| decode_err("jpeg", e))?;
@@ -412,6 +464,7 @@ fn decode_jpeg(bytes: &[u8], limits: &Limits) -> Result<Frame, ImageError> {
     })
 }
 
+#[cfg(feature = "gif")]
 fn gif_options(limits: &Limits) -> gif::DecodeOptions {
     let mut o = gif::DecodeOptions::new();
     o.set_color_output(gif::ColorOutput::RGBA);
@@ -424,6 +477,7 @@ fn gif_options(limits: &Limits) -> gif::DecodeOptions {
 /// The first frame on the logical screen: transparent where the frame does
 /// not cover it, as browsers and Skia draw it, the background color unused.
 /// The frame's own size is held to the limit too.
+#[cfg(feature = "gif")]
 fn decode_gif(bytes: &[u8], limits: &Limits) -> Result<Frame, ImageError> {
     let mut d = gif_options(limits)
         .read_info(Cursor::new(bytes))
@@ -455,6 +509,7 @@ fn decode_gif(bytes: &[u8], limits: &Limits) -> Result<Frame, ImageError> {
     })
 }
 
+#[cfg(feature = "webp")]
 fn decode_webp(bytes: &[u8], limits: &Limits) -> Result<Frame, ImageError> {
     let mut d =
         image_webp::WebPDecoder::new(Cursor::new(bytes)).map_err(|e| decode_err("webp", e))?;
@@ -550,9 +605,11 @@ pub fn resize(src: &[u8], sw: u32, sh: u32, dw: u32, dh: u32) -> Result<Vec<u8>,
 
 /// An EXIF orientation, 1 to 8: how the stored pixels are turned to be
 /// shown.
+#[cfg(feature = "jpeg")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Orientation(u16);
 
+#[cfg(feature = "jpeg")]
 impl Orientation {
     /// 5 to 8 are a quarter turn, with or without a mirror.
     fn swaps_axes(self) -> bool {
@@ -562,6 +619,7 @@ impl Orientation {
 
 /// The orientation tag (0x0112) of a JPEG's EXIF block, the APP1 payload
 /// after `Exif\0\0`, or 1 when there is none or it does not parse.
+#[cfg(feature = "jpeg")]
 fn orientation(exif: Option<&[u8]>) -> Orientation {
     fn read(exif: &[u8]) -> Option<u16> {
         let tiff = exif.strip_prefix(b"Exif\0\0").unwrap_or(exif);
@@ -601,6 +659,7 @@ fn orientation(exif: Option<&[u8]>) -> Orientation {
 }
 
 /// `pixels` turned as `o` says, and the new size.
+#[cfg(feature = "jpeg")]
 fn orient(
     pixels: Vec<u8>,
     w: u32,
@@ -634,5 +693,47 @@ fn orient(
     Ok((out, ow as u32, oh))
 }
 
-#[cfg(test)]
+// The suite draws on every format, a GIF encoded by the gif crate among
+// them, so it is the whole build's; `left_out` is every build's.
+#[cfg(all(test, feature = "jpeg", feature = "gif", feature = "webp"))]
 mod tests;
+
+#[cfg(test)]
+mod left_out {
+    #![allow(clippy::unwrap_used)]
+    use super::*;
+    use std::sync::Arc;
+
+    const FIXTURES: [(Format, &[u8]); 4] = [
+        (Format::Png, include_bytes!("../testdata/rgba.png")),
+        (Format::Jpeg, include_bytes!("../testdata/halves.jpg")),
+        (Format::Gif, include_bytes!("../testdata/still.gif")),
+        (Format::Webp, include_bytes!("../testdata/rgba.webp")),
+    ];
+
+    /// A format is known by its first bytes in any build; one left out is
+    /// refused by name at each entry, and what is built decodes.
+    #[test]
+    fn a_format_left_out_is_refused_by_name() {
+        assert!(Format::Png.built());
+        assert_eq!(Format::Jpeg.built(), cfg!(feature = "jpeg"));
+        assert_eq!(Format::Gif.built(), cfg!(feature = "gif"));
+        assert_eq!(Format::Webp.built(), cfg!(feature = "webp"));
+        for (format, bytes) in FIXTURES {
+            assert_eq!(format_of(bytes), Some(format));
+            let limits = Limits::default();
+            if format.built() {
+                assert_eq!(header(bytes).unwrap().format, format);
+                decode(bytes, None, &limits).unwrap();
+                let mut frames = Frames::new(Arc::from(bytes), limits).unwrap();
+                frames.next_frame().unwrap();
+            } else {
+                let refused = ImageError::NotBuilt(format);
+                assert_eq!(header(bytes).unwrap_err(), refused);
+                assert_eq!(decode(bytes, None, &limits).unwrap_err(), refused);
+                assert_eq!(Frames::new(Arc::from(bytes), limits).unwrap_err(), refused);
+                assert!(refused.to_string().contains(format.name()));
+            }
+        }
+    }
+}
