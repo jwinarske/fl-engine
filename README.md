@@ -52,6 +52,10 @@ JIT (x86_64 dev hosts only):
     cargo xtask fetch-prebuilt --target x86_64-unknown-linux-gnu --mode jit
     cargo build -p fl-dart-cli --no-default-features --features jit
 
+A release build, as the board kit's, is built for size (link-time optimized, `opt-level = "s"`, stripped): `fl-dart` is 10.4 MB on x86_64, 10.8 MB with `kms`:
+
+    cargo build --release -p fl-dart-cli
+
 Without a VM (lint, docs, compile-fail tests):
 
     FL_DART_SDK_OUT=none cargo clippy --workspace --all-targets
