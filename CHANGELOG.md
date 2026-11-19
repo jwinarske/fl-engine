@@ -33,6 +33,7 @@ Not published, no versions yet.
 * A board kit on that VM, `fl-dart-board-kit-<target>-nossl` (`tools/board-kit/build.sh ... nossl`), built and run under qemu by the cross lane for aarch64 and riscv64
 * On that VM a refused TLS connection closes the socket it had opened: `SecureSocket.connect` and HTTPS threw `ArgumentError` and left it open, a descriptor for every attempt, and a script that tried did not exit. `SecurityContext()` no longer throws by itself; putting a key or a certificate into one does
 * An app's first frame is recorded in 7 ms on the VisionFive 2 where it took 45: the glyph atlas is put on the device when the raster thread starts, a device's first image write being 40 ms there. A frame with no new glyph no longer sets up a font's hinting for each run of text, 1.2 ms of each of the counter's frames on that board
+* A device takes its memory in blocks the size of its target (emblema 0.3.5): 64 MiB at 1280x720 where every device took 256 and 64 MiB whatever it used. On the VisionFive 2, whose driver backs a block with pages when it is made, a running app takes about 100 MB of the board's memory where it took 355, and the raster thread starts 130 ms sooner
 
 ### Milestone 3: images and text (in progress)
 
