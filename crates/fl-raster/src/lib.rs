@@ -20,9 +20,9 @@ use std::time::{Duration, Instant};
 
 use emblema::{
     Affine2, BackendPreference, BlendMode, Canvas, Color, Context, Extent2D, FillRule, Layer,
-    LineCap, LineJoin, MaskBlurStyle, MaterialVariant, Paint as EPaint, PathBuilder, PixelFormat,
-    Rect, RoundingRadii, Sampling, ShaderVariant, SourceRect, Sprite, StrokeStyle, Style as EStyle,
-    Surface, TileMode, Vec2,
+    LineCap, LineJoin, MaskBlurStyle, MaterialVariant, MemoryBlocks, Paint as EPaint, PathBuilder,
+    PixelFormat, Rect, RoundingRadii, Sampling, ShaderVariant, SourceRect, Sprite, StrokeStyle,
+    Style as EStyle, Surface, TileMode, Vec2,
 };
 use fl_ui::{
     Cap, Clip, ClipOp, Draw, FillType, ImageData, ImageShader, Join, LayerOp, Paint, Picture,
@@ -80,11 +80,41 @@ struct Device {
     compiled: Option<compiled::Compiled>,
 }
 
+/// The blocks a device for a target of `width` by `height` takes its memory
+/// in.
+///
+/// emblema's default is 256 MiB for images and 64 MiB for what the host
+/// writes through, and a driver that backs a block with pages when it is
+/// made charges for all of it at the first image: on a VisionFive 2, 142 ms
+/// as the raster thread starts and 320 MiB held, for a counter at 1280x720
+/// that uses 54. A block the size of what a target draws with costs what is
+/// used. The counter's 54 MiB is 15 of its target's RGBA frames: the pass's
+/// multisample and stencil buffers and its layers are the target's size, and
+/// little else counts. So 18 frames, to the next 4 MiB, and no less than
+/// 16 MiB: 64 MiB at 1280x720, 144 at 1920x1080, emblema's 256 at most. A
+/// block too small is not an error. The next is made in the frame that
+/// needs it, which on that board is a frame of 24 to 42 ms, once.
+///
+/// The host's is 8 MiB, a frame's vertices and an upload's staging; an image
+/// larger than that is staged in a block of its own.
+fn memory_blocks(width: u32, height: u32) -> MemoryBlocks {
+    const MIB: u64 = 1 << 20;
+    let frame = (u64::from(width) * u64::from(height)).saturating_mul(4);
+    let device = frame.saturating_mul(18).min(256 * MIB).div_ceil(4 * MIB) * 4 * MIB;
+    MemoryBlocks {
+        device: device.clamp(16 * MIB, 256 * MIB),
+        host: 8 * MIB,
+    }
+}
+
 impl Device {
-    fn new() -> Result<Device, RasterError> {
+    /// A device for a target of `width` by `height`. The size is what its
+    /// memory is taken by ([`memory_blocks`]); the target's own is set by
+    /// whoever makes it.
+    fn new(width: u32, height: u32) -> Result<Device, RasterError> {
         Ok(Device {
             compiled: None,
-            ctx: Context::new(BackendPreference::Vulkan)?,
+            ctx: Context::with_memory(BackendPreference::Vulkan, memory_blocks(width, height))?,
             images: GpuImages::default(),
             glyphs: Glyphs::default(),
             width: 0,
@@ -283,7 +313,7 @@ pub struct Offscreen {
 impl Offscreen {
     /// `width` by `height` physical pixels, RGBA8.
     pub fn new(width: u32, height: u32) -> Result<Offscreen, RasterError> {
-        let mut device = Device::new()?;
+        let mut device = Device::new(width, height)?;
         device.width = width;
         device.height = height;
         let surface = device
@@ -1605,6 +1635,20 @@ mod tests {
 
     fn picture(draws: Vec<Draw>) -> Arc<Picture> {
         Arc::new(Picture { draws })
+    }
+
+    #[test]
+    fn a_device_s_memory_blocks_are_sized_by_its_target() {
+        const MIB: u64 = 1 << 20;
+        let device = |w, h| memory_blocks(w, h).device / MIB;
+        // Eighteen RGBA frames to the next 4 MiB, held to 16 and 256.
+        assert_eq!(device(1280, 720), 64);
+        assert_eq!(device(1920, 1080), 144);
+        assert_eq!(device(3840, 2160), 256);
+        assert_eq!(device(64, 64), 16);
+        assert_eq!(device(0, 0), 16);
+        assert_eq!(device(u32::MAX, u32::MAX), 256);
+        assert_eq!(memory_blocks(1280, 720).host, 8 * MIB);
     }
 
     fn rr(ltrb: [f32; 4], radii: [[f32; 2]; 4]) -> RRect {
