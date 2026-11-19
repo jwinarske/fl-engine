@@ -37,11 +37,15 @@ system=pthread
 `aot-nossl` is `aot` with dart:io built without secure sockets (the SDK's
 `dart_disable_secure_socket`). Nothing in it refers to BoringSSL, so the
 linker leaves BoringSSL out: `fl-dart` on x86_64 is 8.75 MB with it, 10.37 MB
-with `aot`. `SecureSocket`, `SecurityContext` and HTTPS from dart:io throw
-`ArgumentError`, "Secure Sockets unsupported on this platform"; plain sockets
-are as they were. `SecureSocket.connect` has connected its plain socket by
-then and does not close it, the SDK's doing: a program that tries is left
-with that socket open, and one that would otherwise end does not.
+with `aot`. `SecureSocket` and HTTPS from dart:io throw `ArgumentError`,
+"Secure Sockets unsupported on this platform", as does putting a key or a
+certificate into a `SecurityContext`; plain sockets are as they were.
+`SecureSocket.connect` has connected its plain socket by then. The SDK's
+stubs throw before dart:io's own error path, which is what closes that
+socket, so with them a program that tried was left with it open, and one
+that would otherwise end did not. `tools/dart-prebuilt/patches/` moves the
+throw to `SecureSocket_Connect`, inside that path: the socket is closed, and
+a `SecurityContext` can be made, though nothing can be put in it.
 fl-dart-sys links this build for the feature `no-secure-sockets`.
 
 `cxx` names a C++ runtime to link dynamically. The pipeline never writes it:
