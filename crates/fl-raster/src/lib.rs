@@ -315,7 +315,11 @@ impl Offscreen {
         let ctx = &mut self.device.ctx;
         // A pipeline is built for its target's format, and a driver's cache
         // may keep it by that: this target's and a display's.
-        for format in [PixelFormat::Rgba8Unorm, PixelFormat::Bgra8Unorm] {
+        for format in [
+            PixelFormat::Rgba8Unorm,
+            PixelFormat::Bgra8Unorm,
+            PixelFormat::Rgb10A2Unorm,
+        ] {
             ctx.prepare_pipelines(format, CANVAS_SAMPLES)?;
             // What a Material app's first frames draw with besides: rounded
             // rectangles and shadows, and a layer or an image composited.

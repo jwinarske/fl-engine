@@ -346,7 +346,7 @@ checksum = "0e9c71c2167ca323c882b99918929403426e2373ea17242ff5653e0d5e1058be"
 [[package]]
 name = "emblema"
 version = "0.3.3"
-source = "git+https://github.com/jwinarske/emblema?branch=prepare-what-a-canvas-draws#4d48a4f7039ab5fca8c4f2acc837d8b65b0e0c85"
+source = "git+https://github.com/jwinarske/emblema?rev=2896341#2896341db1cafffb93d660465fd7930d8bbb3b47"
 dependencies = [
  "emblema-core",
  "emblema-hal",
@@ -359,7 +359,7 @@ dependencies = [
 [[package]]
 name = "emblema-core"
 version = "0.3.3"
-source = "git+https://github.com/jwinarske/emblema?branch=prepare-what-a-canvas-draws#4d48a4f7039ab5fca8c4f2acc837d8b65b0e0c85"
+source = "git+https://github.com/jwinarske/emblema?rev=2896341#2896341db1cafffb93d660465fd7930d8bbb3b47"
 dependencies = [
  "emblema-geometry",
  "emblema-hal",
@@ -372,7 +372,7 @@ dependencies = [
 [[package]]
 name = "emblema-geometry"
 version = "0.3.3"
-source = "git+https://github.com/jwinarske/emblema?branch=prepare-what-a-canvas-draws#4d48a4f7039ab5fca8c4f2acc837d8b65b0e0c85"
+source = "git+https://github.com/jwinarske/emblema?rev=2896341#2896341db1cafffb93d660465fd7930d8bbb3b47"
 dependencies = [
  "earcutr",
  "glam",
@@ -382,7 +382,7 @@ dependencies = [
 [[package]]
 name = "emblema-hal"
 version = "0.3.3"
-source = "git+https://github.com/jwinarske/emblema?branch=prepare-what-a-canvas-draws#4d48a4f7039ab5fca8c4f2acc837d8b65b0e0c85"
+source = "git+https://github.com/jwinarske/emblema?rev=2896341#2896341db1cafffb93d660465fd7930d8bbb3b47"
 dependencies = [
  "thiserror 1.0.69",
 ]
@@ -390,7 +390,7 @@ dependencies = [
 [[package]]
 name = "emblema-hal-vulkan"
 version = "0.3.3"
-source = "git+https://github.com/jwinarske/emblema?branch=prepare-what-a-canvas-draws#4d48a4f7039ab5fca8c4f2acc837d8b65b0e0c85"
+source = "git+https://github.com/jwinarske/emblema?rev=2896341#2896341db1cafffb93d660465fd7930d8bbb3b47"
 dependencies = [
  "ash",
  "emblema-hal",
@@ -401,7 +401,7 @@ dependencies = [
 [[package]]
 name = "emblema-present"
 version = "0.3.3"
-source = "git+https://github.com/jwinarske/emblema?branch=prepare-what-a-canvas-draws#4d48a4f7039ab5fca8c4f2acc837d8b65b0e0c85"
+source = "git+https://github.com/jwinarske/emblema?rev=2896341#2896341db1cafffb93d660465fd7930d8bbb3b47"
 dependencies = [
  "emblema-hal",
  "log",
@@ -410,7 +410,7 @@ dependencies = [
 [[package]]
 name = "emblema-present-drm"
 version = "0.3.3"
-source = "git+https://github.com/jwinarske/emblema?branch=prepare-what-a-canvas-draws#4d48a4f7039ab5fca8c4f2acc837d8b65b0e0c85"
+source = "git+https://github.com/jwinarske/emblema?rev=2896341#2896341db1cafffb93d660465fd7930d8bbb3b47"
 dependencies = [
  "drm",
  "drmkit-gbm",
@@ -424,7 +424,7 @@ dependencies = [
 [[package]]
 name = "emblema-renderer"
 version = "0.3.3"
-source = "git+https://github.com/jwinarske/emblema?branch=prepare-what-a-canvas-draws#4d48a4f7039ab5fca8c4f2acc837d8b65b0e0c85"
+source = "git+https://github.com/jwinarske/emblema?rev=2896341#2896341db1cafffb93d660465fd7930d8bbb3b47"
 dependencies = [
  "emblema-geometry",
  "emblema-hal",
@@ -434,7 +434,7 @@ dependencies = [
 [[package]]
 name = "emblema-shaders"
 version = "0.3.3"
-source = "git+https://github.com/jwinarske/emblema?branch=prepare-what-a-canvas-draws#4d48a4f7039ab5fca8c4f2acc837d8b65b0e0c85"
+source = "git+https://github.com/jwinarske/emblema?rev=2896341#2896341db1cafffb93d660465fd7930d8bbb3b47"
 dependencies = [
  "naga",
 ]
@@ -442,7 +442,7 @@ dependencies = [
 [[package]]
 name = "emblema-text"
 version = "0.3.3"
-source = "git+https://github.com/jwinarske/emblema?branch=prepare-what-a-canvas-draws#4d48a4f7039ab5fca8c4f2acc837d8b65b0e0c85"
+source = "git+https://github.com/jwinarske/emblema?rev=2896341#2896341db1cafffb93d660465fd7930d8bbb3b47"
 
 [[package]]
 name = "equivalent"
@@ -1535,7 +1535,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.48.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
