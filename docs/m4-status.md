@@ -484,6 +484,27 @@ Not done on this board: latency as a number (the longest alone is printed, and `
 * A key held as its keyboard goes, `apps/keys` on the display and its log timed: `t` down, the keyboard pulled 1.7 s later and `key up` with nothing left pressed, nothing for 4.1 s, then `t` again from the keyboard plugged back in. A mouse's button held as it goes has not been seen the same way
 * The frame before is waited for in two cases, both before anything is written: a glyph the atlas has not got, since the page is written in place, and an image destroyed, since the frame may be drawn from it. A screen of text that does not change waits for neither
 
+## The binary's size (2026-11-18)
+
+Not in the brief: asked for, and measured on the boards the milestone was.
+
+* A release build is built for size (#41): fat LTO, one codegen unit, `opt-level = "s"`, stripped. `fl-dart` on x86_64 from 15.0 MB (12.5 MB of it stripped) to 10.37 MB; on aarch64 14.7 MB to 9.71, `fl-dart-kms` 15.7 MB to 10.17; on riscv64 13.9 MB to 9.11 and 14.9 MB to 9.55. `"z"` is 0.1 MB less and `panic = "abort"` 0.2 MB, neither taken, a panic at the embedder's boundary being caught
+* What it costs on the VisionFive 2, `fl-dart-kms` before and after, 300 frames at 1280x720, two runs each, no blank missed in any: `text_churn`'s scene recorded in 7.85 and 7.91 ms before, 8.19 and 8.22 after, about 4% more; its build 1.26 to 1.41 ms either way, its draw 2.27 to 2.28; `ticker`'s scene 0.080 to 0.086 ms; `counter`'s latest input frame 17.9 ms and 18.1
+* The JPEG, GIF and WebP decoders are features (#42), PNG always read: 111, 37 and 149 kB on x86_64, 10.07 MB with none. An image in a format left out is an exception that names it
+* The VM without dart:io's secure sockets (#43, #44), the SDK's `dart_disable_secure_socket` and so no BoringSSL, as the prebuilt `aot-nossl` and the feature `no-secure-sockets`: 8.75 MB on x86_64, 8.45 MB with the decoders out too. `SecureSocket.connect`, `SecurityContext` and an `https` URL through `HttpClient` throw `ArgumentError`, "Secure Sockets unsupported on this platform"; a plain socket connects as before. `SecureSocket.connect` has connected its plain socket by then and the SDK does not close it: a script that tries does not exit
+* The board kit on that VM (#45), `fl-dart-board-kit-<target>-nossl`, from the cross lane:
+
+| | default | `nossl` |
+|---|---|---|
+| aarch64 `fl-dart` | 9.71 MB | 8.33 MB |
+| aarch64 `fl-dart-kms` | 10.17 MB | 8.72 MB |
+| riscv64 `fl-dart` | 9.11 MB | 7.92 MB |
+| riscv64 `fl-dart-kms` | 9.55 MB | 8.35 MB |
+
+* On the VisionFive 2, the riscv64 `nossl` kit, `./run.sh --mode 1280x720`: 10 passed, none failed or skipped, the display's among them, 300 frames with 299 flips and no blank missed. No BoringSSL string in `fl-dart-kms`, 178 in the default one. The TLS probe there as on x86_64: `ArgumentError` from `SecurityContext` and from `SecureSocket.connect`, and after the second the script does not exit
+* The aarch64 `nossl` kit has run under qemu in the cross lane, not on the Pi 5
+* What is left in the binary, by symbol size in the x86_64 build before any of this: fonts, shaping and Unicode tables 2.0 MB, the VM and dart:io 1.15, Rust's std 1.05, ICU in the prebuilt 0.7, fl-engine's crates 0.6, emblema 0.3. The VM's ICU and the text stack's tables are Unicode data twice
+
 ## Decisions taken 2026-11-16
 
 D1 (devices and a script, no window), D4 (clipboard in the process), D5 and D6 (no system IME), each with what the stock Linux embedder does in its place (brief §13). D5 as taken: no recordings from the stock embedder; the engine's unit tests ported for each layer, and the same scripted input given to `flutter_tester` and to fl-dart end to end.
