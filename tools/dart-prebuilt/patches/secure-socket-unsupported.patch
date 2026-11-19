@@ -1,0 +1,72 @@
+diff --git a/runtime/bin/secure_socket_unsupported.cc b/runtime/bin/secure_socket_unsupported.cc
+index 1324d92..cfae5bd 100644
+--- a/runtime/bin/secure_socket_unsupported.cc
++++ b/runtime/bin/secure_socket_unsupported.cc
+@@ -11,9 +11,18 @@
+ namespace dart {
+ namespace bin {
+ 
++// fl-engine (tools/dart-prebuilt/patches): the natives dart:io calls between
++// connecting the plain socket and SecureSocket_Connect do nothing here, where
++// upstream has every one throw. _RawSecureSocket catches what Connect throws,
++// reports it through the future and closes the socket; an earlier throw is
++// outside that, and leaves the socket open with nothing holding it. Those are
++// SecurityContext_Allocate and _TrustBuiltinRoots (the default context), and
++// SecureSocket_Init, _RegisterHandshakeCompleteCallback,
++// _RegisterBadCertificateCallback, _RegisterKeyLogPort and _Destroy. No TLS
++// connection is made either way: Connect throws, as does everything that would
++// put a key or a certificate into a context.
++
+ void FUNCTION_NAME(SecureSocket_Init)(Dart_NativeArguments args) {
+-  Dart_ThrowException(DartUtils::NewDartArgumentError(
+-      "Secure Sockets unsupported on this platform"));
+ }
+ 
+ void FUNCTION_NAME(SecureSocket_Connect)(Dart_NativeArguments args) {
+@@ -27,8 +36,6 @@ void FUNCTION_NAME(SecureSocket_AddCertificate)(Dart_NativeArguments args) {
+ }
+ 
+ void FUNCTION_NAME(SecureSocket_Destroy)(Dart_NativeArguments args) {
+-  Dart_ThrowException(DartUtils::NewDartArgumentError(
+-      "Secure Sockets unsupported on this platform"));
+ }
+ 
+ void FUNCTION_NAME(SecureSocket_Handshake)(Dart_NativeArguments args) {
+@@ -55,19 +62,13 @@ void FUNCTION_NAME(SecureSocket_GetSelectedProtocol)(
+ 
+ void FUNCTION_NAME(SecureSocket_RegisterHandshakeCompleteCallback)(
+     Dart_NativeArguments args) {
+-  Dart_ThrowException(DartUtils::NewDartArgumentError(
+-      "Secure Sockets unsupported on this platform"));
+ }
+ 
+ void FUNCTION_NAME(SecureSocket_RegisterBadCertificateCallback)(
+     Dart_NativeArguments args) {
+-  Dart_ThrowException(DartUtils::NewDartArgumentError(
+-      "Secure Sockets unsupported on this platform"));
+ }
+ 
+ void FUNCTION_NAME(SecureSocket_RegisterKeyLogPort)(Dart_NativeArguments args) {
+-  Dart_ThrowException(DartUtils::NewDartArgumentError(
+-      "Secure Sockets unsupported on this platform"));
+ }
+ 
+ void FUNCTION_NAME(SecureSocket_ProcessBuffer)(Dart_NativeArguments args) {
+@@ -96,8 +97,6 @@ void FUNCTION_NAME(SecureSocket_NewServicePort)(Dart_NativeArguments args) {
+ }
+ 
+ void FUNCTION_NAME(SecurityContext_Allocate)(Dart_NativeArguments args) {
+-  Dart_ThrowException(DartUtils::NewDartArgumentError(
+-      "Secure Sockets unsupported on this platform"));
+ }
+ 
+ void FUNCTION_NAME(SecurityContext_UsePrivateKeyBytes)(
+@@ -126,8 +125,6 @@ void FUNCTION_NAME(SecurityContext_SetTrustedCertificatesBytes)(
+ 
+ void FUNCTION_NAME(SecurityContext_TrustBuiltinRoots)(
+     Dart_NativeArguments args) {
+-  Dart_ThrowException(DartUtils::NewDartArgumentError(
+-      "Secure Sockets unsupported on this platform"));
+ }
+ 
+ void FUNCTION_NAME(SecurityContext_SetAllowTlsRenegotiation)(
