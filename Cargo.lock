@@ -346,7 +346,7 @@ checksum = "0e9c71c2167ca323c882b99918929403426e2373ea17242ff5653e0d5e1058be"
 [[package]]
 name = "emblema"
 version = "0.3.4"
-source = "git+https://github.com/jwinarske/emblema?rev=e8dcd8bd8dbf3b69ae3c9e3c6ee8f086ad6f0bb6#e8dcd8bd8dbf3b69ae3c9e3c6ee8f086ad6f0bb6"
+source = "git+https://github.com/jwinarske/emblema?rev=c91de9ac054521991da2f8d3fcb36db2c81f5f24#c91de9ac054521991da2f8d3fcb36db2c81f5f24"
 dependencies = [
  "emblema-core",
  "emblema-hal",
@@ -359,7 +359,7 @@ dependencies = [
 [[package]]
 name = "emblema-core"
 version = "0.3.4"
-source = "git+https://github.com/jwinarske/emblema?rev=e8dcd8bd8dbf3b69ae3c9e3c6ee8f086ad6f0bb6#e8dcd8bd8dbf3b69ae3c9e3c6ee8f086ad6f0bb6"
+source = "git+https://github.com/jwinarske/emblema?rev=c91de9ac054521991da2f8d3fcb36db2c81f5f24#c91de9ac054521991da2f8d3fcb36db2c81f5f24"
 dependencies = [
  "emblema-geometry",
  "emblema-hal",
@@ -372,7 +372,7 @@ dependencies = [
 [[package]]
 name = "emblema-geometry"
 version = "0.3.4"
-source = "git+https://github.com/jwinarske/emblema?rev=e8dcd8bd8dbf3b69ae3c9e3c6ee8f086ad6f0bb6#e8dcd8bd8dbf3b69ae3c9e3c6ee8f086ad6f0bb6"
+source = "git+https://github.com/jwinarske/emblema?rev=c91de9ac054521991da2f8d3fcb36db2c81f5f24#c91de9ac054521991da2f8d3fcb36db2c81f5f24"
 dependencies = [
  "earcutr",
  "glam",
@@ -382,7 +382,7 @@ dependencies = [
 [[package]]
 name = "emblema-hal"
 version = "0.3.4"
-source = "git+https://github.com/jwinarske/emblema?rev=e8dcd8bd8dbf3b69ae3c9e3c6ee8f086ad6f0bb6#e8dcd8bd8dbf3b69ae3c9e3c6ee8f086ad6f0bb6"
+source = "git+https://github.com/jwinarske/emblema?rev=c91de9ac054521991da2f8d3fcb36db2c81f5f24#c91de9ac054521991da2f8d3fcb36db2c81f5f24"
 dependencies = [
  "thiserror 1.0.69",
 ]
@@ -390,7 +390,7 @@ dependencies = [
 [[package]]
 name = "emblema-hal-vulkan"
 version = "0.3.4"
-source = "git+https://github.com/jwinarske/emblema?rev=e8dcd8bd8dbf3b69ae3c9e3c6ee8f086ad6f0bb6#e8dcd8bd8dbf3b69ae3c9e3c6ee8f086ad6f0bb6"
+source = "git+https://github.com/jwinarske/emblema?rev=c91de9ac054521991da2f8d3fcb36db2c81f5f24#c91de9ac054521991da2f8d3fcb36db2c81f5f24"
 dependencies = [
  "ash",
  "emblema-hal",
@@ -401,7 +401,7 @@ dependencies = [
 [[package]]
 name = "emblema-present"
 version = "0.3.4"
-source = "git+https://github.com/jwinarske/emblema?rev=e8dcd8bd8dbf3b69ae3c9e3c6ee8f086ad6f0bb6#e8dcd8bd8dbf3b69ae3c9e3c6ee8f086ad6f0bb6"
+source = "git+https://github.com/jwinarske/emblema?rev=c91de9ac054521991da2f8d3fcb36db2c81f5f24#c91de9ac054521991da2f8d3fcb36db2c81f5f24"
 dependencies = [
  "emblema-hal",
  "log",
@@ -410,7 +410,7 @@ dependencies = [
 [[package]]
 name = "emblema-present-drm"
 version = "0.3.4"
-source = "git+https://github.com/jwinarske/emblema?rev=e8dcd8bd8dbf3b69ae3c9e3c6ee8f086ad6f0bb6#e8dcd8bd8dbf3b69ae3c9e3c6ee8f086ad6f0bb6"
+source = "git+https://github.com/jwinarske/emblema?rev=c91de9ac054521991da2f8d3fcb36db2c81f5f24#c91de9ac054521991da2f8d3fcb36db2c81f5f24"
 dependencies = [
  "drm",
  "drmkit-gbm",
@@ -424,7 +424,7 @@ dependencies = [
 [[package]]
 name = "emblema-renderer"
 version = "0.3.4"
-source = "git+https://github.com/jwinarske/emblema?rev=e8dcd8bd8dbf3b69ae3c9e3c6ee8f086ad6f0bb6#e8dcd8bd8dbf3b69ae3c9e3c6ee8f086ad6f0bb6"
+source = "git+https://github.com/jwinarske/emblema?rev=c91de9ac054521991da2f8d3fcb36db2c81f5f24#c91de9ac054521991da2f8d3fcb36db2c81f5f24"
 dependencies = [
  "emblema-geometry",
  "emblema-hal",
@@ -434,7 +434,7 @@ dependencies = [
 [[package]]
 name = "emblema-shaders"
 version = "0.3.4"
-source = "git+https://github.com/jwinarske/emblema?rev=e8dcd8bd8dbf3b69ae3c9e3c6ee8f086ad6f0bb6#e8dcd8bd8dbf3b69ae3c9e3c6ee8f086ad6f0bb6"
+source = "git+https://github.com/jwinarske/emblema?rev=c91de9ac054521991da2f8d3fcb36db2c81f5f24#c91de9ac054521991da2f8d3fcb36db2c81f5f24"
 dependencies = [
  "naga",
 ]
@@ -442,7 +442,7 @@ dependencies = [
 [[package]]
 name = "emblema-text"
 version = "0.3.4"
-source = "git+https://github.com/jwinarske/emblema?rev=e8dcd8bd8dbf3b69ae3c9e3c6ee8f086ad6f0bb6#e8dcd8bd8dbf3b69ae3c9e3c6ee8f086ad6f0bb6"
+source = "git+https://github.com/jwinarske/emblema?rev=c91de9ac054521991da2f8d3fcb36db2c81f5f24#c91de9ac054521991da2f8d3fcb36db2c81f5f24"
 
 [[package]]
 name = "equivalent"
@@ -1920,19 +1920,19 @@ dependencies = [
 [[patch.unused]]
 name = "emblema-entity"
 version = "0.3.4"
-source = "git+https://github.com/jwinarske/emblema?rev=e8dcd8bd8dbf3b69ae3c9e3c6ee8f086ad6f0bb6#e8dcd8bd8dbf3b69ae3c9e3c6ee8f086ad6f0bb6"
+source = "git+https://github.com/jwinarske/emblema?rev=c91de9ac054521991da2f8d3fcb36db2c81f5f24#c91de9ac054521991da2f8d3fcb36db2c81f5f24"
 
 [[patch.unused]]
 name = "emblema-hal-gles"
 version = "0.3.4"
-source = "git+https://github.com/jwinarske/emblema?rev=e8dcd8bd8dbf3b69ae3c9e3c6ee8f086ad6f0bb6#e8dcd8bd8dbf3b69ae3c9e3c6ee8f086ad6f0bb6"
+source = "git+https://github.com/jwinarske/emblema?rev=c91de9ac054521991da2f8d3fcb36db2c81f5f24#c91de9ac054521991da2f8d3fcb36db2c81f5f24"
 
 [[patch.unused]]
 name = "emblema-present-egl"
 version = "0.3.4"
-source = "git+https://github.com/jwinarske/emblema?rev=e8dcd8bd8dbf3b69ae3c9e3c6ee8f086ad6f0bb6#e8dcd8bd8dbf3b69ae3c9e3c6ee8f086ad6f0bb6"
+source = "git+https://github.com/jwinarske/emblema?rev=c91de9ac054521991da2f8d3fcb36db2c81f5f24#c91de9ac054521991da2f8d3fcb36db2c81f5f24"
 
 [[patch.unused]]
 name = "emblema-present-vk"
 version = "0.3.4"
-source = "git+https://github.com/jwinarske/emblema?rev=e8dcd8bd8dbf3b69ae3c9e3c6ee8f086ad6f0bb6#e8dcd8bd8dbf3b69ae3c9e3c6ee8f086ad6f0bb6"
+source = "git+https://github.com/jwinarske/emblema?rev=c91de9ac054521991da2f8d3fcb36db2c81f5f24#c91de9ac054521991da2f8d3fcb36db2c81f5f24"
