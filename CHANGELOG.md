@@ -29,6 +29,7 @@ Not published, no versions yet.
 * A release build is built for size: link-time optimized, `opt-level = "s"`, stripped. `fl-dart` on x86_64 from 15.0 MB to 10.4, 10.8 with `kms`
 * The JPEG, GIF and WebP decoders are features of `fl-dart`, on by default; PNG is always read. An image in a format left out is refused by name. With none, `fl-dart` on x86_64 is 10.07 MB, 0.3 MB less
 * A Dart VM prebuilt without dart:io's secure sockets, `aot-nossl` for each target, and the feature `no-secure-sockets` that links it: no BoringSSL in `fl-dart`, 8.75 MB on x86_64 where the default is 10.37, 8.45 MB with the image decoders left out too. A TLS connection from Dart throws `ArgumentError`. Published with the pin's release, `cargo xtask fetch-prebuilt --mode aot-nossl`; the L2 suite runs on it too
+* A board kit on that VM, `fl-dart-board-kit-<target>-nossl` (`tools/board-kit/build.sh ... nossl`), built and run under qemu by the cross lane for aarch64 and riscv64
 
 ### Milestone 3: images and text (in progress)
 
