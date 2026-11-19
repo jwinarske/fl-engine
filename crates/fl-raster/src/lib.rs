@@ -20,9 +20,9 @@ use std::time::{Duration, Instant};
 
 use emblema::{
     Affine2, BackendPreference, BlendMode, Canvas, Color, Context, Extent2D, FillRule, Layer,
-    LineCap, LineJoin, MaskBlurStyle, Paint as EPaint, PathBuilder, PixelFormat, Rect,
-    RoundingRadii, Sampling, SourceRect, Sprite, StrokeStyle, Style as EStyle, Surface, TileMode,
-    Vec2,
+    LineCap, LineJoin, MaskBlurStyle, MaterialVariant, Paint as EPaint, PathBuilder, PixelFormat,
+    Rect, RoundingRadii, Sampling, ShaderVariant, SourceRect, Sprite, StrokeStyle, Style as EStyle,
+    Surface, TileMode, Vec2,
 };
 use fl_ui::{
     Cap, Clip, ClipOp, Draw, FillType, ImageData, ImageShader, Join, LayerOp, Paint, Picture,
@@ -300,8 +300,10 @@ impl Offscreen {
         (self.device.width, self.device.height)
     }
 
-    /// Builds the pipelines a first frame needs, ahead of it: source-over
-    /// at one sample and at the canvas's four, with and without a clip.
+    /// Builds the pipelines an app's first frames need, ahead of them:
+    /// source-over at one sample and at the canvas's four, with and without
+    /// a clip, for solid colors, gradients and glyphs, for rounded
+    /// rectangles and shadows, and for images and layers; and a clip's mask.
     /// Otherwise the first frame builds them: on a Pi 5 with Mesa's shader
     /// cache empty 57 ms a sample count since emblema#247, which compiles
     /// the core variant of its shader, 1.8 s before (m3-status.md,
@@ -310,9 +312,17 @@ impl Offscreen {
     /// thread's start, where it only delayed the first frames. Drawing
     /// without it is correct.
     pub fn prepare(&mut self) -> Result<(), RasterError> {
-        self.device
-            .ctx
-            .prepare_pipelines(PixelFormat::Rgba8Unorm, CANVAS_SAMPLES)?;
+        let ctx = &mut self.device.ctx;
+        ctx.prepare_pipelines(PixelFormat::Rgba8Unorm, CANVAS_SAMPLES)?;
+        // What a Material app's first frames draw with besides: rounded
+        // rectangles and shadows, and a layer or an image composited.
+        for material in [MaterialVariant::Shape, MaterialVariant::Image] {
+            let variant = ShaderVariant {
+                material,
+                ..ShaderVariant::CORE
+            };
+            ctx.prepare_variant(PixelFormat::Rgba8Unorm, CANVAS_SAMPLES, variant)?;
+        }
         self.device.save_pipelines();
         Ok(())
     }

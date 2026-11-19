@@ -68,3 +68,16 @@ fl-input = { path = "crates/fl-input", version = "0.1.0" }
 fl-input-script = { path = "crates/fl-input-script", version = "0.1.0" }
 fl-platform-kms = { path = "crates/fl-platform-kms", version = "0.1.0" }
 fl-text = { path = "crates/fl-text", version = "0.1.0" }
+
+# Probe only: emblema#260, until it is released.
+[patch.crates-io]
+emblema = { git = "https://github.com/jwinarske/emblema", branch = "prepare-what-a-canvas-draws" }
+emblema-core = { git = "https://github.com/jwinarske/emblema", branch = "prepare-what-a-canvas-draws" }
+emblema-geometry = { git = "https://github.com/jwinarske/emblema", branch = "prepare-what-a-canvas-draws" }
+emblema-hal = { git = "https://github.com/jwinarske/emblema", branch = "prepare-what-a-canvas-draws" }
+emblema-hal-vulkan = { git = "https://github.com/jwinarske/emblema", branch = "prepare-what-a-canvas-draws" }
+emblema-present = { git = "https://github.com/jwinarske/emblema", branch = "prepare-what-a-canvas-draws" }
+emblema-present-drm = { git = "https://github.com/jwinarske/emblema", branch = "prepare-what-a-canvas-draws" }
+emblema-renderer = { git = "https://github.com/jwinarske/emblema", branch = "prepare-what-a-canvas-draws" }
+emblema-shaders = { git = "https://github.com/jwinarske/emblema", branch = "prepare-what-a-canvas-draws" }
+emblema-text = { git = "https://github.com/jwinarske/emblema", branch = "prepare-what-a-canvas-draws" }

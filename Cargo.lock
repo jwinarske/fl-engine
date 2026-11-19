@@ -346,8 +346,7 @@ checksum = "0e9c71c2167ca323c882b99918929403426e2373ea17242ff5653e0d5e1058be"
 [[package]]
 name = "emblema"
 version = "0.3.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fae2cc12d27640c7279183814077acf010fa28bf13507ec89cc24e9fb77dfbec"
+source = "git+https://github.com/jwinarske/emblema?branch=prepare-what-a-canvas-draws#4d48a4f7039ab5fca8c4f2acc837d8b65b0e0c85"
 dependencies = [
  "emblema-core",
  "emblema-hal",
@@ -360,8 +359,7 @@ dependencies = [
 [[package]]
 name = "emblema-core"
 version = "0.3.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d5afc512bcbed3d797fff2923b71f9bd04572cf12ea7b74eb8387848c886728d"
+source = "git+https://github.com/jwinarske/emblema?branch=prepare-what-a-canvas-draws#4d48a4f7039ab5fca8c4f2acc837d8b65b0e0c85"
 dependencies = [
  "emblema-geometry",
  "emblema-hal",
@@ -374,8 +372,7 @@ dependencies = [
 [[package]]
 name = "emblema-geometry"
 version = "0.3.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "637e69b3186f537213b5da26bfd01dab2f73a0419e13b851fe33aae73af55e55"
+source = "git+https://github.com/jwinarske/emblema?branch=prepare-what-a-canvas-draws#4d48a4f7039ab5fca8c4f2acc837d8b65b0e0c85"
 dependencies = [
  "earcutr",
  "glam",
@@ -385,8 +382,7 @@ dependencies = [
 [[package]]
 name = "emblema-hal"
 version = "0.3.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e5f3cf7e602e07eb7e2b1a982989b60366a423db68f9ca278726a1de84155266"
+source = "git+https://github.com/jwinarske/emblema?branch=prepare-what-a-canvas-draws#4d48a4f7039ab5fca8c4f2acc837d8b65b0e0c85"
 dependencies = [
  "thiserror 1.0.69",
 ]
@@ -394,8 +390,7 @@ dependencies = [
 [[package]]
 name = "emblema-hal-vulkan"
 version = "0.3.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e9d74e7efb8cdbbf45890c5f1b2129f61e2cce81fd248476b56bf2f4029afa91"
+source = "git+https://github.com/jwinarske/emblema?branch=prepare-what-a-canvas-draws#4d48a4f7039ab5fca8c4f2acc837d8b65b0e0c85"
 dependencies = [
  "ash",
  "emblema-hal",
@@ -406,8 +401,7 @@ dependencies = [
 [[package]]
 name = "emblema-present"
 version = "0.3.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f1f948473a95a9357d0fca0a5b8e2bd8b63756c16911fd7cbcbca05f070e659d"
+source = "git+https://github.com/jwinarske/emblema?branch=prepare-what-a-canvas-draws#4d48a4f7039ab5fca8c4f2acc837d8b65b0e0c85"
 dependencies = [
  "emblema-hal",
  "log",
@@ -416,8 +410,7 @@ dependencies = [
 [[package]]
 name = "emblema-present-drm"
 version = "0.3.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "259372482c98bbc66d93edf95c9e62de30e56a807457480d474204ecc6a15d9f"
+source = "git+https://github.com/jwinarske/emblema?branch=prepare-what-a-canvas-draws#4d48a4f7039ab5fca8c4f2acc837d8b65b0e0c85"
 dependencies = [
  "drm",
  "drmkit-gbm",
@@ -431,8 +424,7 @@ dependencies = [
 [[package]]
 name = "emblema-renderer"
 version = "0.3.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "006594df963fdb9ed9fc9eaac50ecf6080b2c9aa0396e4849f8857fa2f19bed5"
+source = "git+https://github.com/jwinarske/emblema?branch=prepare-what-a-canvas-draws#4d48a4f7039ab5fca8c4f2acc837d8b65b0e0c85"
 dependencies = [
  "emblema-geometry",
  "emblema-hal",
@@ -442,8 +434,7 @@ dependencies = [
 [[package]]
 name = "emblema-shaders"
 version = "0.3.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6c686077524d2edef5bb471d5d186409e4f4c5622940fa44161c264118675557"
+source = "git+https://github.com/jwinarske/emblema?branch=prepare-what-a-canvas-draws#4d48a4f7039ab5fca8c4f2acc837d8b65b0e0c85"
 dependencies = [
  "naga",
 ]
@@ -451,8 +442,7 @@ dependencies = [
 [[package]]
 name = "emblema-text"
 version = "0.3.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f5461eebe81217817e58fc1b782253540da1ae203c005a3baf45ddfd8c3d4927"
+source = "git+https://github.com/jwinarske/emblema?branch=prepare-what-a-canvas-draws#4d48a4f7039ab5fca8c4f2acc837d8b65b0e0c85"
 
 [[package]]
 name = "equivalent"
@@ -1545,7 +1535,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]
