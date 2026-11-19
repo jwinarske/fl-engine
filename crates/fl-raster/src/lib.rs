@@ -731,6 +731,12 @@ fn raster_main<T: Target>(
             return Rastered::default();
         }
     };
+    // After `ready`: whoever spawned the thread goes on to start the app
+    // while this is done.
+    {
+        let Device { ctx, glyphs, .. } = target.device();
+        glyphs.warm(ctx);
+    }
     let (width, height) = (target.device().width, target.device().height);
     let mut r = Rastered {
         width,
