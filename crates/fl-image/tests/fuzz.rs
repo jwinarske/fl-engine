@@ -8,6 +8,8 @@
 //!
 //!     FL_FUZZ_ITERS=20000 cargo test -p fl-image --test fuzz -- --ignored
 #![allow(clippy::unwrap_used, clippy::panic)]
+// The corpus is every format's: the whole build's suite.
+#![cfg(all(feature = "jpeg", feature = "gif", feature = "webp"))]
 
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::{Arc, Mutex};

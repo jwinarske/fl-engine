@@ -16,9 +16,16 @@ path = "src/main.rs"
 [features]
 # AOT is the primary mode (brief §3); `jit` replaces it on a dev host with
 # `--no-default-features --features jit`.
-default = ["aot"]
-jit = ["fl-dart-vm/jit", "fl-shell/jit", "fl-raster/jit"]
+default = ["aot", "jpeg", "gif", "webp"]
+jit = ["fl-dart-vm/jit", "fl-shell/jit", "fl-raster/jit", "jpeg", "gif", "webp"]
 aot = ["fl-dart-vm/aot", "fl-shell/aot", "fl-raster/aot"]
+# The image formats decoded besides PNG, each a decoder linked: a product
+# with no images in one builds without it (`--no-default-features --features
+# aot`, and the ones it has), and an image in a format left out is refused
+# by name. `jit` is a dev host's and has them all.
+jpeg = ["fl-ui/jpeg"]
+gif = ["fl-ui/gif"]
+webp = ["fl-ui/webp"]
 # The KMS platform (brief M4 D9): the XKB keymap a script's key steps are
 # resolved against, so `--input` with keys needs it, and the seat and the
 # display `--kms` draws to, with the seat's devices and the cursor. It links
