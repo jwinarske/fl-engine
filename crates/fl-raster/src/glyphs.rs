@@ -110,6 +110,33 @@ impl Page {
                         t.elapsed().as_micros()
                     );
                 }
+                if std::env::var_os("FL_PROBE").is_some() {
+                    for _ in 0..2 {
+                        let t = std::time::Instant::now();
+                        ctx.write_image(image, self.atlas.texels())?;
+                        eprintln!(
+                            "probe atlas: again {size} in {} us",
+                            t.elapsed().as_micros()
+                        );
+                    }
+                    for side in [2048u32, 512, 256, 64, 64] {
+                        let t = std::time::Instant::now();
+                        let mut im =
+                            ctx.create_image(Extent2D::new(side, side), PixelFormat::R8Unorm)?;
+                        let c = t.elapsed().as_micros();
+                        let px = vec![0u8; (side * side) as usize];
+                        let t = std::time::Instant::now();
+                        ctx.write_image(&mut im, &px)?;
+                        let w = t.elapsed().as_micros();
+                        let t = std::time::Instant::now();
+                        ctx.write_image(&mut im, &px)?;
+                        eprintln!(
+                            "probe atlas: side {side} create {c} write {w} again {} us",
+                            t.elapsed().as_micros()
+                        );
+                        ctx.destroy_image(im);
+                    }
+                }
                 wrote = true;
             }
             self.atlas.mark_clean();
