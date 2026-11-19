@@ -60,6 +60,11 @@ The JPEG, GIF and WebP decoders are the features `jpeg`, `gif` and `webp`, on by
 
     cargo build --release -p fl-dart-cli --no-default-features --features aot,jpeg
 
+`no-secure-sockets` links a VM whose dart:io has no secure sockets, and so no BoringSSL: 8.75 MB where the default is 10.37, 8.45 MB with the decoders left out too. `SecureSocket` and HTTPS from dart:io then throw `ArgumentError`, so it is for a product that makes no TLS connection from Dart (third_party/dart-prebuilt/README.md):
+
+    cargo xtask fetch-prebuilt --mode aot-nossl
+    cargo build --release -p fl-dart-cli --features no-secure-sockets
+
 Without a VM (lint, docs, compile-fail tests):
 
     FL_DART_SDK_OUT=none cargo clippy --workspace --all-targets

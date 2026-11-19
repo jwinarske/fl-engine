@@ -9,8 +9,8 @@
 #
 # aot-nossl is aot with dart:io built without secure sockets (the SDK's
 # dart_disable_secure_socket): nothing in it refers to BoringSSL, so a link
-# leaves BoringSSL out, about 1 MB of fl-dart, and SecureSocket, and so
-# HTTPS from dart:io, throws UnsupportedError.
+# leaves BoringSSL out, 1.6 MB of fl-dart on x86_64, and SecureSocket, and so
+# HTTPS from dart:io, throws ArgumentError.
 #
 # Writes <out-dir>/fl-dart-prebuilt-<version>-<target>-<mode>.tar.xz and a
 # .sha256 beside it. The tarball unpacks over third_party/dart-prebuilt/, in

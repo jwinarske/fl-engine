@@ -18,7 +18,7 @@ jit = []
 aot = []
 # With `aot`: the VM whose dart:io has no secure sockets (`aot-nossl` in
 # third_party/dart-prebuilt/README.md), so the binary carries no BoringSSL.
-# SecureSocket, and HTTPS from dart:io, then throw UnsupportedError. Like
+# SecureSocket, and HTTPS from dart:io, then throw ArgumentError. Like
 # the two above it names a build of the VM, so it is the whole process's.
 no-secure-sockets = []
 # dart_tools_api.h: the service and timeline API. Bound, unused in M1.
