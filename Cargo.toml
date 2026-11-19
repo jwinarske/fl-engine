@@ -68,7 +68,7 @@ fl-image = { path = "crates/fl-image", version = "0.1.0", default-features = fal
 fl-input = { path = "crates/fl-input", version = "0.1.0" }
 fl-input-script = { path = "crates/fl-input-script", version = "0.1.0" }
 fl-platform-kms = { path = "crates/fl-platform-kms", version = "0.1.0" }
-fl-text = { path = "crates/fl-text", version = "0.1.0" }
+fl-text = { path = "crates/fl-text", version = "0.1.0", default-features = false }
 
 # A release build is what goes on a board, so it is built for its size: the
 # whole program optimized as one unit, for size where that costs no speed
