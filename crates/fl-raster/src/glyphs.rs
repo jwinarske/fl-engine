@@ -322,18 +322,12 @@ impl Glyphs {
         };
         let px = device_size(run, &m).round().max(1.0);
         let font = font_key(run);
-        let (data, index) = run.typeface.face.data();
-        let Some(fref) = FontRef::from_index(data.as_slice(), index as usize) else {
-            return;
-        };
-        let mut ctx = self.scaler.borrow_mut();
-        let vars: Vec<([u8; 4], f32)> = run.typeface.variations.iter().copied().collect();
-        let mut scaler = ctx
-            .builder(fref)
-            .size(px)
-            .hint(true)
-            .variations(vars.iter())
-            .build();
+        // What is not on a page yet. A frame's glyphs are nearly all there
+        // already, and the scaler, which is the font read and its hinting
+        // set up for this size, is made only for a run that has one to
+        // rasterize: 1.2 ms of every frame of the counter's on a
+        // VisionFive 2 when it was made for each run regardless.
+        let mut missing: Vec<(GlyphKey, u16, u8)> = Vec::new();
         for (&glyph, pos) in run.glyphs.iter().zip(&run.positions) {
             let at = m.transform_point2(Vec2::new(origin[0] + pos[0], origin[1] + pos[1]));
             let q = quarter_of(&m, at.x);
@@ -352,6 +346,31 @@ impl Glyphs {
             }
             if self.page_of(key).is_some() || self.refused.contains(&key) {
                 // On an overflow page already, or refused, this frame.
+                continue;
+            }
+            missing.push((key, glyph, q));
+        }
+        if missing.is_empty() {
+            return;
+        }
+        let (data, index) = run.typeface.face.data();
+        let Some(fref) = FontRef::from_index(data.as_slice(), index as usize) else {
+            return;
+        };
+        let mut ctx = self.scaler.borrow_mut();
+        let vars: Vec<([u8; 4], f32)> = run.typeface.variations.iter().copied().collect();
+        let mut scaler = ctx
+            .builder(fref)
+            .size(px)
+            .hint(true)
+            .variations(vars.iter())
+            .build();
+        for (key, glyph, q) in missing {
+            // Twice in the run: placed, or refused, the first time.
+            if self.cache.atlas.get(key).is_some()
+                || self.page_of(key).is_some()
+                || self.refused.contains(&key)
+            {
                 continue;
             }
             let Some(img) = Render::new(&[Source::Outline])
@@ -425,6 +444,18 @@ impl Glyphs {
             });
         }
         Ok(())
+    }
+
+    /// Makes the cache's device image and writes it, empty, ahead of the
+    /// first frame with text in it. A device's first image write is not as
+    /// the ones after: 40 ms for this megabyte on a VisionFive 2 and 2.4 ms
+    /// each time after, where it was most of the first frame's recording.
+    /// The thread has nothing to draw while the app starts, and does it
+    /// then. A failure is left for the frame's own upload to report.
+    pub(crate) fn warm(&mut self, ctx: &mut Context) {
+        if self.cache.image.is_none() {
+            let _ = self.cache.upload(ctx);
+        }
     }
 
     /// Frees the device images; before the context goes.
