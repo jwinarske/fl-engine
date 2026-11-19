@@ -135,7 +135,8 @@ impl Scanout {
         output: Output,
         pipelines: Option<std::path::PathBuf>,
     ) -> Result<Scanout, RasterError> {
-        let mut device = Device::new()?;
+        let extent = output.mode().extent;
+        let mut device = Device::new(extent.width, extent.height)?;
         if let Some(path) = pipelines {
             device.keep_pipelines(path);
         }
