@@ -76,7 +76,9 @@ fn main() -> ExitCode {
 /// Pi 5 with Mesa's shader cache empty that is 3.6 s, paid inside an app's
 /// first frame otherwise; run once when a board image is built or on its
 /// first boot, it fills the cache, and every app after starts from it
-/// (m3-status.md, first-use compiles).
+/// (m3-status.md, first-use compiles). On a VisionFive 2, whose driver
+/// keeps nothing and compiles for each format, 13.9 s for what an app's
+/// first frames draw with, kept in the pipelines file (m4-status.md).
 fn prepare() -> ExitCode {
     let started = std::time::Instant::now();
     let made = fl_raster::Offscreen::new(1, 1).and_then(|mut t| {
