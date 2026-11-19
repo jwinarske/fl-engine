@@ -5,7 +5,12 @@
 #   build.sh <sdk-checkout> <target> <mode> <out-dir>
 #
 #   target: x86_64-unknown-linux-gnu | aarch64-unknown-linux-gnu | riscv64gc-unknown-linux-gnu
-#   mode:   jit (x86_64 only) | aot | jit-asan | jit-tsan (x86_64 only)
+#   mode:   jit (x86_64 only) | aot | aot-nossl | jit-asan | jit-tsan (x86_64 only)
+#
+# aot-nossl is aot with dart:io built without secure sockets (the SDK's
+# dart_disable_secure_socket): nothing in it refers to BoringSSL, so a link
+# leaves BoringSSL out, about 1 MB of fl-dart, and SecureSocket, and so
+# HTTPS from dart:io, throws UnsupportedError.
 #
 # Writes <out-dir>/fl-dart-prebuilt-<version>-<target>-<mode>.tar.xz and a
 # .sha256 beside it. The tarball unpacks over third_party/dart-prebuilt/, in
@@ -53,9 +58,17 @@ esac
 # names the sanitizer, so AOT would need a gen_snapshot of its own; kernel
 # carries no feature string, so the stock SDK's .dill runs on any JIT build.
 sanitizer=none
+gn_args=()
 case "$mode" in
   jit-asan) sanitizer=asan ;;
   jit-tsan) sanitizer=tsan ;;
+  aot-nossl)
+    # The switch is the SDK's own; a pin without it would build with secure
+    # sockets and say nothing.
+    grep -q dart_disable_secure_socket "$sdk/runtime/runtime_args.gni" \
+      || die "this SDK has no dart_disable_secure_socket GN argument"
+    gn_args=(--gn-args dart_disable_secure_socket=true)
+    ;;
 esac
 base="${mode%%-*}"
 case "$base" in
@@ -63,8 +76,8 @@ case "$base" in
   # stock SDK's AOT snapshots declare in their feature string, and the VM
   # refuses a snapshot whose features differ from its own.
   jit) [[ "$arch" == x64 ]] || die "$mode is an x86_64 dev-host mode (brief §3)"; build_mode=release ;;
-  aot) [[ "$mode" == aot ]] || die "mode must be jit, aot, jit-asan or jit-tsan"; build_mode=product ;;
-  *) die "mode must be jit, aot, jit-asan or jit-tsan" ;;
+  aot) [[ "$mode" == aot || "$mode" == aot-nossl ]] || die "mode must be jit, aot, aot-nossl, jit-asan or jit-tsan"; build_mode=product ;;
+  *) die "mode must be jit, aot, aot-nossl, jit-asan or jit-tsan" ;;
 esac
 
 # Graft the shim into the checkout and make it reachable from the root, since
@@ -80,7 +93,7 @@ group("fl_dart") {
 GN
 
 (cd "$sdk" && python3 tools/build.py --no-rbe --mode "$build_mode" --arch "$arch" \
-  --sanitizer "$sanitizer" "fl_dart_$base")
+  --sanitizer "$sanitizer" "${gn_args[@]}" "fl_dart_$base")
 
 conf="$(cd "$sdk" && python3 -c "import sys; sys.path.insert(0, 'tools'); import utils; print(utils.GetBuildConf('$build_mode', '$arch', None, '$sanitizer'))")"
 archive="$(find "$sdk/out/$conf" -name "libfl_dart_$base.a" -print -quit)"
@@ -149,6 +162,13 @@ cxx_lib="$(dirname "$cxx_a")"
 # unreadable archive must not read as one with no C++ runtime.
 defined="$(mktemp)"
 "$bin/llvm-nm" --defined-only "$archive" > "$defined" || die "llvm-nm failed on $archive"
+# The switch must be in the objects, not just in the name: dart:io's TLS
+# filter is what refers to BoringSSL, and it is there or it is not.
+if grep 'N4dart3bin9SSLFilter' "$defined" >/dev/null; then
+  [[ "$mode" != aot-nossl ]] || die "$archive defines dart::bin::SSLFilter: built with secure sockets"
+else
+  [[ "$mode" == aot-nossl ]] || die "$archive defines no dart::bin::SSLFilter: built without secure sockets"
+fi
 own_cxx=""
 grep -E ' [TWV] __cxa_' "$defined" >/dev/null && own_cxx=1
 sdk_cxx_a=""
@@ -213,6 +233,7 @@ cp "$pinned_dir/VERSION" "$dest/VERSION"
 # fl-dart-sys checks this against the build's -Zsanitizer. The runtime is not
 # in the archive: rustc links its own, and a process holds one.
 sanitizer_line=""
+[[ "$mode" == aot-nossl ]] && sanitizer_line=$'# dart:io without secure sockets: no BoringSSL is referred to.\n'
 case "$sanitizer" in
   asan) sanitizer_line=$'sanitizer=address\n' ;;
   tsan) sanitizer_line=$'sanitizer=thread\n' ;;

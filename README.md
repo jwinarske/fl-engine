@@ -33,7 +33,7 @@ Isolate thread affinity, enter/exit pairing and handle lifetime are compile erro
 Built from dart-lang/sdk at a pinned revision, consumed as a prebuilt static archive. Cargo does not build C++.
 
 * Pin: Dart 3.13.7 (`416e33b0`), the `dart_revision` in Flutter stable's engine DEPS
-* Targets: x86_64 (jit, aot, jit-asan, jit-tsan), aarch64 (aot), riscv64 (aot)
+* Targets: x86_64 (jit, aot, jit-asan, jit-tsan), aarch64 (aot), riscv64 (aot); `aot-nossl` for each, `aot` with dart:io built without secure sockets
 * One archive per target/mode: VM, dart:io embedder, ICU, zlib, BoringSSL, libc++. No C++ runtime needed on target
 * Built by `.github/workflows/dart-prebuilt.yml` (`tools/dart-prebuilt/build.sh`), published as a release
 * Downloads are checked against `third_party/dart-prebuilt/<version>/SHA256SUMS`

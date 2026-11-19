@@ -10,6 +10,7 @@ license.workspace = true
 [features]
 jit = ["fl-dart-sys/jit"]
 aot = ["fl-dart-sys/aot"]
+no-secure-sockets = ["fl-dart-sys/no-secure-sockets"]
 
 [dependencies]
 fl-dart-sys = { workspace = true, features = ["tools"] }

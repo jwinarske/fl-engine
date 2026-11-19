@@ -28,6 +28,7 @@ Not published, no versions yet.
 * `fl-dart prepare` builds what an app's first frames draw with (emblema 0.3.4): rounded rectangles, shadows and layers besides solid colors and text, a clip's mask as it is drawn, for the offscreen format and a display's two. Run once on a VisionFive 2 with nothing kept, 13.9 s, a first run's longest frame is 11.5 ms; it was 830
 * A release build is built for size: link-time optimized, `opt-level = "s"`, stripped. `fl-dart` on x86_64 from 15.0 MB to 10.4, 10.8 with `kms`
 * The JPEG, GIF and WebP decoders are features of `fl-dart`, on by default; PNG is always read. An image in a format left out is refused by name. With none, `fl-dart` on x86_64 is 10.07 MB, 0.3 MB less
+* A Dart VM prebuilt without dart:io's secure sockets, `aot-nossl` for each target, and the feature `no-secure-sockets` that links it: no BoringSSL in `fl-dart`. Built by the pipeline; fetchable once published and its checksums are checked in
 
 ### Milestone 3: images and text (in progress)
 

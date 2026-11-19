@@ -7,7 +7,8 @@ holding what cargo needs to link the VM and nothing cargo would have to build.
 <version>/
   VERSION                     version=, revision= (sdk git hash), snapshot_hash=
   include/                    the embedding headers, checked in
-  lib/<target-triple>/<mode>/ fetched, never committed (mode: jit | aot)
+  lib/<target-triple>/<mode>/ fetched, never committed (mode: jit | aot | aot-nossl,
+                              and jit-asan | jit-tsan for the sanitizer lanes)
     link.txt                  what to link, in order -- see below
     *.a
   snapshots/                  fetched: platform dill and any VM snapshot blobs
@@ -32,6 +33,12 @@ static=fl_dart_aot   # lib<name>.a here: VM + dart:io + ICU + zlib + BoringSSL +
 system=dl            # a system library
 system=pthread
 ```
+
+`aot-nossl` is `aot` with dart:io built without secure sockets (the SDK's
+`dart_disable_secure_socket`). Nothing in it refers to BoringSSL, so the
+linker leaves BoringSSL out, and `SecureSocket`, with it HTTPS from dart:io,
+throws `UnsupportedError`. fl-dart-sys links it for the feature
+`no-secure-sockets`.
 
 `cxx` names a C++ runtime to link dynamically. The pipeline never writes it:
 its archives carry the toolchain's static libc++, the way every SDK binary

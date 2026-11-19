@@ -19,6 +19,10 @@ on:
         description: "Publish the artifacts as a GitHub release"
         type: boolean
         default: false
+      replace:
+        description: "Also replace the artifacts the release already has"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -36,6 +40,11 @@ jobs:
           - { target: x86_64-unknown-linux-gnu, mode: aot }
           - { target: aarch64-unknown-linux-gnu, mode: aot }
           - { target: riscv64gc-unknown-linux-gnu, mode: aot }
+          # dart:io without secure sockets, so without BoringSSL: for a
+          # product that makes no TLS connection from Dart.
+          - { target: x86_64-unknown-linux-gnu, mode: aot-nossl }
+          - { target: aarch64-unknown-linux-gnu, mode: aot-nossl }
+          - { target: riscv64gc-unknown-linux-gnu, mode: aot-nossl }
           # Sanitizer VMs for the sanitize lane: JIT, since kernel has no
           # snapshot feature string to disagree with the stock SDK.
           - { target: x86_64-unknown-linux-gnu, mode: jit-asan }
@@ -91,10 +100,25 @@ jobs:
           cat dist/*.sha256 > dist/SHA256SUMS
           tag="dart-prebuilt-$version"
           notes="Built by dart-prebuilt.yml from $(sed -n 's/^revision=//p' third_party/dart-prebuilt/*/VERSION) at $GITHUB_SHA. Check the SHA256SUMS into third_party/dart-prebuilt/$version/ to make these fetchable."
-          # A re-publish for the same pin (a pipeline fix) replaces the assets
-          # in place. The checked-in SHA256SUMS is what pins consumers, so a
-          # replaced asset is harmless until that file is updated by review.
+          # A re-publish for the same pin adds what the release has not got
+          # (a new mode) and leaves the rest: a rebuilt archive is not the
+          # same bytes, and the checked-in SHA256SUMS, which a fetch holds
+          # the download to, names the ones already there. `replace` (a
+          # pipeline fix) replaces them all, and SHA256SUMS is then checked
+          # in again before anything fetches.
           if gh release view "$tag" >/dev/null 2>&1; then
+            if [ "${{ inputs.replace }}" != "true" ]; then
+              gh release download "$tag" -p SHA256SUMS -O published.sums
+              for f in dist/*.tar.xz; do
+                name="$(basename "$f")"
+                if grep -q " $name\$" published.sums; then
+                  echo "kept as published: $name"
+                  rm "$f" "$f.sha256"
+                fi
+              done
+              ls dist/*.tar.xz >/dev/null 2>&1 || { echo "nothing new to publish"; exit 0; }
+              cat published.sums dist/*.sha256 | sort -k2 > dist/SHA256SUMS
+            fi
             gh release upload "$tag" dist/*.tar.xz dist/SHA256SUMS --clobber
             gh release edit "$tag" --notes "$notes"
           else
