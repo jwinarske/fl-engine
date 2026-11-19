@@ -31,6 +31,7 @@ Not published, no versions yet.
 * The dictionaries Thai, Lao, Khmer and Burmese break by are the feature `dictionary` of `fl-dart`, on by default, 1.1 MB. With the decoders, the dictionaries and secure sockets all left out, `fl-dart` on x86_64 is 7.35 MB
 * A Dart VM prebuilt without dart:io's secure sockets, `aot-nossl` for each target, and the feature `no-secure-sockets` that links it: no BoringSSL in `fl-dart`, 8.75 MB on x86_64 where the default is 10.37, 8.45 MB with the image decoders left out too. A TLS connection from Dart throws `ArgumentError`. Published with the pin's release, `cargo xtask fetch-prebuilt --mode aot-nossl`; the L2 suite runs on it too
 * A board kit on that VM, `fl-dart-board-kit-<target>-nossl` (`tools/board-kit/build.sh ... nossl`), built and run under qemu by the cross lane for aarch64 and riscv64
+* On that VM a refused TLS connection closes the socket it had opened: `SecureSocket.connect` and HTTPS threw `ArgumentError` and left it open, a descriptor for every attempt, and a script that tried did not exit. `SecurityContext()` no longer throws by itself; putting a key or a certificate into one does
 
 ### Milestone 3: images and text (in progress)
 

@@ -143,3 +143,19 @@ fn run_app_refuses_a_program_without_dart_ui() {
     let err = String::from_utf8_lossy(&o.stderr);
     assert!(err.contains("dart:ui"), "names what is missing: {err}");
 }
+
+/// A TLS connection on the VM without secure sockets is refused, and the
+/// plain socket it had opened is closed: the program's own server sees that,
+/// and the program ends. With the SDK's stubs as they come the socket stayed
+/// open and this never returned (tools/dart-prebuilt/patches).
+#[cfg(feature = "no-secure-sockets")]
+#[test]
+fn a_refused_tls_connection_closes_its_socket() {
+    let o = run("notls", &[]);
+    assert!(o.status.success(), "{o:?}");
+    let no = "Secure Sockets unsupported on this platform";
+    assert_eq!(
+        stdout(&o),
+        format!("socket: {no}\nsocket: closed\nhttps: {no}\nhttps: closed\ncontext: {no}\ndone\n")
+    );
+}
