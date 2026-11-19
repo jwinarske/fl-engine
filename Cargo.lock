@@ -346,8 +346,7 @@ checksum = "0e9c71c2167ca323c882b99918929403426e2373ea17242ff5653e0d5e1058be"
 [[package]]
 name = "emblema"
 version = "0.3.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "25bd611ea719fa850ad2aed886f0ecb4268838deebb3cb75a7392a6167a9560c"
+source = "git+https://github.com/jwinarske/emblema?rev=2a0275d117438dd03b78ed48a9dec8b82456304d#2a0275d117438dd03b78ed48a9dec8b82456304d"
 dependencies = [
  "emblema-core",
  "emblema-hal",
@@ -360,8 +359,7 @@ dependencies = [
 [[package]]
 name = "emblema-core"
 version = "0.3.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dc75f56c75e00180bf219cd78b16dc315c30c3ff6ef5b0fdd9990f71032dd25a"
+source = "git+https://github.com/jwinarske/emblema?rev=2a0275d117438dd03b78ed48a9dec8b82456304d#2a0275d117438dd03b78ed48a9dec8b82456304d"
 dependencies = [
  "emblema-geometry",
  "emblema-hal",
@@ -374,8 +372,7 @@ dependencies = [
 [[package]]
 name = "emblema-geometry"
 version = "0.3.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7738f7585301e5dac3b5c10889955933b0b6f582048cbb42c3e033cbca9ee62d"
+source = "git+https://github.com/jwinarske/emblema?rev=2a0275d117438dd03b78ed48a9dec8b82456304d#2a0275d117438dd03b78ed48a9dec8b82456304d"
 dependencies = [
  "earcutr",
  "glam",
@@ -385,8 +382,7 @@ dependencies = [
 [[package]]
 name = "emblema-hal"
 version = "0.3.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c7c0f132b8f026e3cd28fdcef6e4df802dcbff09db8f8da0bddd9bb81ee52252"
+source = "git+https://github.com/jwinarske/emblema?rev=2a0275d117438dd03b78ed48a9dec8b82456304d#2a0275d117438dd03b78ed48a9dec8b82456304d"
 dependencies = [
  "thiserror 1.0.69",
 ]
@@ -394,8 +390,7 @@ dependencies = [
 [[package]]
 name = "emblema-hal-vulkan"
 version = "0.3.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ee6c9f05d0b11612d0cf8f5e660e825f47e024e321c8f3c18585a54f12634424"
+source = "git+https://github.com/jwinarske/emblema?rev=2a0275d117438dd03b78ed48a9dec8b82456304d#2a0275d117438dd03b78ed48a9dec8b82456304d"
 dependencies = [
  "ash",
  "emblema-hal",
@@ -406,8 +401,7 @@ dependencies = [
 [[package]]
 name = "emblema-present"
 version = "0.3.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ca2b3fdd51870ce08ba65d1e188eeb1bdee3acf162bde2d53b84f7466ed63b07"
+source = "git+https://github.com/jwinarske/emblema?rev=2a0275d117438dd03b78ed48a9dec8b82456304d#2a0275d117438dd03b78ed48a9dec8b82456304d"
 dependencies = [
  "emblema-hal",
  "log",
@@ -416,8 +410,7 @@ dependencies = [
 [[package]]
 name = "emblema-present-drm"
 version = "0.3.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3c17df11065249a0087de68dc102a89c0d3569cec8a976b2011aa313e0bd36da"
+source = "git+https://github.com/jwinarske/emblema?rev=2a0275d117438dd03b78ed48a9dec8b82456304d#2a0275d117438dd03b78ed48a9dec8b82456304d"
 dependencies = [
  "drm",
  "drmkit-gbm",
@@ -431,8 +424,7 @@ dependencies = [
 [[package]]
 name = "emblema-renderer"
 version = "0.3.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c7b1714757da46d3f65fe89b2549f6b67b026ff7398240a9ec987dbc1d8f9965"
+source = "git+https://github.com/jwinarske/emblema?rev=2a0275d117438dd03b78ed48a9dec8b82456304d#2a0275d117438dd03b78ed48a9dec8b82456304d"
 dependencies = [
  "emblema-geometry",
  "emblema-hal",
@@ -442,8 +434,7 @@ dependencies = [
 [[package]]
 name = "emblema-shaders"
 version = "0.3.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ced61461c942e51ad32d1b75de3eafd8ecede557e79ec7c8be2ceab33d02611f"
+source = "git+https://github.com/jwinarske/emblema?rev=2a0275d117438dd03b78ed48a9dec8b82456304d#2a0275d117438dd03b78ed48a9dec8b82456304d"
 dependencies = [
  "naga",
 ]
@@ -451,8 +442,7 @@ dependencies = [
 [[package]]
 name = "emblema-text"
 version = "0.3.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5b790bee30bb435494d8227070a3ca466e4e6db892522b0cec4da93abdebbb6c"
+source = "git+https://github.com/jwinarske/emblema?rev=2a0275d117438dd03b78ed48a9dec8b82456304d#2a0275d117438dd03b78ed48a9dec8b82456304d"
 
 [[package]]
 name = "equivalent"
@@ -1926,3 +1916,23 @@ checksum = "27bc9d5b815bc103f142aa054f561d9187d191692ec7c2d1e2b4737f8dbd7296"
 dependencies = [
  "zune-core",
 ]
+
+[[patch.unused]]
+name = "emblema-entity"
+version = "0.3.4"
+source = "git+https://github.com/jwinarske/emblema?rev=2a0275d117438dd03b78ed48a9dec8b82456304d#2a0275d117438dd03b78ed48a9dec8b82456304d"
+
+[[patch.unused]]
+name = "emblema-hal-gles"
+version = "0.3.4"
+source = "git+https://github.com/jwinarske/emblema?rev=2a0275d117438dd03b78ed48a9dec8b82456304d#2a0275d117438dd03b78ed48a9dec8b82456304d"
+
+[[patch.unused]]
+name = "emblema-present-egl"
+version = "0.3.4"
+source = "git+https://github.com/jwinarske/emblema?rev=2a0275d117438dd03b78ed48a9dec8b82456304d#2a0275d117438dd03b78ed48a9dec8b82456304d"
+
+[[patch.unused]]
+name = "emblema-present-vk"
+version = "0.3.4"
+source = "git+https://github.com/jwinarske/emblema?rev=2a0275d117438dd03b78ed48a9dec8b82456304d#2a0275d117438dd03b78ed48a9dec8b82456304d"

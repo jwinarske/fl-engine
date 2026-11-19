@@ -735,7 +735,15 @@ fn raster_main<T: Target>(
     // while this is done.
     {
         let Device { ctx, glyphs, .. } = target.device();
+        let t = Instant::now();
         glyphs.warm(ctx);
+        if std::env::var_os("FL_PROBE").is_some() {
+            eprintln!("probe warm: {} us", t.elapsed().as_micros());
+            let t = Instant::now();
+            glyphs.clear(ctx);
+            glyphs.warm(ctx);
+            eprintln!("probe warm again: {} us", t.elapsed().as_micros());
+        }
     }
     let (width, height) = (target.device().width, target.device().height);
     let mut r = Rastered {
