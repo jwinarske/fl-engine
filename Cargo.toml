@@ -43,7 +43,7 @@ drm = { version = "0.15", default-features = false }
 rustix = { version = "1.1", default-features = false, features = ["std", "event", "fs", "time"] }
 xkbcommon = { version = "0.9", default-features = false }
 trybuild = "1"
-# emblema 0.3.6, from the registry. 0.3.0 was the first release with what dart:ui
+# emblema 0.3.7, from the registry. 0.3.0 was the first release with what dart:ui
 # needs of it (blend and tile modes numbered as upstream, a shader's local
 # transform, per-axis tile modes, a glyph key's subpixel bucket, pipelines
 # built ahead of the first frame) and ten-bit scanout under its own fourcc.
@@ -57,9 +57,10 @@ trybuild = "1"
 # kept 256 and 64 MiB whatever it was told.
 # 0.3.6 places a texture in a device block where a driver has one kind of
 # memory, the Pi 5's: 0.3.5 took it from a host block there.
-emblema = { version = "0.3.6", default-features = false }
-emblema-hal = "0.3.6"
-emblema-present-drm = "0.3.6"
+# 0.3.7 counts what a context allocates and the most it has at once.
+emblema = { version = "0.3.7", default-features = false }
+emblema-hal = "0.3.7"
+emblema-present-drm = "0.3.7"
 
 fl-dart-sys = { path = "crates/fl-dart-sys", version = "0.1.0", default-features = false }
 fl-dart-vm = { path = "crates/fl-dart-vm", version = "0.1.0", default-features = false }
@@ -85,19 +86,3 @@ opt-level = "s"
 lto = "fat"
 codegen-units = 1
 strip = true
-
-[patch.crates-io]
-emblema = { git = "https://github.com/jwinarske/emblema", rev = "1b0aaf49cfc936e4a604ddf973cd9336fc71f84a" }
-emblema-core = { git = "https://github.com/jwinarske/emblema", rev = "1b0aaf49cfc936e4a604ddf973cd9336fc71f84a" }
-emblema-entity = { git = "https://github.com/jwinarske/emblema", rev = "1b0aaf49cfc936e4a604ddf973cd9336fc71f84a" }
-emblema-geometry = { git = "https://github.com/jwinarske/emblema", rev = "1b0aaf49cfc936e4a604ddf973cd9336fc71f84a" }
-emblema-hal = { git = "https://github.com/jwinarske/emblema", rev = "1b0aaf49cfc936e4a604ddf973cd9336fc71f84a" }
-emblema-hal-gles = { git = "https://github.com/jwinarske/emblema", rev = "1b0aaf49cfc936e4a604ddf973cd9336fc71f84a" }
-emblema-hal-vulkan = { git = "https://github.com/jwinarske/emblema", rev = "1b0aaf49cfc936e4a604ddf973cd9336fc71f84a" }
-emblema-present = { git = "https://github.com/jwinarske/emblema", rev = "1b0aaf49cfc936e4a604ddf973cd9336fc71f84a" }
-emblema-present-drm = { git = "https://github.com/jwinarske/emblema", rev = "1b0aaf49cfc936e4a604ddf973cd9336fc71f84a" }
-emblema-present-egl = { git = "https://github.com/jwinarske/emblema", rev = "1b0aaf49cfc936e4a604ddf973cd9336fc71f84a" }
-emblema-present-vk = { git = "https://github.com/jwinarske/emblema", rev = "1b0aaf49cfc936e4a604ddf973cd9336fc71f84a" }
-emblema-renderer = { git = "https://github.com/jwinarske/emblema", rev = "1b0aaf49cfc936e4a604ddf973cd9336fc71f84a" }
-emblema-shaders = { git = "https://github.com/jwinarske/emblema", rev = "1b0aaf49cfc936e4a604ddf973cd9336fc71f84a" }
-emblema-text = { git = "https://github.com/jwinarske/emblema", rev = "1b0aaf49cfc936e4a604ddf973cd9336fc71f84a" }
