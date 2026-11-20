@@ -196,6 +196,66 @@ impl Device {
         }
     }
 
+    /// Whether what this app needed in a run before is more than its block
+    /// holds, so that the pass's buffers are made once the app is first
+    /// idle ([`Device::make_pass_buffers`]).
+    fn needs_more_than_its_block(&self) -> bool {
+        self.memory
+            .as_ref()
+            .and_then(memory::Record::remembered)
+            .is_some_and(|need| need > self.block)
+    }
+
+    /// Makes the pass's multisample and stencil buffers, for a target of
+    /// `format` at the device's size, before a frame needs them. Each is the
+    /// target's size at four samples, 127 MiB apiece at 3840x2160 and most
+    /// of the 256 a block is held to there, and emblema makes them in the
+    /// first frame that draws, the stencil buffer in the first that clips.
+    /// Where the app needs more than its block, the second is made for the
+    /// stencil buffer, and the frame that makes it pays for it: on a Pi 5,
+    /// 78 ms for the `counter`'s first hover, two blanks at 30 Hz. Made
+    /// here, once the app's first frame is drawn and nothing is asked for a
+    /// while ([`PASS_BUFFERS_IDLE`]), and emblema keeps them for the frames
+    /// after. Not before the first frame: the app's first scene is waiting
+    /// by then, and would wait for this.
+    ///
+    /// They are made by drawing a clip and an antialiased path, which is
+    /// what multisamples a pass, into a surface of the target's size and
+    /// format, which emblema keeps them by, and the surface is given back.
+    /// The surface counts toward the most allocated at once, so the figure
+    /// kept for the app rises by a frame, past a block held to its largest
+    /// already. A scene sent while this is done waits for it, once. An app with no clip at all has the stencil buffer for
+    /// nothing; every Material app clips, and only one needing more than a
+    /// block, a display 4K or larger, comes here. How long it took, or
+    /// `None` where it failed, which is not an error: the frame that needs
+    /// them makes them.
+    fn make_pass_buffers(&mut self, format: PixelFormat) -> Option<Duration> {
+        let begun = Instant::now();
+        let extent = Extent2D::new(self.width, self.height);
+        let mut canvas = Canvas::new(extent);
+        canvas.clear(Color::TRANSPARENT);
+        // An empty rectangle taken out: no scissor can say that, so it is
+        // written to the stencil, and it leaves everything drawn. Then a
+        // path antialiased, which is what multisamples a pass: a pass of
+        // solid rectangles and nothing else is drawn at one sample, and its
+        // buffers are not the frame's.
+        canvas.clip_out_rect(Rect::new(0.0, 0.0, 0.0, 0.0)).ok()?;
+        let mut triangle = PathBuilder::new();
+        triangle
+            .move_to(Vec2::new(0.0, 0.0))
+            .line_to(Vec2::new(2.0, 0.0))
+            .line_to(Vec2::new(0.0, 2.0))
+            .close();
+        canvas
+            .draw_path(&triangle.build(), &EPaint::fill(Color::WHITE))
+            .ok()?;
+        let recording = canvas.finish();
+        let mut surface = self.ctx.create_surface(extent, format).ok()?;
+        let drawn = self.ctx.draw(&mut surface, &recording);
+        self.ctx.destroy_surface(surface);
+        drawn.ok().map(|()| begun.elapsed())
+    }
+
     /// emblema frees nothing on drop; images go before their context.
     fn clear(&mut self) {
         self.images.clear(&mut self.ctx);
@@ -206,6 +266,12 @@ impl Device {
 /// How long the raster thread has nothing to draw before it writes the
 /// pipelines built since the file was.
 const PIPELINES_SETTLE: Duration = Duration::from_secs(1);
+
+/// How long the raster thread has nothing to draw, after the first frame,
+/// before it makes the pass's buffers ([`Device::make_pass_buffers`]). Long
+/// enough for an app's opening frames to have stopped, short enough to be
+/// done before anyone points at it.
+const PASS_BUFFERS_IDLE: Duration = Duration::from_millis(100);
 
 /// How many of the last frames a [`Stage`] remembers.
 const STAGE_FRAMES: usize = 256;
@@ -334,6 +400,8 @@ trait Target {
     /// Draws `scene`; the frame's pixels if the target keeps them.
     fn draw(&mut self, scene: &Scene) -> Result<Option<Vec<u8>>, RasterError>;
     fn device(&mut self) -> &mut Device;
+    /// The format of what it draws into.
+    fn format(&self) -> PixelFormat;
     /// Whether what it shows can be lost under it, so that the last scene
     /// is kept to be drawn again ([`RasterThread::redrawer`]). A display
     /// can: its session is switched away from and back.
@@ -484,6 +552,10 @@ impl Target for Offscreen {
     fn device(&mut self) -> &mut Device {
         &mut self.device
     }
+
+    fn format(&self) -> PixelFormat {
+        PixelFormat::Rgba8Unorm
+    }
 }
 
 impl Drop for Offscreen {
@@ -628,6 +700,9 @@ pub struct Rastered {
     /// target alone.
     pub memory_block: u64,
     pub memory_remembered: bool,
+    /// How long making the pass's buffers took once the app was first idle,
+    /// where it needs more than its block (`Device::make_pass_buffers`).
+    pub pass_buffers_ahead: Option<Duration>,
     /// The most that was allocated at once from the device's blocks, in
     /// bytes: what only the device reads, and what the host writes through.
     pub memory_peak: (u64, u64),
@@ -836,6 +911,7 @@ fn raster_main<T: Target>(
         let Device { ctx, glyphs, .. } = target.device();
         glyphs.warm(ctx);
     }
+    let mut pass_buffers_due = target.device().needs_more_than_its_block();
     let (width, height) = (target.device().width, target.device().height);
     let mut r = Rastered {
         width,
@@ -847,9 +923,22 @@ fn raster_main<T: Target>(
     let keeps = target.loses_its_frame();
     let mut last_scene: Option<Arc<Scene>> = None;
     loop {
-        // A pipeline built since the file was written: it is written once
-        // nothing has been asked for a while, not in an animation's frames.
-        let work = if target.device().pipelines_stale() || target.device().memory_stale() {
+        // The pass's buffers, once the first frame is drawn and nothing is
+        // asked for a while; and a pipeline built since the file was
+        // written: it is written once nothing has been asked for a while,
+        // not in an animation's frames.
+        let work = if pass_buffers_due && r.frames > 0 && r.error.is_none() {
+            match rx.recv_timeout(PASS_BUFFERS_IDLE) {
+                Ok(work) => work,
+                Err(mpsc::RecvTimeoutError::Timeout) => {
+                    pass_buffers_due = false;
+                    let format = target.format();
+                    r.pass_buffers_ahead = target.device().make_pass_buffers(format);
+                    continue;
+                }
+                Err(mpsc::RecvTimeoutError::Disconnected) => break,
+            }
+        } else if target.device().pipelines_stale() || target.device().memory_stale() {
             match rx.recv_timeout(PIPELINES_SETTLE) {
                 Ok(work) => work,
                 Err(mpsc::RecvTimeoutError::Timeout) => {
@@ -2008,6 +2097,49 @@ mod tests {
         };
         assert!(replay(&mut canvas, &scene, &mut Slots::new(&GpuImages::default())).is_ok());
         assert_eq!(canvas.finish().draw_count(), 0);
+    }
+
+    /// The pass's buffers made while the app is idle are the ones its frames
+    /// draw with: a frame that clips and antialiases, as a Material app's
+    /// hover does, makes none of its own. Made at one sample, as a pass of
+    /// a clip alone is, they would not be, and the frame would make two.
+    #[test]
+    #[ignore = "app lane: needs a Vulkan driver"]
+    fn a_frame_draws_with_the_pass_s_buffers_made_ahead() {
+        let mut target = Offscreen::new(64, 48).unwrap();
+        let kept = |target: &Offscreen| match &target.device.ctx {
+            Context::Vulkan(vk) => vk.pass_buffers_kept(),
+            #[allow(unreachable_patterns)]
+            _ => unreachable!("an offscreen target is Vulkan's"),
+        };
+        let format = target.format();
+        assert!(target.device.make_pass_buffers(format).is_some());
+        assert_eq!(kept(&target), 2, "a multisample and a stencil buffer");
+
+        let mut path = fl_ui::Path::default();
+        path.move_to([4.0, 4.0]);
+        path.line_to([60.0, 8.0]);
+        path.line_to([8.0, 44.0]);
+        path.close();
+        let scene = Scene {
+            ops: vec![LayerOp::AddPicture {
+                dx: 0.0,
+                dy: 0.0,
+                picture: picture(vec![
+                    Draw::ClipRRect {
+                        rrect: rr([2.0, 2.0, 62.0, 46.0], [[8.0, 8.0]; 4]),
+                        anti_alias: true,
+                    },
+                    Draw::Path {
+                        path: Arc::new(path),
+                        paint: Paint::default(),
+                    },
+                ]),
+            }],
+        };
+        let pixels = target.render(&scene).unwrap();
+        assert!(pixels.chunks(4).any(|p| p[3] > 0), "nothing drawn");
+        assert_eq!(kept(&target), 2, "the frame made buffers of its own");
     }
 
     /// What crosses from the UI thread to the raster thread is only scenes

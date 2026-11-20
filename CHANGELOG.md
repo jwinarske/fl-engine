@@ -37,6 +37,7 @@ Not published, no versions yet.
 * On a driver with one kind of memory, the Pi 5's, those blocks hold its images too (emblema 0.3.6): with 0.3.5 each came from a small block or had an allocation of its own, and a first draw took 9.6 ms. It takes 0.9, and a hover's longest draw 1 ms where it was 21 before either
 * A display's run keeps what the app needed of the device's memory, in `fl-engine/memory` beside the pipelines, and the next run of it takes a block of that and one frame more (emblema 0.3.7): 96 MiB where it was 128 for an app with no layers on a Pi 5 at 1280x1440. `--times` prints a `memory:` line
 * The frames in flight share one multisample and one stencil buffer (emblema 0.3.8), where each had its own: on a Pi 5 an app holds about half the GPU memory it did, 64 MiB where it was 122 for one with no layers at 1280x1440, and at 3840x2160 a hover makes one memory block in its frames where it made three
+* An app that needs more than a memory block holds makes the pass's multisample and stencil buffers once it is first idle, and the block they need with them: at 3840x2160 on a Pi 5 the counter's hover drew in 2.2 ms at the longest where it took 78. `memory:` says how long it took, `ahead_ms`
 
 ### Milestone 3: images and text (in progress)
 

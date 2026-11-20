@@ -519,7 +519,8 @@ fn times_are_reported_when_asked_for() {
     assert!(lines[1].starts_with("raster: frames=2 record_us="), "{out}");
     assert!(lines[1].contains(" wait_us=0/0 draw_us="), "{out}");
     assert!(lines[2].starts_with("memory: block_mib="), "{out}");
-    assert!(lines[2].ends_with(" sized=target"), "{out}");
+    // No run before, so no figure, and nothing made ahead of a frame.
+    assert!(lines[2].ends_with(" sized=target ahead_ms=-"), "{out}");
     // Without it, and without a raster thread, neither.
     let o = common::fl_dart(&["run-app".as_ref(), app.as_os_str(), "800x600@2".as_ref()]);
     assert!(
