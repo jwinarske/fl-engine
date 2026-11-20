@@ -111,8 +111,9 @@ struct Device {
 /// board's images came from an 8 MiB block or had an allocation of its own,
 /// and the counter's first draw took 9.6 ms where it takes 0.9.
 ///
-/// Eighteen frames is a guess, and a generous one for an app with no layers,
-/// which uses about nine. A run on a display keeps the most it allocated at
+/// Eighteen frames is a guess, and a generous one for an app with no layers:
+/// `text_churn` allocated twelve at the most, the counter after a hover
+/// sixteen (a Pi 5 at 1280x1440). A run on a display keeps the most it allocated at
 /// once ([`memory`]), and with that `remembered` the block is that and one
 /// frame more, for what does not pack: the app's own figure, whichever kind
 /// of app it is.

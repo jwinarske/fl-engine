@@ -5,10 +5,11 @@
 //! backs a block with pages as it is made (a VisionFive 2's, a Pi 5's) the
 //! size of the first is paid in full at the start. Too large is memory held
 //! for nothing; too small is a second block, made in the frame that needs
-//! it. What an app needs is not known before it has drawn: one with no
-//! layers uses about nine of its target's frames and one with them fifteen
-//! or more. So a run is sized by a guess, the most it allocated at once is
-//! kept here, and the next run of that app at that size is sized by that.
+//! it. What an app needs is not known before it has drawn: on a Pi 5 at
+//! 1280x1440, `text_churn`, with no layers, allocated 86 MiB at the most,
+//! twelve of its target's frames, and `counter` after a hover 114, sixteen.
+//! So a run is sized by a guess, the most it allocated at once is kept here,
+//! and the next run of that app at that size is sized by that.
 //!
 //! The file is lines of text, one for an app at a size, and is kept as the
 //! pipelines' is: read only if it is a regular file no larger than such a
