@@ -955,15 +955,16 @@ fn raster_line(r: &fl_raster::Rastered) -> String {
     )
 }
 
-/// `memory: block_mib=… peak_device_mib=… peak_host_mib=… sized=…`: the
-/// block the device took its own memory in, the most that was allocated at
-/// once from the blocks, of each kind, and what the block was sized by: `kept`
+/// `memory: block_mib=… peak_device_mib=… peak_host_mib=… sized=… ahead_ms=…`:
+/// the block the device took its own memory in, the most that was allocated
+/// at once from the blocks, of each kind, what the block was sized by: `kept`
 /// for what a run of this app before needed, `target` for the target's size
-/// alone.
+/// alone, and how long making the pass's buffers took once the app was first
+/// idle, `-` where it needs no more than its block or was never idle.
 fn memory_line(r: &fl_raster::Rastered) -> String {
     let mib = |bytes: u64| bytes.div_ceil(1 << 20);
     format!(
-        "memory: block_mib={} peak_device_mib={} peak_host_mib={} sized={}",
+        "memory: block_mib={} peak_device_mib={} peak_host_mib={} sized={} ahead_ms={}",
         mib(r.memory_block),
         mib(r.memory_peak.0),
         mib(r.memory_peak.1),
@@ -971,7 +972,11 @@ fn memory_line(r: &fl_raster::Rastered) -> String {
             "kept"
         } else {
             "target"
-        }
+        },
+        r.pass_buffers_ahead.map_or_else(
+            || "-".to_owned(),
+            |d| format!("{:.1}", d.as_secs_f64() * 1e3)
+        )
     )
 }
 

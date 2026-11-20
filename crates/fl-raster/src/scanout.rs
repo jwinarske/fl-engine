@@ -14,7 +14,7 @@ use std::time::Instant;
 use emblema::drm::{DrmScanoutTarget, DEFAULT_RING_DEPTH};
 use emblema::present::PresentTarget;
 use emblema::vulkan::{VulkanHal, VulkanTexture};
-use emblema::{Context, Image};
+use emblema::{Context, Image, PixelFormat};
 use fl_ui::Scene;
 
 pub use emblema::drm::{CommitRequest, DmaBufPlanes, FbHandle, Mode, OutputEvent, ScanoutOutput};
@@ -259,6 +259,12 @@ impl Target for Scanout {
 
     fn device(&mut self) -> &mut Device {
         &mut self.device
+    }
+
+    fn format(&self) -> PixelFormat {
+        self.target
+            .as_ref()
+            .map_or(PixelFormat::Bgra8Unorm, PresentTarget::format)
     }
 
     fn loses_its_frame(&self) -> bool {
