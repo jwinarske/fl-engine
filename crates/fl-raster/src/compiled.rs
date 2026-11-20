@@ -97,15 +97,16 @@ impl Compiled {
             _ => return,
         };
         if let Ok(data) = data {
-            let _ = write(&self.path, &data);
+            let _ = write(&self.path, &data, PIPELINE_CACHE_LIMIT);
         }
     }
 }
 
 /// `data` to `path`, by a file beside it renamed over it: readable by its
-/// owner alone, in a directory made the same way if there is none.
-fn write(path: &Path, data: &[u8]) -> io::Result<()> {
-    if data.is_empty() || data.len() > PIPELINE_CACHE_LIMIT {
+/// owner alone, in a directory made the same way if there is none. Nothing
+/// is written of nothing, or of more than `limit`.
+pub(crate) fn write(path: &Path, data: &[u8], limit: usize) -> io::Result<()> {
+    if data.is_empty() || data.len() > limit {
         return Ok(());
     }
     let dir = path.parent().ok_or(io::ErrorKind::InvalidInput)?;
@@ -139,12 +140,12 @@ mod tests {
     fn a_file_is_written_whole_and_read_back() {
         let dir = std::env::temp_dir().join(format!("fl-compiled-{}", std::process::id()));
         let path = dir.join("deep").join("pipelines");
-        write(&path, b"first").expect("write");
+        write(&path, b"first", PIPELINE_CACHE_LIMIT).expect("write");
         assert_eq!(read(&path).as_deref(), Some(&b"first"[..]));
-        write(&path, b"second, and longer").expect("write over");
+        write(&path, b"second, and longer", PIPELINE_CACHE_LIMIT).expect("write over");
         assert_eq!(read(&path).as_deref(), Some(&b"second, and longer"[..]));
         // Nothing is left beside it, and nothing empty replaces it.
-        write(&path, b"").expect("nothing");
+        write(&path, b"", PIPELINE_CACHE_LIMIT).expect("nothing");
         assert_eq!(read(&path).as_deref(), Some(&b"second, and longer"[..]));
         let left: Vec<_> = fs::read_dir(path.parent().expect("parent"))
             .expect("dir")

@@ -33,6 +33,7 @@ pub mod compiled;
 mod glyphs;
 mod gradients;
 mod images;
+pub mod memory;
 #[cfg(feature = "scanout")]
 pub mod scanout;
 
@@ -78,6 +79,12 @@ struct Device {
     stages: Stages,
     /// The file its pipelines are kept in between runs, if any.
     compiled: Option<compiled::Compiled>,
+    /// This app's line in the file of what apps have needed, if one is kept.
+    memory: Option<memory::Record>,
+    /// The size of the block its own memory is taken in, and whether a run
+    /// before said what it should be.
+    block: u64,
+    memory_remembered: bool,
 }
 
 /// The blocks a device for a target of `width` by `height` takes its memory
@@ -103,24 +110,47 @@ struct Device {
 /// there the larger of the two: with 0.3.5, which did not, each of that
 /// board's images came from an 8 MiB block or had an allocation of its own,
 /// and the counter's first draw took 9.6 ms where it takes 0.9.
-fn memory_blocks(width: u32, height: u32) -> MemoryBlocks {
+///
+/// Eighteen frames is a guess, and a generous one for an app with no layers:
+/// `text_churn` allocated twelve at the most, the counter after a hover
+/// sixteen (a Pi 5 at 1280x1440). A run on a display keeps the most it allocated at
+/// once ([`memory`]), and with that `remembered` the block is that and one
+/// frame more, for what does not pack: the app's own figure, whichever kind
+/// of app it is.
+fn memory_blocks(width: u32, height: u32, remembered: Option<u64>) -> MemoryBlocks {
     const MIB: u64 = 1 << 20;
     let frame = (u64::from(width) * u64::from(height)).saturating_mul(4);
-    let device = frame.saturating_mul(18).min(256 * MIB).div_ceil(4 * MIB) * 4 * MIB;
+    let device = match remembered {
+        Some(need) => need.saturating_add(frame),
+        None => frame.saturating_mul(18),
+    };
+    let device = device.min(256 * MIB).div_ceil(4 * MIB) * 4 * MIB;
     MemoryBlocks {
         device: device.clamp(16 * MIB, 256 * MIB),
-        host: 8 * MIB,
+        host: HOST_BLOCK,
     }
 }
+
+/// The host's block: a frame's vertices and an upload's staging.
+const HOST_BLOCK: u64 = 8 << 20;
 
 impl Device {
     /// A device for a target of `width` by `height`. The size is what its
     /// memory is taken by ([`memory_blocks`]); the target's own is set by
     /// whoever makes it.
-    fn new(width: u32, height: u32) -> Result<Device, RasterError> {
+    fn new(width: u32, height: u32, memory: Option<memory::Kept>) -> Result<Device, RasterError> {
+        let memory = memory.map(|kept| memory::Record::load(kept, width, height));
+        let blocks = memory_blocks(
+            width,
+            height,
+            memory.as_ref().and_then(memory::Record::remembered),
+        );
         Ok(Device {
             compiled: None,
-            ctx: Context::with_memory(BackendPreference::Vulkan, memory_blocks(width, height))?,
+            block: blocks.device,
+            memory_remembered: memory.as_ref().is_some_and(|m| m.remembered().is_some()),
+            memory,
+            ctx: Context::with_memory(BackendPreference::Vulkan, blocks)?,
             images: GpuImages::default(),
             glyphs: Glyphs::default(),
             width: 0,
@@ -147,6 +177,20 @@ impl Device {
     fn save_pipelines(&mut self) {
         if let Some(compiled) = &mut self.compiled {
             compiled.save(&self.ctx);
+        }
+    }
+
+    /// Whether more memory has been allocated at once than the file says
+    /// this app needs.
+    fn memory_stale(&self) -> bool {
+        self.memory
+            .as_ref()
+            .is_some_and(|m| m.stale(memory::need(&self.ctx, HOST_BLOCK)))
+    }
+
+    fn save_memory(&mut self) {
+        if let Some(memory) = &mut self.memory {
+            memory.save(memory::need(&self.ctx, HOST_BLOCK));
         }
     }
 
@@ -319,7 +363,7 @@ pub struct Offscreen {
 impl Offscreen {
     /// `width` by `height` physical pixels, RGBA8.
     pub fn new(width: u32, height: u32) -> Result<Offscreen, RasterError> {
-        let mut device = Device::new(width, height)?;
+        let mut device = Device::new(width, height, None)?;
         device.width = width;
         device.height = height;
         let surface = device
@@ -394,6 +438,7 @@ impl Offscreen {
             height,
             stages,
             compiled: _,
+            ..
         } = &mut self.device;
         let begun = Instant::now();
         let (recording, slots) = record(
@@ -576,6 +621,14 @@ pub struct Rastered {
     /// Whether the pipelines a run before kept were taken at the start
     /// (`RasterThread::spawn_scanout`).
     pub pipelines_loaded: bool,
+    /// The block the device took its own memory in, in bytes, and whether
+    /// it was sized by what a run before needed ([`memory`]) and not by the
+    /// target alone.
+    pub memory_block: u64,
+    pub memory_remembered: bool,
+    /// The most that was allocated at once from the device's blocks, in
+    /// bytes: what only the device reads, and what the host writes through.
+    pub memory_peak: (u64, u64),
 }
 
 impl RasterThread {
@@ -608,12 +661,20 @@ impl RasterThread {
     /// is kept in that file and taken from it by the next run: written once
     /// the thread has had nothing to draw for a second after a pipeline was
     /// built, and when it finishes.
+    ///
+    /// With `memory` ([`memory::Kept`]) the device's memory is taken in a
+    /// block of what that app needed at this size in a run before, and what
+    /// this run needs is kept the same way, when it is more.
     #[cfg(feature = "scanout")]
     pub fn spawn_scanout(
         output: scanout::Output,
         pipelines: Option<PathBuf>,
+        memory: Option<memory::Kept>,
     ) -> Result<RasterThread, RasterError> {
-        RasterThread::spawn_with(move || scanout::Scanout::new(output, pipelines), None)
+        RasterThread::spawn_with(
+            move || scanout::Scanout::new(output, pipelines, memory),
+            None,
+        )
     }
 
     fn spawn_with<T: Target>(
@@ -786,11 +847,12 @@ fn raster_main<T: Target>(
     loop {
         // A pipeline built since the file was written: it is written once
         // nothing has been asked for a while, not in an animation's frames.
-        let work = if target.device().pipelines_stale() {
+        let work = if target.device().pipelines_stale() || target.device().memory_stale() {
             match rx.recv_timeout(PIPELINES_SETTLE) {
                 Ok(work) => work,
                 Err(mpsc::RecvTimeoutError::Timeout) => {
                     target.device().save_pipelines();
+                    target.device().save_memory();
                     continue;
                 }
                 Err(mpsc::RecvTimeoutError::Disconnected) => break,
@@ -881,6 +943,12 @@ fn raster_main<T: Target>(
     r.stages = d.stages;
     d.save_pipelines();
     r.pipelines_loaded = d.compiled.as_ref().is_some_and(|c| c.loaded);
+    d.save_memory();
+    r.memory_block = d.block;
+    r.memory_remembered = d.memory_remembered;
+    if let Some(peak) = d.ctx.memory_peak() {
+        r.memory_peak = (peak.device, peak.host);
+    }
     r.fence_waits = target.fence_waits();
     r
 }
@@ -1646,7 +1714,7 @@ mod tests {
     #[test]
     fn a_device_s_memory_blocks_are_sized_by_its_target() {
         const MIB: u64 = 1 << 20;
-        let device = |w, h| memory_blocks(w, h).device / MIB;
+        let device = |w, h| memory_blocks(w, h, None).device / MIB;
         // Eighteen RGBA frames to the next 4 MiB, held to 16 and 256.
         assert_eq!(device(1280, 720), 64);
         assert_eq!(device(1920, 1080), 144);
@@ -1654,7 +1722,14 @@ mod tests {
         assert_eq!(device(64, 64), 16);
         assert_eq!(device(0, 0), 16);
         assert_eq!(device(u32::MAX, u32::MAX), 256);
-        assert_eq!(memory_blocks(1280, 720).host, 8 * MIB);
+        assert_eq!(memory_blocks(1280, 720, None).host, 8 * MIB);
+        // What a run before needed, and a frame: 30 MiB and 3.5 to 36.
+        let kept = |w, h, need: u64| memory_blocks(w, h, Some(need * MIB)).device / MIB;
+        assert_eq!(kept(1280, 720, 30), 36);
+        assert_eq!(kept(1280, 1440, 66), 76);
+        assert_eq!(kept(1280, 720, 1), 16);
+        assert_eq!(kept(1280, 720, 4000), 256);
+        assert_eq!(memory_blocks(1, 1, Some(u64::MAX)).device / MIB, 256);
     }
 
     fn rr(ltrb: [f32; 4], radii: [[f32; 2]; 4]) -> RRect {

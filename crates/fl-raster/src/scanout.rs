@@ -134,9 +134,10 @@ impl Scanout {
     pub(crate) fn new(
         output: Output,
         pipelines: Option<std::path::PathBuf>,
+        memory: Option<crate::memory::Kept>,
     ) -> Result<Scanout, RasterError> {
         let extent = output.mode().extent;
-        let mut device = Device::new(extent.width, extent.height)?;
+        let mut device = Device::new(extent.width, extent.height, memory)?;
         if let Some(path) = pipelines {
             device.keep_pipelines(path);
         }
@@ -197,6 +198,7 @@ impl Scanout {
             height,
             stages,
             compiled: _,
+            ..
         } = &mut self.device;
         let target = self
             .target

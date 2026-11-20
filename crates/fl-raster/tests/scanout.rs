@@ -144,7 +144,16 @@ fn frames_go_to_the_output_and_the_ring_is_rebuilt_when_it_says_so() {
     let kept = std::env::temp_dir().join(format!("fl-scanout-{}", std::process::id()));
     let pipelines = kept.join("pipelines");
     let _ = std::fs::remove_dir_all(&kept);
-    let raster = match RasterThread::spawn_scanout(Box::new(fake), Some(pipelines.clone())) {
+    // And what it needed of the device's memory, as app 7.
+    let memory = fl_raster::memory::Kept {
+        path: kept.join("memory"),
+        key: 7,
+    };
+    let raster = match RasterThread::spawn_scanout(
+        Box::new(fake),
+        Some(pipelines.clone()),
+        Some(memory.clone()),
+    ) {
         Ok(r) => r,
         // A driver that exports no dma-buf with a modifier has no ring to
         // test: lavapipe at Mesa 25.2, which a hosted runner has. Said,
@@ -197,6 +206,22 @@ fn frames_go_to_the_output_and_the_ring_is_rebuilt_when_it_says_so() {
     assert!(!done.pipelines_loaded);
     let meta = std::fs::metadata(&pipelines).expect("the pipelines' file");
     assert!(meta.len() > 0);
+    assert_eq!(
+        std::os::unix::fs::PermissionsExt::mode(&meta.permissions()) & 0o777,
+        0o600
+    );
+    // What the run allocated at the most is in its file too, as this app's
+    // line at this size: the block was sized by the target, there being no
+    // line, and the next run's is sized by this.
+    assert!(!done.memory_remembered);
+    let (device, host) = done.memory_peak;
+    assert!(device > 0, "a frame was drawn from the device's memory");
+    let need = device + host.min(8 << 20);
+    assert_eq!(
+        std::fs::read_to_string(&memory.path).expect("the memory's file"),
+        format!("{:016x} 320 240 {need}\n", 7)
+    );
+    let meta = std::fs::metadata(&memory.path).expect("the memory's file");
     assert_eq!(
         std::os::unix::fs::PermissionsExt::mode(&meta.permissions()) & 0o777,
         0o600
