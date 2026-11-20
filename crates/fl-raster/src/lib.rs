@@ -97,10 +97,10 @@ struct Device {
 /// that uses 54. A block the size of what a target draws with costs what is
 /// used. The counter's 54 MiB is 15 of its target's RGBA frames: the pass's
 /// multisample and stencil buffers and its layers are the target's size, and
-/// little else counts. So 18 frames, to the next 4 MiB, and no less than
-/// 16 MiB: 64 MiB at 1280x720, 144 at 1920x1080, emblema's 256 at most. A
-/// block too small is not an error. The next is made in the frame that
-/// needs it, which on that board is a frame of 24 to 42 ms, once.
+/// little else counts. So [`DEFAULT_FRAMES`] frames, to the next 4 MiB, and
+/// no less than 16 MiB: 44 MiB at 1280x720, 96 at 1920x1080, emblema's 256 at
+/// most. A block too small is not an error. The next is made in the frame
+/// that needs it, which on that board is a frame of 24 to 42 ms, once.
 ///
 /// The host's is 8 MiB, a frame's vertices and an upload's staging; an image
 /// larger than that is staged in a block of its own.
@@ -111,20 +111,16 @@ struct Device {
 /// board's images came from an 8 MiB block or had an allocation of its own,
 /// and the counter's first draw took 9.6 ms where it takes 0.9.
 ///
-/// Eighteen frames is a guess, and a generous one: `text_churn` allocated
-/// twelve at the most and the counter after a hover sixteen (a Pi 5 at
-/// 1280x1440), and since emblema 0.3.8, where the frames in flight share the
-/// pass's multisample and stencil buffers, five and nine. A run on a display
-/// keeps the most it allocated at
-/// once ([`memory`]), and with that `remembered` the block is that and one
-/// frame more, for what does not pack: the app's own figure, whichever kind
-/// of app it is.
+/// A run on a display keeps the most it allocated at once ([`memory`]), and
+/// with that `remembered` the block is that and one frame more, for what
+/// does not pack: the app's own figure, whichever kind of app it is. So the
+/// target's figure is a first run's, or one whose figure is not kept.
 fn memory_blocks(width: u32, height: u32, remembered: Option<u64>) -> MemoryBlocks {
     const MIB: u64 = 1 << 20;
     let frame = (u64::from(width) * u64::from(height)).saturating_mul(4);
     let device = match remembered {
         Some(need) => need.saturating_add(frame),
-        None => frame.saturating_mul(18),
+        None => frame.saturating_mul(DEFAULT_FRAMES),
     };
     let device = device.min(256 * MIB).div_ceil(4 * MIB) * 4 * MIB;
     MemoryBlocks {
@@ -135,6 +131,21 @@ fn memory_blocks(width: u32, height: u32, remembered: Option<u64>) -> MemoryBloc
 
 /// The host's block: a frame's vertices and an upload's staging.
 const HOST_BLOCK: u64 = 8 << 20;
+
+/// The target's RGBA frames a device's block holds where no run before said
+/// what the app needs ([`memory_blocks`]).
+///
+/// What the apps allocate at the most, with emblema 0.3.8, where the frames
+/// in flight share the pass's multisample and stencil buffers: on a Pi 5 at
+/// 1280x1440, each of the tree's apps with a hover, taps and a scroll, 4.3
+/// frames for one that antialiases (the multisample buffer, four frames, and
+/// the glyph atlas), 8.3 for one that clips too (the stencil buffer, four
+/// more), and none more than that; 0.3 for one that does neither. Twelve is
+/// that and half again, for a layer: an app needing more makes a second
+/// block in its first run, in the frame that needs it, and its own figure
+/// is its block from the next. It was eighteen, from before 0.3.8, when the
+/// counter allocated sixteen.
+const DEFAULT_FRAMES: u64 = 12;
 
 impl Device {
     /// A device for a target of `width` by `height`. The size is what its
@@ -1806,9 +1817,9 @@ mod tests {
     fn a_device_s_memory_blocks_are_sized_by_its_target() {
         const MIB: u64 = 1 << 20;
         let device = |w, h| memory_blocks(w, h, None).device / MIB;
-        // Eighteen RGBA frames to the next 4 MiB, held to 16 and 256.
-        assert_eq!(device(1280, 720), 64);
-        assert_eq!(device(1920, 1080), 144);
+        // Twelve RGBA frames to the next 4 MiB, held to 16 and 256.
+        assert_eq!(device(1280, 720), 44);
+        assert_eq!(device(1920, 1080), 96);
         assert_eq!(device(3840, 2160), 256);
         assert_eq!(device(64, 64), 16);
         assert_eq!(device(0, 0), 16);
