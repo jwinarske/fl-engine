@@ -97,6 +97,12 @@ struct Device {
 ///
 /// The host's is 8 MiB, a frame's vertices and an upload's staging; an image
 /// larger than that is staged in a block of its own.
+///
+/// A driver with one kind of memory, all of it mapped by the host (V3D's, on
+/// a Pi 5), has no block of the first kind, and emblema makes every block
+/// there the larger of the two: with 0.3.5, which did not, each of that
+/// board's images came from an 8 MiB block or had an allocation of its own,
+/// and the counter's first draw took 9.6 ms where it takes 0.9.
 fn memory_blocks(width: u32, height: u32) -> MemoryBlocks {
     const MIB: u64 = 1 << 20;
     let frame = (u64::from(width) * u64::from(height)).saturating_mul(4);

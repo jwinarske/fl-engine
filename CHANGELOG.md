@@ -34,6 +34,7 @@ Not published, no versions yet.
 * On that VM a refused TLS connection closes the socket it had opened: `SecureSocket.connect` and HTTPS threw `ArgumentError` and left it open, a descriptor for every attempt, and a script that tried did not exit. `SecurityContext()` no longer throws by itself; putting a key or a certificate into one does
 * An app's first frame is recorded in 7 ms on the VisionFive 2 where it took 45: the glyph atlas is put on the device when the raster thread starts, a device's first image write being 40 ms there. A frame with no new glyph no longer sets up a font's hinting for each run of text, 1.2 ms of each of the counter's frames on that board
 * A device takes its memory in blocks the size of its target (emblema 0.3.5): 64 MiB at 1280x720 where every device took 256 and 64 MiB whatever it used. On the VisionFive 2, whose driver backs a block with pages when it is made, a running app takes about 100 MB of the board's memory where it took 355, and the raster thread starts 130 ms sooner
+* On a driver with one kind of memory, the Pi 5's, those blocks hold its images too (emblema 0.3.6): with 0.3.5 each came from a small block or had an allocation of its own, and a first draw took 9.6 ms. It takes 0.9, and a hover's longest draw 1 ms where it was 21 before either
 
 ### Milestone 3: images and text (in progress)
 

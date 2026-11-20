@@ -43,7 +43,7 @@ drm = { version = "0.15", default-features = false }
 rustix = { version = "1.1", default-features = false, features = ["std", "event", "fs", "time"] }
 xkbcommon = { version = "0.9", default-features = false }
 trybuild = "1"
-# emblema 0.3.5, from the registry. 0.3.0 was the first release with what dart:ui
+# emblema 0.3.6, from the registry. 0.3.0 was the first release with what dart:ui
 # needs of it (blend and tile modes numbered as upstream, a shader's local
 # transform, per-axis tile modes, a glyph key's subpixel bucket, pipelines
 # built ahead of the first frame) and ten-bit scanout under its own fourcc.
@@ -55,9 +55,11 @@ trybuild = "1"
 # 0.3.4 prepares a clip's mask as a canvas draws it, and a variant on request.
 # 0.3.5 takes device memory in blocks of a size given, where 0.3.4's allocator
 # kept 256 and 64 MiB whatever it was told.
-emblema = { version = "0.3.5", default-features = false }
-emblema-hal = "0.3.5"
-emblema-present-drm = "0.3.5"
+# 0.3.6 places a texture in a device block where a driver has one kind of
+# memory, the Pi 5's: 0.3.5 took it from a host block there.
+emblema = { version = "0.3.6", default-features = false }
+emblema-hal = "0.3.6"
+emblema-present-drm = "0.3.6"
 
 fl-dart-sys = { path = "crates/fl-dart-sys", version = "0.1.0", default-features = false }
 fl-dart-vm = { path = "crates/fl-dart-vm", version = "0.1.0", default-features = false }
