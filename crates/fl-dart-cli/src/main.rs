@@ -196,7 +196,7 @@ fn run_app(path: &str, mut app: AppArgs) -> Result<(), Failure> {
     let vm = start_vm()?;
     // Dropped before `vm`: no poster is in the VM when it is cleaned up.
     let _posters = ffi::Posters;
-    let (raster, screen) = raster_for(&mut app)?;
+    let (raster, screen) = raster_for(path, &mut app)?;
     let run = app_once(&vm, &program, path, &app, raster.as_ref(), true)?;
     if let Some(line) = vsync_line(&run.report.frame_times_us) {
         println!("{line}");
@@ -226,6 +226,7 @@ fn run_app(path: &str, mut app: AppArgs) -> Result<(), Failure> {
         println!("{}", build_line(&run.builds_us));
         if rastered.frames > 0 {
             println!("{}", raster_line(&rastered));
+            println!("{}", memory_line(&rastered));
         }
     }
     Ok(())
@@ -241,7 +242,7 @@ fn app_cycle(path: &str, n: u32, mut app: AppArgs) -> Result<(), Failure> {
     let vm = start_vm()?;
     // Dropped before `vm`: no poster is in the VM when it is cleaned up.
     let _posters = ffi::Posters;
-    let (raster, _screen) = raster_for(&mut app)?;
+    let (raster, _screen) = raster_for(path, &mut app)?;
     // Sampled as `cycle` samples: after the first cycle, after each tenth,
     // and at the end.
     let tenth = (n / 10).max(1);
@@ -652,14 +653,14 @@ type Raster = (
 /// A raster thread at the view's size if `--png` asks for pixels, or with
 /// `--kms` one that draws to a display: the view is then the display's size
 /// and its frames are begun at the display's rate.
-fn raster_for(app: &mut AppArgs) -> Result<Raster, Failure> {
+fn raster_for(app_path: &str, app: &mut AppArgs) -> Result<Raster, Failure> {
     if app.kms {
         if app.png.is_some() || app.frames_dir.is_some() {
             return Err(Failure::Other(
                 "--kms: a display's frames are not read back; drop --png and --frames-dir".into(),
             ));
         }
-        return screen_for(app);
+        return screen_for(app_path, app);
     }
     if app.png.is_none() && app.frames_dir.is_none() {
         return Ok((None, None));
@@ -837,7 +838,7 @@ fn detach_display() {
 }
 
 #[cfg(feature = "kms")]
-fn screen_for(app: &mut AppArgs) -> Result<Raster, Failure> {
+fn screen_for(app_path: &str, app: &mut AppArgs) -> Result<Raster, Failure> {
     use fl_platform_kms::{Display, Seat};
     let kms = |e: &dyn std::fmt::Display| Failure::Other(format!("--kms: {e}"));
     let seat = std::sync::Arc::new(Seat::open().map_err(|e| kms(&e))?);
@@ -871,9 +872,16 @@ fn screen_for(app: &mut AppArgs) -> Result<Raster, Failure> {
         cursor_target: display.cursor_target(),
         cursor: None,
     });
+    // What this app needed of the device's memory in a run before, kept
+    // beside the pipelines and by the app's file.
+    let memory = fl_raster::memory::default_path().map(|path| fl_raster::memory::Kept {
+        path,
+        key: fl_raster::memory::key(std::path::Path::new(app_path)),
+    });
     let raster = fl_raster::RasterThread::spawn_scanout(
         Box::new(display),
         fl_raster::compiled::default_path(),
+        memory,
     )
     .map_err(|e| Failure::Other(format!("--kms: {e}")))?;
     // Back from another terminal, the display has nothing of ours on it,
@@ -886,7 +894,7 @@ fn screen_for(app: &mut AppArgs) -> Result<Raster, Failure> {
 }
 
 #[cfg(not(feature = "kms"))]
-fn screen_for(_: &mut AppArgs) -> Result<Raster, Failure> {
+fn screen_for(_: &str, _: &mut AppArgs) -> Result<Raster, Failure> {
     Err(Failure::Other(
         "--kms: build fl-dart with `--features kms`".into(),
     ))
@@ -944,6 +952,26 @@ fn raster_line(r: &fl_raster::Rastered) -> String {
         stage(&s.show),
         r.fence_waits,
         if r.pipelines_loaded { "kept" } else { "new" }
+    )
+}
+
+/// `memory: block_mib=… peak_device_mib=… peak_host_mib=… sized=…`: the
+/// block the device took its own memory in, the most that was allocated at
+/// once from the blocks, of each kind, and what the block was sized by: `kept`
+/// for what a run of this app before needed, `target` for the target's size
+/// alone.
+fn memory_line(r: &fl_raster::Rastered) -> String {
+    let mib = |bytes: u64| bytes.div_ceil(1 << 20);
+    format!(
+        "memory: block_mib={} peak_device_mib={} peak_host_mib={} sized={}",
+        mib(r.memory_block),
+        mib(r.memory_peak.0),
+        mib(r.memory_peak.1),
+        if r.memory_remembered {
+            "kept"
+        } else {
+            "target"
+        }
     )
 }
 
