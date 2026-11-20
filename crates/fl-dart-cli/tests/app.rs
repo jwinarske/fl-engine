@@ -492,10 +492,12 @@ fn counter_matches_its_golden() {
     );
 }
 
-/// `--times`: after the frames, the UI thread's builds and the raster
-/// thread's stages, a line each. Offscreen nothing is waited for, so that
-/// stage is 0; a frame is recorded, drawn and read back. The warm-up frame
-/// is drawn and is no build: it is begun by no vsync.
+/// `--times`: after the frames, the UI thread's builds, the raster
+/// thread's stages and its memory, a line each. Offscreen nothing is waited
+/// for, so that stage is 0; a frame is recorded, drawn and read back. The
+/// warm-up frame is drawn and is no build: it is begun by no vsync. An
+/// offscreen run keeps no record of what it needed, so its block is sized by
+/// its target.
 #[test]
 #[ignore = "app lane: needs FLUTTER_ROOT and a Vulkan driver"]
 fn times_are_reported_when_asked_for() {
@@ -512,10 +514,12 @@ fn times_are_reported_when_asked_for() {
     assert!(o.status.success(), "{o:?}");
     let out = String::from_utf8_lossy(&o.stdout);
     let lines: Vec<&str> = out.lines().filter(|l| !l.starts_with("frame ")).collect();
-    assert_eq!(lines.len(), 2, "{out}");
+    assert_eq!(lines.len(), 3, "{out}");
     assert!(lines[0].starts_with("build: frames=1 median_us="), "{out}");
     assert!(lines[1].starts_with("raster: frames=2 record_us="), "{out}");
     assert!(lines[1].contains(" wait_us=0/0 draw_us="), "{out}");
+    assert!(lines[2].starts_with("memory: block_mib="), "{out}");
+    assert!(lines[2].ends_with(" sized=target"), "{out}");
     // Without it, and without a raster thread, neither.
     let o = common::fl_dart(&["run-app".as_ref(), app.as_os_str(), "800x600@2".as_ref()]);
     assert!(
