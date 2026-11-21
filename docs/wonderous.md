@@ -221,6 +221,42 @@ a circle and a square, Wonderous's rectangle and rounded window, an
 even-odd star and an ellipse, and cubics and a quadratic; and Wonderous's
 cutout as a clip at five window sizes. 0.3% of pixels differ, at edges.
 
+## Plugins
+
+What Wonderous depends on, for Linux. fl-engine runs a plugin whose Linux
+side is Dart, bound by the registrant (above); one whose Linux side is C
+over GTK it cannot load.
+
+* `shared_preferences_linux`, `path_provider_linux`: Dart, and used from
+  the first frame
+* `url_launcher_linux`: C (`url_launcher_plugin.cc`), reached from the
+  About dialog's links. Its two pigeon calls, `canLaunchUrl` and
+  `launchUrl`, the same on flutter/packages' main (3.2.3) as since 3.2.0,
+  are answered by fl-ui through a launcher the platform sets. The rules
+  are ivi-homescreen-plugins' (`plugins/url_launcher`, v2.0): a URL can be
+  launched if its scheme is one of `https`, `http`, `ftp`, `file`,
+  `mailto` and `tel`, and is launched by `xdg-open`, whose exit status is
+  the answer. Unlike it, the opener is waited for on a thread of its own
+  and the reply goes back when it exits, not on the thread answering
+  platform messages, which an opener that keeps a browser in the
+  foreground would hold for as long as the browser is open; a URL with no
+  scheme is opened by neither call, so none reaches `xdg-open` as an
+  option; and a failure is the plugin's own reply, the string it raises as
+  `Launch Error`, as the stock plugin's is. `run-app --open-urls` sets the
+  launcher; without it, which is a kiosk's case and a test's, nothing can
+  be opened and the launch says so
+* `package_info_plus`: Dart, reading the version from
+  `data/flutter_assets/version.json` beside the running executable, which
+  is the stock bundle's layout. `build.sh` now writes that file from the
+  pubspec, as `flutter build linux` does, and lays the app out as that
+  bundle; with `fl-dart` copied into it, the About dialog shows the app's
+  version. Dart resolves the executable through `/proc/self/exe`, so a
+  symbolic link to `fl-dart` will not do
+* `desktop_window`: C, called on Windows and macOS only
+* `connectivity_plus`: Dart, over NetworkManager's D-Bus
+* Android or iOS only, each behind Wonderous's own check: `home_widget`,
+  `flutter_displaymode`, Google Maps, the web view, the YouTube player
+
 ## On a Raspberry Pi 4
 
 Wonderous on a Pi 4's 800x480 DSI touch panel, by `run-app --kms`, cross-built

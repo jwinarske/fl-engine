@@ -93,6 +93,15 @@ Flutter app, through dart:ui. Built with the pinned Flutter release's compilers;
     tools/flutter-app/build.sh /path/to/flutter apps/colored_box out
     fl-dart run-app out/colored_box.so 800x600@2
 
+`build.sh` also lays the app out as `flutter build linux` lays out a bundle,
+`out/colored_box/` with `lib/libapp.so` and `data/flutter_assets` (and the
+pubspec's `version.json`), and `run-app` takes the directory as well. A
+plugin that looks beside the running executable, as `package_info_plus` does
+for the version, finds the app's own files when `fl-dart` is copied into the
+bundle and run from there:
+
+    cp fl-dart out/colored_box/ && out/colored_box/fl-dart run-app out/colored_box
+
 Drawn by emblema offscreen (Vulkan; Mesa's lavapipe works) and written as a PNG:
 
     fl-dart run-app out/colored_box.so 800x600@2 --png frame.png

@@ -101,6 +101,10 @@ fn platform_calls_are_answered_and_the_app_can_leave() {
              single entry: answered\n\
              route: answered\n\
              plugin: no handler\n\
+             url can launch: [false]\n\
+             url can launch a custom scheme: [false]\n\
+             url launch: [no application here opens URLs]\n\
+             url launch that fails: [no application here opens URLs]\n\
              frame 1: "
         ),
         "{out}"
@@ -185,6 +189,102 @@ fn network_images_load_over_https() {
         "{middle:?}"
     );
     assert_eq!(at(50, 50)[3], 0, "outside the photo");
+}
+
+/// `run-app --open-urls`: `url_launcher_linux`'s calls answered through
+/// `xdg-open`, here a stand-in on the `PATH` that records what it is asked
+/// to open and fails a URL naming `fail` with status 3. `canLaunchUrl` says
+/// yes to the six schemes and no to a custom one; `launchUrl` answers when
+/// the opener has exited, with its status where it failed.
+#[test]
+#[ignore = "app lane: needs FLUTTER_ROOT"]
+fn urls_are_opened_by_xdg_open_when_asked() {
+    use std::os::unix::fs::PermissionsExt;
+    let app = build_app("platform_calls");
+    let bin = common::out_dir().join("fake_xdg_open");
+    std::fs::create_dir_all(&bin).unwrap();
+    let log = bin.join("opened.log");
+    let _ = std::fs::remove_file(&log);
+    let script = bin.join("xdg-open");
+    std::fs::write(
+        &script,
+        "#!/bin/sh\nprintf '%s\\n' \"$1\" >> \"$FL_XDG_LOG\"\ncase \"$1\" in *fail*) exit 3 ;; esac\n",
+    )
+    .unwrap();
+    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let path = std::env::join_paths(
+        std::iter::once(bin.clone())
+            .chain(std::env::split_paths(&std::env::var_os("PATH").unwrap())),
+    )
+    .unwrap();
+    let o = common::fl_dart_cmd()
+        .env("PATH", path)
+        .env("FL_XDG_LOG", &log)
+        .args(["run-app".as_ref(), app.as_os_str(), "800x600@2".as_ref()])
+        .arg("--open-urls")
+        .output()
+        .unwrap();
+    assert!(o.status.success(), "{o:?}");
+    let out = String::from_utf8_lossy(&o.stdout);
+    assert!(
+        out.contains(
+            "url can launch: [true]\n\
+             url can launch a custom scheme: [false]\n\
+             url launch: [null]\n\
+             url launch that fails: [xdg-open exited with status 3]\n"
+        ),
+        "{out}"
+    );
+    assert_eq!(
+        std::fs::read_to_string(&log).unwrap(),
+        "https://www.wonderous.info/\nhttps://fail.example/\n"
+    );
+}
+
+/// An app run from its bundle, as `flutter build linux` lays one out and
+/// build.sh makes it, with fl-dart copied into the bundle: the app reads the
+/// `version.json` beside its runner, where `package_info_plus` looks on
+/// Linux, and it is the app's own, from its pubspec's `version: 1.2.3+4`.
+/// The same app run from its `.so` finds none, fl-dart's directory having
+/// no app's files.
+#[test]
+#[ignore = "app lane: needs FLUTTER_ROOT"]
+fn an_app_run_from_its_bundle_finds_its_own_version_beside_the_runner() {
+    let so = build_app("plugins");
+    let bundle = so.with_extension("");
+    assert!(bundle.join("data/flutter_assets/version.json").is_file());
+    // A copy, not a symlink: Dart resolves the running executable through
+    // /proc/self/exe, which names the link's target.
+    let runner = bundle.join("fl-dart");
+    let _ = std::fs::remove_file(&runner);
+    if std::fs::hard_link(env!("CARGO_BIN_EXE_fl-dart"), &runner).is_err() {
+        std::fs::copy(env!("CARGO_BIN_EXE_fl-dart"), &runner).unwrap();
+    }
+    let o = std::process::Command::new(&runner)
+        .arg("run-app")
+        .arg(&bundle)
+        .arg("800x600@2")
+        .output()
+        .unwrap();
+    assert!(o.status.success(), "{o:?}");
+    let out = String::from_utf8_lossy(&o.stdout);
+    assert!(
+        out.contains(
+            "\nversion.json beside the runner: \
+             {\"app_name\":\"plugins\",\"version\":\"1.2.3\",\
+             \"build_number\":\"4\",\"package_name\":\"plugins\"}\n"
+        ),
+        "{out}"
+    );
+    assert!(out.contains("\nframe 1: "), "{out}");
+
+    let o = common::fl_dart(&["run-app".as_ref(), so.as_os_str(), "800x600@2".as_ref()]);
+    assert!(o.status.success(), "{o:?}");
+    let out = String::from_utf8_lossy(&o.stdout);
+    assert!(
+        out.contains("\nversion.json beside the runner: none\n"),
+        "{out}"
+    );
 }
 
 /// Writes RGBA8 `pixels` of `size` as a PNG.

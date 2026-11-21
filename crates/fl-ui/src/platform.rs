@@ -1,6 +1,6 @@
 //! `PlatformConfigurationNativeApi`: the dispatcher's way out to the engine.
 
-use std::sync::atomic::{AtomicI32, AtomicI64, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicI32, AtomicI64, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use fl_dart_ffi::{args, guard, peer, sys};
@@ -75,7 +75,7 @@ pub(crate) extern "C" fn send_channel_update(_name: sys::Dart_Handle, _listening
 /// `Handle Function(Handle name, Handle callback, Handle data)`. Null is
 /// success; a returned String is thrown as an error.
 ///
-/// Six channels are answered:
+/// Seven channels are answered:
 /// * `flutter/assets`: the data is an asset key as UTF-8; the answer is the
 ///   asset's bytes from the bundle [`crate::set_asset_bundle`] set, or null,
 ///   which the framework reads as not found. Every request is answered,
@@ -96,6 +96,8 @@ pub(crate) extern "C" fn send_channel_update(_name: sys::Dart_Handle, _listening
 ///   leaving, which may wait for the framework's own answer
 /// * `flutter/mousecursor` ([`crate::mouse_cursor`]): the cursor a
 ///   `MouseRegion` asks for, shown by the platform if it has one
+/// * `url_launcher_linux`'s pigeon channels ([`crate::url_launcher`]): a
+///   plugin whose Linux side is C, answered here by the platform's launcher
 ///
 /// Every other message, on these channels or any other, is answered with an
 /// empty reply, as the Linux embedder answers a channel it has no handler
@@ -158,7 +160,34 @@ pub(crate) extern "C" fn send_platform_message(
                     None => Some(ReplyArg::Null),
                 },
             },
-            _ => Some(ReplyArg::Null),
+            // `url_launcher_linux`'s two calls, answered by the platform's
+            // launcher ([`crate::url_launcher`]); every other channel with an
+            // empty reply, as the Linux embedder answers one with no handler.
+            other => match other
+                .and_then(|channel| crate::url_launcher::handle(channel, bytes.as_deref()))
+            {
+                Some(crate::url_launcher::Answer::Reply(reply)) => Some(ReplyArg::Bytes(reply)),
+                Some(crate::url_launcher::Answer::Launch(url)) => {
+                    // Answered when the launch is over, from whichever thread
+                    // says so, and only into the isolate that asked.
+                    // SAFETY: as above; callback is a live handle.
+                    let kept =
+                        unsafe { (!sys::Dart_IsNull(callback)).then(|| Persistent::new(callback)) };
+                    let generation = generation();
+                    // Counted until it is answered, so the loop does not end
+                    // with the app still awaiting it ([`awaiting_replies`]).
+                    let counted = OffThread::begin();
+                    crate::url_launcher::launch(&url, move |reply| {
+                        if let Some(callback) = kept {
+                            queue_persistent_in(generation, callback, ReplyArg::Bytes(reply));
+                        }
+                        drop(counted);
+                        wake_for_replies();
+                    });
+                    None
+                }
+                None => Some(ReplyArg::Null),
+            },
         };
         if let Some(reply) = reply {
             // SAFETY: as above; callback is a live handle.
@@ -278,6 +307,35 @@ pub(crate) unsafe fn queue_reply(callback: sys::Dart_Handle, arg: ReplyArg) {
         }
         queue_persistent(Persistent::new(callback), arg);
     }
+}
+
+/// Replies to platform messages being made off the UI thread: a URL being
+/// opened, whose answer comes when its opener exits.
+static OFF_THREAD: AtomicUsize = AtomicUsize::new(0);
+
+/// One reply counted in [`OFF_THREAD`] until it is dropped: answered, or
+/// let go unanswered by a launcher that broke its word, which still has the
+/// loop free to end.
+struct OffThread;
+
+impl OffThread {
+    fn begin() -> OffThread {
+        OFF_THREAD.fetch_add(1, Ordering::AcqRel);
+        OffThread
+    }
+}
+
+impl Drop for OffThread {
+    fn drop(&mut self) {
+        OFF_THREAD.fetch_sub(1, Ordering::AcqRel);
+    }
+}
+
+/// Whether a reply is still to come from another thread, a decode's or a
+/// platform message's: the loop must not end while one is, as nothing else
+/// may be left alive to keep it running and the app is awaiting it.
+pub fn awaiting_replies() -> bool {
+    crate::image::awaiting_decodes() || OFF_THREAD.load(Ordering::Acquire) > 0
 }
 
 /// Queues `arg` for a callback already kept.

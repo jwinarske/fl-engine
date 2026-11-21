@@ -3,7 +3,7 @@
 //! ```text
 //! fl-dart run hello.dill [args...]       # JIT, dev hosts (--features jit)
 //! fl-dart run-aot hello.aot [args...]    # precompiled runtime, every target
-//! fl-dart run-app libapp.so [WxH[@dpr]] [--assets DIR] [--png out.png] [--frames-dir DIR] [--ops] [--natives] [--styles] [--font FAMILY=PATH]... [--message CHANNEL[=TEXT]]... [--input SCRIPT] [--keymap LAYOUT[:VARIANT]] [--compose LOCALE] [--frames N] [--hz H] [--times] [--kms [--connector NAME] [--mode WxH[@HZ]] [--capture out.png]]
+//! fl-dart run-app libapp.so [WxH[@dpr]] [--assets DIR] [--png out.png] [--frames-dir DIR] [--ops] [--natives] [--styles] [--font FAMILY=PATH]... [--message CHANNEL[=TEXT]]... [--input SCRIPT] [--keymap LAYOUT[:VARIANT]] [--compose LOCALE] [--frames N] [--hz H] [--times] [--open-urls] [--kms [--connector NAME] [--mode WxH[@HZ]] [--capture out.png]]
 //!                                       # a Flutter app, through dart:ui (M2);
 //!                                       # JIT takes the app's kernel instead
 //! fl-dart app-cycle libapp.so <n> [run-app options]
@@ -117,7 +117,7 @@ fn usage() -> ExitCode {
         "libapp.so"
     };
     eprintln!(
-        "       fl-dart run-app <{app}> [WxH[@dpr]] [--assets DIR] [--png out.png] [--frames-dir DIR] [--ops] [--natives] [--styles] [--font FAMILY=PATH]... [--message CHANNEL[=TEXT]]... [--input SCRIPT] [--keymap LAYOUT[:VARIANT]] [--compose LOCALE] [--frames N] [--hz H] [--times] [--kms [--connector NAME] [--mode WxH[@HZ]] [--capture out.png]]\n       fl-dart app-cycle <{app}> <n> [run-app options]\n       fl-dart prepare"
+        "       fl-dart run-app <{app}> [WxH[@dpr]] [--assets DIR] [--png out.png] [--frames-dir DIR] [--ops] [--natives] [--styles] [--font FAMILY=PATH]... [--message CHANNEL[=TEXT]]... [--input SCRIPT] [--keymap LAYOUT[:VARIANT]] [--compose LOCALE] [--frames N] [--hz H] [--times] [--open-urls] [--kms [--connector NAME] [--mode WxH[@HZ]] [--capture out.png]]\n       fl-dart app-cycle <{app}> <n> [run-app options]\n       fl-dart prepare"
     );
     ExitCode::from(64)
 }
@@ -337,12 +337,16 @@ type AppProgram = std::sync::Arc<fl_dart_vm::AotSnapshot>;
 #[cfg(feature = "jit")]
 type AppProgram = Vec<u8>;
 
-/// Sets the asset bundle the app reads: `--assets`, else `<app>.assets`
-/// beside the program if it exists, else none (every asset not found).
+/// Sets the asset bundle the app reads: `--assets`, else a bundle's
+/// `data/flutter_assets`, else `<app>.assets` beside the program if it
+/// exists, else none (every asset not found).
 fn set_assets(path: &str, app: &AppArgs) -> Result<(), Failure> {
     let dir = app.assets.clone().or_else(|| {
+        let bundle = std::path::Path::new(path)
+            .join("data")
+            .join("flutter_assets");
         let beside = std::path::Path::new(path).with_extension("assets");
-        beside.is_dir().then_some(beside)
+        [bundle, beside].into_iter().find(|d| d.is_dir())
     });
     let bundle = match dir {
         Some(d) => Some(std::sync::Arc::new(
@@ -366,11 +370,93 @@ fn set_assets(path: &str, app: &AppArgs) -> Result<(), Failure> {
 }
 
 fn load_app(path: &str) -> Result<AppProgram, Failure> {
+    let program_path = bundle_program(path);
+    let path = program_path.to_string_lossy();
     #[cfg(feature = "aot")]
-    let program = std::sync::Arc::new(fl_dart_vm::AotSnapshot::open(path.as_ref())?);
+    let program = std::sync::Arc::new(fl_dart_vm::AotSnapshot::open(path.as_ref().as_ref())?);
     #[cfg(feature = "jit")]
-    let program = std::fs::read(path).map_err(|e| Failure::Other(format!("{path}: {e}")))?;
+    let program =
+        std::fs::read(path.as_ref()).map_err(|e| Failure::Other(format!("{path}: {e}")))?;
     Ok(program)
+}
+
+/// The program an app path names: the path itself, or for a directory, a
+/// Linux bundle as `flutter build linux` lays one out and
+/// `tools/flutter-app/build.sh` makes one, its `lib/libapp.so` (its
+/// `lib/app.dill`, the kernel, for this build with the JIT VM).
+fn bundle_program(path: &str) -> std::path::PathBuf {
+    let path = std::path::Path::new(path);
+    if !path.is_dir() {
+        return path.to_path_buf();
+    }
+    #[cfg(feature = "aot")]
+    let program = path.join("lib").join("libapp.so");
+    #[cfg(feature = "jit")]
+    let program = path.join("lib").join("app.dill");
+    program
+}
+
+/// Opens URLs with `xdg-open`, for `--open-urls`: what a desktop has, as
+/// ivi-homescreen-plugins' `url_launcher` opens them. Found on the `PATH`
+/// once, when the run starts.
+struct XdgOpen(std::path::PathBuf);
+
+impl XdgOpen {
+    /// `xdg-open` on the `PATH`, if it is there.
+    fn find() -> Option<XdgOpen> {
+        std::env::var_os("PATH").and_then(|paths| {
+            std::env::split_paths(&paths)
+                .map(|dir| dir.join("xdg-open"))
+                .find(|p| p.is_file())
+                .map(XdgOpen)
+        })
+    }
+}
+
+impl fl_ui::UrlLauncher for XdgOpen {
+    fn available(&self) -> bool {
+        true
+    }
+
+    /// Started and waited for on a thread of its own: this runs on the UI
+    /// thread, and an opener may not return until what it opened closes.
+    /// Its exit status is the answer, as ivi-homescreen-plugins reads it.
+    /// The URL is one argument with no shell, and fl-ui passes none that
+    /// does not begin with a scheme, so none reads as an option. `done` is
+    /// called once whatever happens, so the app's `await` always ends: kept
+    /// where this thread can take it back if no thread could be made.
+    fn launch(&self, url: &str, done: fl_ui::Launched) {
+        let done = std::sync::Arc::new(std::sync::Mutex::new(Some(done)));
+        let theirs = std::sync::Arc::clone(&done);
+        let (program, url) = (self.0.clone(), url.to_owned());
+        let opened = move || -> Result<(), String> {
+            let status = std::process::Command::new(&program)
+                .arg(&url)
+                .stdin(std::process::Stdio::null())
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .status()
+                .map_err(|e| format!("xdg-open: {e}"))?;
+            match status.code() {
+                Some(0) => Ok(()),
+                Some(code) => Err(format!("xdg-open exited with status {code}")),
+                None => Err(format!("xdg-open ended by {status}")),
+            }
+        };
+        let thread = std::thread::Builder::new()
+            .name("fl-xdg-open".into())
+            .spawn(move || {
+                let result = opened();
+                if let Some(done) = theirs.lock().unwrap_or_else(|e| e.into_inner()).take() {
+                    done(result);
+                }
+            });
+        if let Err(e) = thread {
+            if let Some(done) = done.lock().unwrap_or_else(|e| e.into_inner()).take() {
+                done(Err(format!("xdg-open: no thread to run it on: {e}")));
+            }
+        }
+    }
 }
 
 /// What one run of an app did.
@@ -507,11 +593,19 @@ fn app_once(
         if app.input.is_some() {
             fl_ui::set_mouse_cursor(Some(Box::new(SaidCursor)));
         }
+        // Opt in: a test or a kiosk opens nothing an app asks it to.
+        if app.open_urls {
+            match XdgOpen::find() {
+                Some(opener) => fl_ui::set_url_launcher(Some(Box::new(opener))),
+                None => eprintln!("fl-dart: --open-urls: no xdg-open on the PATH"),
+            }
+        }
         let report = fl_shell::run(&mut scope, &wake, period, || {
             limit.is_some_and(|l| *rendered.lock().unwrap_or_else(|e| e.into_inner()) >= l)
         });
         detach_display();
         fl_ui::set_mouse_cursor(None);
+        fl_ui::set_url_launcher(None);
         match player {
             Some(Ok(thread)) => match thread.join() {
                 Ok(played) => played?,
@@ -1091,13 +1185,22 @@ struct AppArgs {
     capture: Option<std::path::PathBuf>,
     /// `--times`: where the frames' time went, at the end.
     times: bool,
+    /// `--open-urls`: an app's `url_launcher` opens URLs with `xdg-open`;
+    /// without it none is opened, and the plugin says so.
+    open_urls: bool,
 }
 
-/// `[WxH[@dpr]] [--assets DIR] [--png out.png] [--frames-dir DIR] [--ops] [--natives] [--styles] [--font FAMILY=PATH]... [--message CHANNEL[=TEXT]]... [--input SCRIPT] [--keymap LAYOUT[:VARIANT]] [--compose LOCALE] [--frames N] [--hz H] [--times] [--kms [--connector NAME] [--mode WxH[@HZ]] [--capture out.png]]`,
+/// `[WxH[@dpr]] [--assets DIR] [--png out.png] [--frames-dir DIR] [--ops] [--natives] [--styles] [--font FAMILY=PATH]... [--message CHANNEL[=TEXT]]... [--input SCRIPT] [--keymap LAYOUT[:VARIANT]] [--compose LOCALE] [--frames N] [--hz H] [--times] [--open-urls] [--kms [--connector NAME] [--mode WxH[@HZ]] [--capture out.png]]`,
 /// in any order; no size is the default view. Sizes are physical pixels.
 /// `--assets` names the app's asset bundle; without it, `<app>.assets` beside
 /// the program is used if it is there, as `tools/flutter-app/build.sh` puts
-/// it. `--frames-dir` writes every frame there, `frame-NNNN.png`, as `--png`
+/// it. The app may be a Linux bundle's directory instead, `lib/libapp.so`
+/// and `data/flutter_assets` in it, as `flutter build linux` and build.sh
+/// lay one out: a plugin that looks beside the running executable
+/// (`package_info_plus` reads `data/flutter_assets/version.json` there)
+/// finds the app's own when fl-dart is copied into the bundle and run from
+/// it. `--open-urls` lets `url_launcher` open URLs with `xdg-open`.
+/// `--frames-dir` writes every frame there, `frame-NNNN.png`, as `--png`
 /// writes the last. `--ops` prints each frame's [`outline`]; `--natives`, at the end, every
 /// dart:ui native the app called; `--styles`, each paragraph and text
 /// style as fl-text decoded it; `--font` registers a font file under a
@@ -1155,6 +1258,7 @@ fn app_args(args: &[&str]) -> Option<AppArgs> {
             "--hz" => app.view.refresh_rate = it.next()?.parse().ok().filter(|v: &f64| *v > 0.0)?,
             "--kms" => app.kms = true,
             "--times" => app.times = true,
+            "--open-urls" => app.open_urls = true,
             "--capture" => app.capture = Some(std::path::PathBuf::from(it.next()?)),
             "--mode" => {
                 let said = it.next()?;

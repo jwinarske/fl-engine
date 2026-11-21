@@ -1,6 +1,7 @@
 name: plugins
 description: fl-engine test program. A Dart-only plugin bound before main, and compute.
 publish_to: none
+version: 1.2.3+4
 environment:
   sdk: ^3.13.0
 dependencies:
