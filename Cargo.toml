@@ -47,7 +47,7 @@ trybuild = "1"
 # path_op): the paths flattened, the result's edges lines. Pure Rust, MIT or
 # Apache-2.0; without its rayon feature.
 i_overlay = { version = "9.2", default-features = false }
-# emblema 0.3.9, from the registry. 0.3.0 was the first release with what dart:ui
+# emblema 0.4.0, from the registry. 0.3.0 was the first release with what dart:ui
 # needs of it (blend and tile modes numbered as upstream, a shader's local
 # transform, per-axis tile modes, a glyph key's subpixel bucket, pipelines
 # built ahead of the first frame) and ten-bit scanout under its own fourcc.
@@ -68,9 +68,14 @@ i_overlay = { version = "9.2", default-features = false }
 # colors transparent black tinted a circle's whole quad, and filters a bounded
 # backdrop's own region of what is behind it, where it held the whole frame
 # shrunk into it.
-emblema = { version = "0.3.9", default-features = false }
-emblema-hal = "0.3.9"
-emblema-present-drm = "0.3.9"
+# 0.4.0 imports a GBM scanout buffer one row taller where the renderer reads
+# past its last row, which a Raspberry Pi 4's 800x480 panel needed, and blends
+# the advanced modes in the shader on a device whose blend unit has none of
+# them: every board's driver here. 0.4 rather than 0.3.10 for three structs
+# that gained public fields, none of which fl-engine builds by its literal.
+emblema = { version = "0.4.0", default-features = false }
+emblema-hal = "0.4.0"
+emblema-present-drm = "0.4.0"
 
 fl-dart-sys = { path = "crates/fl-dart-sys", version = "0.1.0", default-features = false }
 fl-dart-vm = { path = "crates/fl-dart-vm", version = "0.1.0", default-features = false }

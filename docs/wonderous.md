@@ -221,7 +221,40 @@ a circle and a square, Wonderous's rectangle and rounded window, an
 even-odd star and an ellipse, and cubics and a quadratic; and Wonderous's
 cutout as a clip at five window sizes. 0.3% of pixels differ, at edges.
 
+## On a Raspberry Pi 4
+
+Wonderous on a Pi 4's 800x480 DSI touch panel, by `run-app --kms`, cross-built
+as for the Pi 5 (Debian 13 on both). Two things stopped it there, both in
+emblema, taken with 0.4.0:
+
+* **No buffer for the display.** The Pi 4 renders on V3D and scans out on
+  VC4, which reads contiguous memory alone, so the ring is GBM's, allocated
+  on the display's card and imported by the renderer. v3dv refused every one:
+  it asks 64 bytes past an image's last row for its texture unit's readahead
+  on any image it may copy from, and the panel's frame is a whole number of
+  pages, so GBM's buffer held the rows and nothing more. emblema now imports
+  a linear buffer one row taller where the renderer refuses it, the display
+  given the mode's height (jwinarske/emblema#279). The Pi 5's DSI card took
+  the first import and is unchanged
+* **The advanced blend modes.** The editorial's pull quote is `colorBurn`,
+  the timeline `luminosity`, the collection `color`. emblema drew those only
+  through `VK_EXT_blend_operation_advanced`, which none of Mesa's V3D,
+  Panfrost or PowerVR drivers offers -- so every board here -- and lavapipe
+  does, which is why no lane saw it. The first such draw was refused, and
+  fl-raster drew no frame after a failed one, so the panel held its last
+  picture while the app ran on: it looked hung. emblema now blends them in
+  the shader against a cut of what is under each such draw
+  (jwinarske/emblema#281), and fl-raster asks for that where the device's
+  blend unit has none of them. One full-target redraw per such draw is the
+  cost, and the first use of the new shader variants took 2.6 and 3.4 s on
+  the Pi 4's V3D, which the pipeline cache keeps after
+
+fl-raster now says its first failed frame as it happens, not only when the
+run ends: a display run that stops drawing is no longer silent.
+
 ## Next
 
 The rest of Wonderous's screens: the timeline, the collection, the
-artifact search and details, the wonder menu.
+artifact search and details, the wonder menu. `prepare` building the
+shader variants that blend in the shader, so a board's first editorial
+does not wait on them.
