@@ -46,6 +46,24 @@ fn run_loop_drains_microtasks_timers_and_futures() {
     assert_eq!(stdout(&o), "main\nmicrotask\nfuture\nargs=a,b\ntimer\n");
 }
 
+/// `Isolate.run` and `Isolate.spawn` make isolates in the program's group,
+/// set up as its root is; `Uri.base` is the working directory, given to
+/// dart:core as the engine gives it. A new group (`spawnUri`) is refused.
+#[test]
+fn spawned_isolates_run_and_uri_base_is_the_working_directory() {
+    let o = run("isolates", &[]);
+    assert!(o.status.success(), "{o:?}");
+    assert_eq!(
+        stdout(&o),
+        "base=true\n\
+         run=42\n\
+         printed from a spawned isolate\n\
+         spawn=spawned\n\
+         error=thrown in a spawned isolate\n\
+         spawnUri refused\n"
+    );
+}
+
 #[test]
 fn unhandled_exception_carries_the_dart_stack_trace() {
     let o = run("throws", &[]);

@@ -1,0 +1,10 @@
+name: plugins
+description: fl-engine test program. A Dart-only plugin bound before main, and compute.
+publish_to: none
+environment:
+  sdk: ^3.13.0
+dependencies:
+  flutter:
+    sdk: flutter
+  dart_only_plugin:
+    path: packages/dart_only_plugin

@@ -22,7 +22,7 @@ use std::sync::Arc;
 
 use fl_dart_sys as sys;
 
-use crate::error::{check, string_value, take_c_error, DartError};
+use crate::error::{check, malloc_string, string_value, take_c_error, DartError};
 use crate::vm::Vm;
 
 /// Where `print()` goes.
@@ -89,6 +89,31 @@ struct GroupData {
     _kernel: Box<[u8]>,
     #[cfg(feature = "aot")]
     _aot: Arc<crate::AotSnapshot>,
+    /// What an isolate the group's code spawns is set up with.
+    spawned: Spawned,
+}
+
+/// The root isolate's script URI and print sink, for the isolates
+/// `Isolate.spawn` and `Isolate.run` make in its group ([`on_initialize`]).
+/// Not its natives: the embedder's dart:ui is the root isolate's, whose
+/// loop runs what its asynchronous calls queue, and a spawned isolate's
+/// handles are not that isolate's to use. The engine refuses UI calls off
+/// the root isolate too (`UIDartState::ThrowIfUIOperationsProhibited`);
+/// here a dart:ui native is unresolved there, which the VM reports by name.
+/// No message notify: the VM runs a spawned isolate's loop on its own
+/// threads.
+struct Spawned {
+    script_uri: CString,
+    print: PrintSink,
+}
+
+impl Spawned {
+    fn of(cfg: &IsolateConfig) -> Result<Self, DartError> {
+        Ok(Spawned {
+            script_uri: cstring(&cfg.script_uri)?,
+            print: Arc::clone(&cfg.print),
+        })
+    }
 }
 
 /// Per-isolate state the callbacks into Rust need.
@@ -126,7 +151,10 @@ impl Vm {
         crate::snapshot::check_kernel(dill)?;
         let kernel: Box<[u8]> = dill.into();
         let (ptr, len) = (kernel.as_ptr(), kernel.len());
-        let group = GroupData { _kernel: kernel };
+        let group = GroupData {
+            _kernel: kernel,
+            spawned: Spawned::of(&cfg)?,
+        };
         // SAFETY: the kernel bytes live in `group`, which the VM keeps until it
         // calls cleanup_group.
         unsafe {
@@ -160,6 +188,7 @@ impl Vm {
         let (data, text) = (snapshot.data(), snapshot.text());
         let group = GroupData {
             _aot: Arc::clone(snapshot),
+            spawned: Spawned::of(&cfg)?,
         };
         // SAFETY: the snapshot stays mapped while `group` holds it.
         unsafe {
@@ -470,6 +499,52 @@ impl<'s> HandleScope<'s> {
         let isolate_lib = self.lookup_library("dart:isolate")?;
         self.invoke(isolate_lib, "_startMainIsolate", &[main, argv])
             .map(drop)
+    }
+
+    /// Binds the app's Dart plugins to their platform interfaces, as the
+    /// engine does before `main` (runtime/dart_plugin_registrant.cc,
+    /// `FindAndInvokeDartPluginRegistrant`): `_PluginRegistrant.register()`
+    /// in the library the Flutter tool generated, named by
+    /// `dartPluginRegistrantLibrary` in `package:flutter/src/dart_plugin_registrant.dart`,
+    /// or else in the root library. Without it a plugin with a Dart
+    /// implementation for Linux (`path_provider_linux`,
+    /// `shared_preferences_linux`) is left on its method channel, which
+    /// nothing here answers. Runs on this stack, not as a message, so the
+    /// plugins are bound before `main` is. False when the app has no
+    /// registrant: one with no plugins, or one compiled without it. An
+    /// exception `register` throws is an error.
+    pub fn register_dart_plugins(&mut self) -> Result<bool, DartError> {
+        let named = self
+            .lookup_library("package:flutter/src/dart_plugin_registrant.dart")
+            .ok()
+            .and_then(|lib| self.get_field(lib, "dartPluginRegistrantLibrary").ok());
+        if let Some(uri) = named {
+            let uri = self.to_rust_string(uri)?;
+            if !uri.is_empty() {
+                if let Ok(lib) = self.lookup_library(&uri) {
+                    if self.invoke_registrant(lib)? {
+                        return Ok(true);
+                    }
+                }
+            }
+        }
+        // SAFETY: an open scope on the current isolate is all this needs.
+        let root = self.wrap(unsafe { sys::Dart_RootLibrary() })?;
+        self.invoke_registrant(root)
+    }
+
+    /// `_PluginRegistrant.register()` in `lib`, if `lib` has the class.
+    fn invoke_registrant(&mut self, lib: Handle<'s>) -> Result<bool, DartError> {
+        let name = self.new_string("_PluginRegistrant")?;
+        // SAFETY: both handles are live in this scope. An error handle is
+        // the class's absence.
+        let class = unsafe { sys::Dart_GetClass(lib.raw, name.raw) };
+        // SAFETY: class is a handle of this scope.
+        if unsafe { sys::Dart_IsError(class) } {
+            return Ok(false);
+        }
+        let class = self.wrap(class)?;
+        self.invoke(class, "register", &[]).map(|_| true)
     }
 
     /// Handles messages until the isolate has no open receive ports.
@@ -855,6 +930,23 @@ unsafe fn install_hooks(script_uri: &std::ffi::CStr) -> Result<(), DartError> {
         // `exit()` stays enabled, as in Flutter: it ends the process the way
         // it would under `dart`.
         check(sys::fl_dart_io_setup_isolate(script_uri.as_ptr(), false))?;
+
+        // `Uri.base`: dart:core throws until the embedder gives it dart:io's
+        // closure, the working directory as a URI (`InitDartCore` in the
+        // engine's dart_runtime_hooks.cc; `PrepareCoreLibrary` in the
+        // standalone VM's dartutils.cc). package:path asks for it to pick
+        // the platform's style.
+        let base = check(sys::Dart_Invoke(
+            lib("dart:io")?,
+            name("_getUriBaseClosure"),
+            0,
+            std::ptr::null_mut(),
+        ))?;
+        check(sys::Dart_SetField(
+            lib("dart:core")?,
+            name("_uriBaseClosure"),
+            base,
+        ))?;
     }
     Ok(())
 }
@@ -974,6 +1066,60 @@ unsafe extern "C" fn ui_logger_print_string(s: sys::Dart_Handle) {
 
 // Callbacks registered in Dart_InitializeParams. Each releases one reference
 // handed to the VM at creation, and none may unwind into VM frames.
+
+/// `Dart_InitializeIsolateCallback`: an isolate `Isolate.spawn` or
+/// `Isolate.run` made in a group of ours, current on the calling thread,
+/// which may not be the parent's. Given the hooks the root isolate has
+/// ([`install_hooks`]) and its print sink, as the engine gives a child the
+/// root's settings (dart_isolate.cc, `DartIsolateInitializeCallback`), but
+/// not its natives ([`Spawned`]). The VM then makes it runnable and runs
+/// its loop on its own threads (lib/isolate.cc, `RunLightweight`). On
+/// failure the VM shuts it down and frees `error`, which is malloc'd.
+pub(crate) extern "C" fn on_initialize(
+    child_isolate_data: *mut *mut c_void,
+    error: *mut *mut c_char,
+) -> bool {
+    let r = std::panic::catch_unwind(|| {
+        // SAFETY: the VM calls this with the new isolate current, so its
+        // group's data is current too: the GroupData `create` gave it,
+        // released only at group cleanup, after every isolate in it.
+        let group = unsafe { sys::Dart_CurrentIsolateGroupData() } as *const GroupData;
+        // SAFETY: as above; only read.
+        let Some(group) = (unsafe { group.as_ref() }) else {
+            return Err("an isolate group with no embedder data".to_owned());
+        };
+        let spawned = &group.spawned;
+        // SAFETY: the new isolate is current with no scope open; the scope
+        // is closed before returning.
+        let hooks = unsafe {
+            sys::Dart_EnterScope();
+            let r = install_hooks(&spawned.script_uri);
+            sys::Dart_ExitScope();
+            r
+        };
+        hooks.map_err(|e| e.to_string())?;
+        let data = Arc::new(IsolateData {
+            print: Arc::clone(&spawned.print),
+            natives: None,
+            notify: None,
+        });
+        Ok(Arc::into_raw(data) as *mut c_void)
+    });
+    match r.unwrap_or_else(|_| Err("panicked setting up a spawned isolate".to_owned())) {
+        Ok(data) => {
+            // SAFETY: a valid out-pointer from the VM. Released by
+            // on_cleanup, as the root isolate's is.
+            unsafe { *child_isolate_data = data };
+            true
+        }
+        Err(msg) => {
+            // SAFETY: a valid out-pointer from the VM, which frees what it
+            // is given with free().
+            unsafe { *error = malloc_string(&msg) };
+            false
+        }
+    }
+}
 
 pub(crate) extern "C" fn on_shutdown(_group: *mut c_void, _isolate: *mut c_void) {}
 

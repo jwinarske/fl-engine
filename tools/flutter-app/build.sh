@@ -50,6 +50,19 @@ rm -rf "$out/$name.assets"
 (cd "$app" && "$flutter_root/bin/flutter" build bundle --release --no-pub \
   --target-platform linux-x64 --asset-dir "$out/$name.assets" >/dev/null)
 
+# The Dart plugin registrant `flutter build bundle` generated, compiled in as
+# flutter_tools' compile.dart does, for the engine to run before `main`:
+# it binds a plugin's Dart implementation for Linux (path_provider_linux,
+# shared_preferences_linux) to its platform interface. None for an app
+# with no plugins.
+registrant="$app/.dart_tool/flutter_build/dart_plugin_registrant.dart"
+plugins=()
+if [[ -f "$registrant" ]]; then
+  plugins=(--source "file://$registrant"
+    --source package:flutter/src/dart_plugin_registrant.dart
+    "-Dflutter.dart_plugin_registrant=file://$registrant")
+fi
+
 if [[ "$target" == kernel ]]; then
   sdk_root="$cache/artifacts/engine/common/flutter_patched_sdk"
   for f in "$dart" "$fes" "$sdk_root/platform_strong.dill"; do
@@ -60,6 +73,7 @@ if [[ "$target" == kernel ]]; then
     -Ddart.vm.profile=false -Ddart.vm.product=false \
     --link-platform \
     --packages "$app/.dart_tool/package_config.json" \
+    "${plugins[@]}" \
     --output-dill "$out/$name.dill" \
     "$app/lib/main.dart" >/dev/null
   echo "wrote $out/$name.dill"
@@ -93,6 +107,7 @@ done
   -Ddart.vm.profile=false -Ddart.vm.product=true \
   --aot --tfa \
   --packages "$app/.dart_tool/package_config.json" \
+  "${plugins[@]}" \
   --output-dill "$work/app.dill" \
   "$app/lib/main.dart"
 "$gen_snapshot" --deterministic --snapshot_kind=app-aot-elf --elf="$out/$name.so" --strip "$work/app.dill"

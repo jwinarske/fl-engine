@@ -57,6 +57,28 @@ fn colored_box_draws_its_color_in_every_pixel() {
     assert_eq!(wrong, 0, "pixels other than Color(0xFF2196F3)");
 }
 
+/// A Dart-only plugin is bound before `main` by the registrant build.sh
+/// compiles in, as `flutter build` does, and `compute` runs its callback in
+/// a spawned isolate. dart:ui there is refused by name, as the engine
+/// refuses UI calls off the root isolate.
+#[test]
+#[ignore = "app lane: needs FLUTTER_ROOT"]
+fn a_dart_plugin_is_registered_before_main_and_compute_runs() {
+    let app = build_app("plugins");
+    let o = common::fl_dart(&["run-app".as_ref(), app.as_os_str(), "800x600@2".as_ref()]);
+    assert!(o.status.success(), "{o:?}");
+    let out = String::from_utf8_lossy(&o.stdout);
+    assert!(
+        out.starts_with(
+            "registered=true\n\
+             compute=144\n\
+             dart:ui in compute: Couldn't resolve native function 'PictureRecorder::Create'"
+        ),
+        "{out}"
+    );
+    assert!(out.contains("\nframe 1: "), "{out}");
+}
+
 /// Writes RGBA8 `pixels` of `size` as a PNG.
 fn write_png(path: &Path, size: (u32, u32), pixels: &[u8]) {
     let file = std::fs::File::create(path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));

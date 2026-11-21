@@ -65,9 +65,28 @@ pub(crate) unsafe fn take_c_error(p: *mut c_char) -> String {
     s
 }
 
+/// `msg` in a `malloc`ed, NUL-terminated buffer, for an out-parameter the VM
+/// frees. A NUL inside `msg` ends it there. Null if out of memory, which the
+/// VM takes as no message.
+pub(crate) fn malloc_string(msg: &str) -> *mut c_char {
+    let bytes = msg.as_bytes();
+    let bytes = &bytes[..bytes.iter().position(|&b| b == 0).unwrap_or(bytes.len())];
+    // SAFETY: a fresh allocation of len + 1 bytes, written in bounds only.
+    unsafe {
+        let p = libc_malloc(bytes.len() + 1).cast::<u8>();
+        if !p.is_null() {
+            std::ptr::copy_nonoverlapping(bytes.as_ptr(), p, bytes.len());
+            *p.add(bytes.len()) = 0;
+        }
+        p.cast()
+    }
+}
+
 extern "C" {
     #[link_name = "free"]
     fn libc_free(p: *mut std::ffi::c_void);
+    #[link_name = "malloc"]
+    fn libc_malloc(n: usize) -> *mut std::ffi::c_void;
 }
 
 /// Converts a handle into `Err` if it is an error handle.

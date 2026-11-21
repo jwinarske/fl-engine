@@ -4,6 +4,13 @@ Not published, no versions yet.
 
 ## Unreleased
 
+### Wonderous
+
+* Dart plugins bound before `main`, as the engine binds them: `build.sh` compiles in the registrant `flutter build` generates, and fl-shell runs `_PluginRegistrant.register()`. A plugin whose Linux implementation is Dart alone (`path_provider_linux`, `shared_preferences_linux`) works
+* `Isolate.spawn`, `Isolate.run` and Flutter's `compute`: an isolate in the program's group, set up as the root isolate is but without the embedder's dart:ui, as the engine refuses UI calls off the root isolate. `Isolate.spawnUri` is still refused
+* `Uri.base`, the working directory, as the engine gives it to dart:core
+* `apps/plugins` in the app lane
+
 ### Milestone 4: input
 
 * Engine-to-framework messages, each answered once: by the framework, or with null at shutdown
