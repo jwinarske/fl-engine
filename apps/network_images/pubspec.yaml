@@ -1,0 +1,11 @@
+name: network_images
+description: fl-engine test program. NetworkImage over HTTPS from a loopback server, through dart:io's TLS.
+publish_to: none
+environment:
+  sdk: ^3.13.0
+dependencies:
+  flutter:
+    sdk: flutter
+flutter:
+  assets:
+    - assets/
