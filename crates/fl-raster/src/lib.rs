@@ -400,7 +400,14 @@ fn record<'a>(
     }
     glyphs.upload(ctx)?;
     let (images, glyphs): (&'a GpuImages, &'a Glyphs) = (images, glyphs);
-    let mut canvas = Canvas::new(Extent2D::new(width, height));
+    // Where the device's blend unit has no advanced modes, which is every
+    // board's Vulkan driver here (v3dv, panvk, PowerVR), emblema blends them
+    // in the shader against a copy of what is under each such draw. Without
+    // it the first `colorBurn` or `luminosity` is refused and nothing after it
+    // is drawn.
+    let in_shader = !ctx.capabilities().advanced_blend;
+    let mut canvas =
+        Canvas::new(Extent2D::new(width, height)).with_advanced_blends_in_shader(in_shader);
     canvas.clear(Color::TRANSPARENT);
     let mut slots = Slots::drawing(images, glyphs);
     replay(&mut canvas, scene, &mut slots)?;
@@ -1029,7 +1036,12 @@ fn raster_main<T: Target>(
             }
             Err(e) => {
                 in_flight.done();
-                r.error = Some(format!("frame {}: {e}", r.frames + 1));
+                let error = format!("frame {}: {e}", r.frames + 1);
+                // Said now, not only when the run ends: no frame is drawn
+                // after this one, and on a display the last frame drawn
+                // stays up, so the run looks hung until its end says why.
+                eprintln!("fl-raster: {error}; no frame is drawn after it");
+                r.error = Some(error);
             }
         }
     }

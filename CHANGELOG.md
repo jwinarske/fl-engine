@@ -17,6 +17,8 @@ Not published, no versions yet.
 * `NetworkImage` over HTTPS, with the board's own trusted roots, as the stock engine's: the VM's TLS needed nothing. `apps/network_images` in the app lane, a loopback server with a certificate made by the test
 * `PlatformDispatcher.requestDartPerformanceMode`: the VM's mode set, the one before returned, no idle time told the VM in the latency mode, as the engine does. Wonderous's screens to the details' four tabs, by a scripted tour in `docs/wonderous.md`
 * `Path.combine` (`Path::op`): the paths flattened and combined by `i_overlay`, the result even-odd; `apps/path_ops` against the stock engine's golden
+* emblema 0.4.0: a Raspberry Pi 4's display, a GBM buffer imported one row taller where v3dv reads past it; the advanced blend modes blended in the shader where the device's blend unit has none, which fl-raster asks for. Wonderous runs on the Pi 4's touch panel
+* fl-raster says its first failed frame when it happens: a display run that stopped drawing looked hung until it ended
 
 ### Milestone 4: input
 
