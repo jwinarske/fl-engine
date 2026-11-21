@@ -556,6 +556,20 @@ unsafe fn edit(raw: *mut c_void, what: &str, f: impl FnOnce(&mut Path)) {
     }
 }
 
+/// Sets the receiver's path to `path`, fill type and all; false, said, if
+/// `raw` is not a live path.
+///
+/// # Safety
+/// `raw` is the receiver's native field.
+pub(crate) unsafe fn replace(raw: *mut c_void, what: &str, path: Path) -> bool {
+    // SAFETY: per this function's contract.
+    let done = unsafe { peer::with::<NativePath, _>(raw, |p| p.0 = path) }.is_some();
+    if !done {
+        eprintln!("fl-ui: Path::{what}: not a live Path");
+    }
+    done
+}
+
 /// Attaches `path` to a new `Path` object.
 ///
 /// # Safety

@@ -43,6 +43,10 @@ drm = { version = "0.15", default-features = false }
 rustix = { version = "1.1", default-features = false, features = ["std", "event", "fs", "time"] }
 xkbcommon = { version = "0.9", default-features = false }
 trybuild = "1"
+# Boolean operations on polygons, for dart:ui's `Path.combine` (fl-ui's
+# path_op): the paths flattened, the result's edges lines. Pure Rust, MIT or
+# Apache-2.0; without its rayon feature.
+i_overlay = { version = "9.2", default-features = false }
 # emblema 0.3.9, from the registry. 0.3.0 was the first release with what dart:ui
 # needs of it (blend and tile modes numbered as upstream, a shader's local
 # transform, per-axis tile modes, a glyph key's subpixel bucket, pipelines

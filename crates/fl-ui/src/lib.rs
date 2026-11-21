@@ -29,6 +29,7 @@ pub mod key;
 mod mouse_cursor;
 mod painting;
 mod path;
+mod path_op;
 mod platform;
 pub mod pointer;
 mod semantics;
@@ -287,6 +288,7 @@ pub static NATIVES: &[Symbol] = &[
     fl_dart_ffi::symbol!("Path::transform", 3, path::transform),
     fl_dart_ffi::symbol!("Path::contains", 3, path::contains),
     fl_dart_ffi::symbol!("Path::getBounds", 1, path::get_bounds),
+    fl_dart_ffi::symbol!("Path::op", 4, path_op::op),
     // compositing.dart
     fl_dart_ffi::symbol!("SceneBuilder::Create", 1, compositing::builder_create),
     fl_dart_ffi::symbol!(

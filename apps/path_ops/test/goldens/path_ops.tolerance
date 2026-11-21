@@ -1,0 +1,14 @@
+# path_ops.png, rendered by the stock engine's flutter_tester with Impeller,
+# against fl-engine's frame through emblema, both at DPR 2.
+# Percent of pixels allowed to differ in any channel, and by more than 32.
+#
+# Path.combine's five operations on a circle and a square, a rectangle and
+# a rounded window, an even-odd star and an ellipse, cubics and a
+# quadratic, filled; the operands stroked; Wonderous's cutout as a clip.
+# The stock engine combines with Skia's exact PathOps, fl-engine flattens
+# the paths to within a fiftieth of a pixel first. What differs is edge
+# coverage, a level or a few, and most of it in the stroked outlines, which
+# take no operation. Measured 2026-11-21, lavapipe: 0.308% differ, 0.084%
+# by more than 32.
+differ 0.6
+differ_over_32 0.2
