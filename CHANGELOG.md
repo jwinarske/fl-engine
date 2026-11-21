@@ -12,6 +12,7 @@ Not published, no versions yet.
 * `apps/plugins` in the app lane
 * `ColorFilter`, every kind, on a paint, an image, text and `saveLayer`, and `SceneBuilder.pushColorFilter`; `apps/color_filters` against the stock engine's golden
 * `ImageFilter` (blur, dilate, erode, color, compositions) on a paint and through `saveLayer`, `SceneBuilder.pushImageFilter` and `pushBackdropFilter`; `apps/image_filters` against the stock engine's golden
+* `SceneBuilder.pushShaderMask`; `Canvas.drawVertices` and `Vertices`; `apps/masks_and_meshes` against the stock engine's golden
 
 ### Milestone 4: input
 

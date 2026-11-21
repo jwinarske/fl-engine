@@ -1,0 +1,12 @@
+# masks_and_meshes.png, rendered by the stock engine's flutter_tester with
+# Impeller, against fl-engine's frame through emblema, both at DPR 2.
+# Percent of pixels allowed to differ in any channel, and by more than 32.
+#
+# ShaderMask, gradient and image shaders in the blend modes a mask is used
+# in, and drawVertices: each mode, indexed, colors under four blend modes,
+# a gradient and an image at texture coordinates, a paint's alpha. What
+# differs is a level or two wherever a gradient is dithered, and a few
+# pixels at one mask's corner. Measured 2026-11-20, lavapipe: 9.965%
+# differ, 0.002% by more than 32.
+differ 12.0
+differ_over_32 0.05

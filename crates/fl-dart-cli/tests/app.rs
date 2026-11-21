@@ -635,7 +635,7 @@ const NOT_YET: &[(&str, &str)] = &[
 #[test]
 #[ignore = "app lane: needs FLUTTER_ROOT"]
 fn every_native_is_called_by_an_app() {
-    let runs: [(&str, &[&str]); 17] = [
+    let runs: [(&str, &[&str]); 18] = [
         ("colored_box", &[]),
         ("shapes", &["--frames", "1"]),
         ("material", &[]),
@@ -653,6 +653,7 @@ fn every_native_is_called_by_an_app() {
         ("gradients", &["1600x1200@2", "--frames", "1"]),
         ("color_filters", &["1600x1200@2", "--frames", "1"]),
         ("image_filters", &["1600x1200@2", "--frames", "1"]),
+        ("masks_and_meshes", &["1600x1200@2", "--frames", "1"]),
     ];
     let mut called = std::collections::BTreeSet::new();
     for (name, opts) in runs {
@@ -831,6 +832,13 @@ fn color_filters_matches_its_golden() {
 #[ignore = "app lane: needs FLUTTER_ROOT and a Vulkan driver"]
 fn image_filters_matches_its_golden() {
     matches_golden_at("image_filters", (1600, 1200), 2);
+}
+
+/// dart:ui's shader masks and drawVertices, against the stock engine's.
+#[test]
+#[ignore = "app lane: needs FLUTTER_ROOT and a Vulkan driver"]
+fn masks_and_meshes_matches_its_golden() {
+    matches_golden_at("masks_and_meshes", (1600, 1200), 2);
 }
 
 /// Animated GIF and WebP (exit criterion 4): each animation's frame and

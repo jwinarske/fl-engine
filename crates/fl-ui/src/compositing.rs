@@ -11,7 +11,7 @@ use fl_dart_ffi::{args, guard, peer, sys};
 
 use crate::color_filter::{self, ColorFilter};
 use crate::image_filter::{self, ImageFilter};
-use crate::painting::Picture;
+use crate::painting::{self, Picture, Shader};
 use crate::path::{self, Path, RRect};
 
 /// One SceneBuilder call.
@@ -59,6 +59,17 @@ pub enum LayerOp {
     PushBackdropFilter {
         filter: Option<Arc<ImageFilter>>,
         blend_mode: i32,
+    },
+    /// Children drawn into a layer, then `shader` over `rect` (left, top,
+    /// right, bottom) in `blend_mode` before it comes back, the shader's
+    /// origin at the rect's corner: `ShaderMaskLayer`. `None` for a shader
+    /// fl-ui does not read, refused as a filter that did not decode is.
+    /// `quality` is the `FilterQuality` an image shader samples at.
+    PushShaderMask {
+        shader: Option<Shader>,
+        rect: [f32; 4],
+        blend_mode: i32,
+        quality: i32,
     },
     AddPicture {
         dx: f64,
@@ -332,6 +343,34 @@ pub(crate) extern "C" fn push_backdrop_filter(
         let op = LayerOp::PushBackdropFilter { filter, blend_mode };
         // SAFETY: as push_clip_rect.
         unsafe { push_layer(builder, out_layer, op, "SceneBuilder::pushBackdropFilter") };
+    });
+}
+
+/// `Void Function(Pointer<Void>, Handle outLayer, Pointer<Void> shader, Double left, Double right, Double top, Double bottom, Int32 blendMode, Int32 filterQuality, Handle oldLayer)`.
+#[allow(clippy::too_many_arguments)]
+pub(crate) extern "C" fn push_shader_mask(
+    builder: *mut c_void,
+    out_layer: sys::Dart_Handle,
+    shader: *mut c_void,
+    left: f64,
+    right: f64,
+    top: f64,
+    bottom: f64,
+    blend_mode: i32,
+    quality: i32,
+    _old_layer: sys::Dart_Handle,
+) {
+    guard((), || {
+        // SAFETY: shader is the argument's native field.
+        let shader = unsafe { painting::shader_of_field(shader) };
+        let op = LayerOp::PushShaderMask {
+            shader,
+            rect: [left as f32, top as f32, right as f32, bottom as f32],
+            blend_mode,
+            quality,
+        };
+        // SAFETY: as push_clip_rect.
+        unsafe { push_layer(builder, out_layer, op, "SceneBuilder::pushShaderMask") };
     });
 }
 

@@ -702,10 +702,16 @@ pub(crate) extern "C" fn image_shader_dispose(s: *mut c_void) {
 /// The isolate is current with an API scope open; `shader` is a live handle.
 pub(crate) unsafe fn image_shader_of(shader: sys::Dart_Handle) -> Option<Arc<ImageShader>> {
     // SAFETY: per this function's contract.
-    unsafe {
-        let field = peer::field(shader)?;
-        peer::with::<Option<Arc<ImageShader>>, _>(field, |s| s.clone()).flatten()
-    }
+    unsafe { image_shader_of_field(peer::field(shader)?) }
+}
+
+/// The image shader a `Shader` wrapper holds, by its native field.
+///
+/// # Safety
+/// `field` is a native field fl-ui attached, or null.
+pub(crate) unsafe fn image_shader_of_field(field: *mut c_void) -> Option<Arc<ImageShader>> {
+    // SAFETY: per this function's contract.
+    unsafe { peer::with::<Option<Arc<ImageShader>>, _>(field, |s| s.clone()) }.flatten()
 }
 
 #[cfg(test)]

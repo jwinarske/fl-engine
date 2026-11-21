@@ -80,13 +80,27 @@ showed a miniature of the page. Fixed there (jwinarske/emblema#276), taken
 with 0.3.9 too. Known differences from Impeller, in compositions:
 `apps/image_filters`' tolerance names them.
 
+## Shader masks and meshes
+
+`SceneBuilder.pushShaderMask`, as `ShaderMask` pushes it: the children in
+a layer, then the shader across the mask rect in the layer's blend mode,
+its origin at the rect's corner, as `ShaderMaskLayer::Paint` draws it.
+Impeller clips that layer to what the children painted; fl-engine keeps no
+picture bounds, so a mode that colors transparent black (multiply) fills
+the rest of the mask rect here. The modes masks are used in (`srcIn`,
+`dstIn`, `srcATop`, `modulate`) keep it so, and agree.
+
+`Canvas.drawVertices` and `Vertices`, as Impeller draws them: with colors,
+the paint at full strength blended with them by the call's mode and faded
+by its alpha after; with colors and no shader, the colors alone, the mode
+ignored (Skia's legacy `IGNORE_DRAW_VERTICES_BLEND_WITH_NO_SHADER`, which
+the engine builds with). An image shader read at texture coordinates is
+sampled through its matrix and its image's size. Texture coordinates
+without a shader mean nothing and are dropped.
+
 ## Next
 
-| dart:ui | Wonderous | emblema |
-|---|---|---|
-| `ShaderMask`, `pushShaderMask` | flutter_animate's `shimmer` | a layer with a shader and a blend |
-| `Canvas.drawVertices` | the time range on the artifact search | `draw_vertices` |
-
-Then: `flutter/platform` methods answered (haptics, orientations) and
+`flutter/platform` methods answered (haptics, orientations) and
 `flutter/navigation` (go_router's route reports); the network images over
-HTTPS, with the board's own trusted certificates.
+HTTPS, with the board's own trusted certificates; then Wonderous's screens
+one at a time, by its scripted input.

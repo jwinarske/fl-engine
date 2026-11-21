@@ -18,13 +18,13 @@ use std::sync::{Arc, Condvar, Mutex};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
-use emblema::ImageFilter;
 use emblema::{
     Affine2, BackendPreference, BlendMode, Canvas, Color, ColorFilter, Context, Extent2D, FillRule,
     Layer, LineCap, LineJoin, MaskBlurStyle, MaterialVariant, MemoryBlocks, Paint as EPaint,
     PathBuilder, PixelFormat, Rect, RoundingRadii, Sampling, ShaderVariant, SourceRect, Sprite,
     StrokeStyle, Style as EStyle, Surface, TileMode, Vec2,
 };
+use emblema::{ImageFilter, Transform2D, VertexMode, Vertices};
 use fl_ui::{
     Cap, Clip, ClipOp, Draw, FillType, ImageData, ImageShader, Join, LayerOp, Paint, Picture,
     RRect, Scene, Seg, Shader, Style,
@@ -1062,11 +1062,16 @@ fn raster_main<T: Target>(
 fn replay(canvas: &mut Canvas, scene: &Scene, slots: &mut Slots) -> Result<(), RasterError> {
     let base = canvas.save_depth();
     // The canvas depth before each open layer, so a pop restores exactly
-    // what its push saved, a clip's save layer included.
-    let mut open: Vec<usize> = Vec::new();
+    // what its push saved, a clip's save layer included; and the shader
+    // mask a layer draws over its children before it is restored.
+    let mut open: Vec<Open<'_>> = Vec::new();
     let replayed = scene.ops.iter().try_for_each(|op| {
         if !matches!(op, LayerOp::Pop | LayerOp::AddPicture { .. }) {
-            open.push(canvas.save_depth());
+            let mask = matches!(op, LayerOp::PushShaderMask { .. }).then_some(op);
+            open.push(Open {
+                depth: canvas.save_depth(),
+                mask,
+            });
             canvas.save();
         }
         replay_op(canvas, op, &mut open, slots)
@@ -1075,16 +1080,118 @@ fn replay(canvas: &mut Canvas, scene: &Scene, slots: &mut Slots) -> Result<(), R
     replayed
 }
 
+/// A `ShaderMaskLayer`'s mask, drawn over its children in its layer: the
+/// shader across the mask rect in the layer's blend mode, the shader's
+/// origin at the rect's corner (shader_mask_layer.cc, `Paint`).
+fn draw_shader_mask(
+    canvas: &mut Canvas,
+    op: &LayerOp,
+    slots: &mut Slots,
+) -> Result<(), RasterError> {
+    let LayerOp::PushShaderMask {
+        shader: Some(shader),
+        rect: [l, t, r, b],
+        blend_mode,
+        quality,
+    } = op
+    else {
+        return Ok(());
+    };
+    let paint = Paint {
+        shader: Some(shader.clone()),
+        blend_mode: *blend_mode,
+        filter_quality: *quality,
+        ..Paint::default()
+    };
+    let paint = paint_of(&paint, slots)?;
+    canvas.save();
+    canvas.translate(*l, *t);
+    let drawn = canvas
+        .draw_rect(Rect::new(0.0, 0.0, r - l, b - t), &paint)
+        .map(drop);
+    canvas.restore();
+    Ok(drawn?)
+}
+
+/// dart:ui's mesh as emblema's. Texture coordinates are kept only for a
+/// paint with a shader, which they say where to read; without one the
+/// engine draws the paint's color and they mean nothing, and emblema
+/// refuses them. Colors are straight ARGB, sRGB-encoded, as a paint's are.
+/// With no indices the positions are drawn in their own order.
+fn mesh_of(
+    v: &fl_ui::Vertices,
+    shaded: bool,
+    image_uv: Option<Affine2>,
+) -> Result<Vertices, RasterError> {
+    let mode = match v.mode {
+        0 => VertexMode::Triangles,
+        1 => VertexMode::TriangleStrip,
+        _ => VertexMode::TriangleFan,
+    };
+    let positions = v.positions.iter().map(|p| Vec2::new(p[0], p[1])).collect();
+    let to_uv = image_uv.unwrap_or(Affine2::IDENTITY);
+    let texture_coords = if shaded {
+        v.texture_coordinates
+            .iter()
+            .map(|p| to_uv.transform_point2(Vec2::new(p[0], p[1])))
+            .collect()
+    } else {
+        Vec::new()
+    };
+    let colors = v
+        .colors
+        .iter()
+        .map(|&c| {
+            let byte = |shift: u32| ((c >> shift) & 0xFF) as f32 / 255.0;
+            Color::srgb(byte(16), byte(8), byte(0), byte(24))
+        })
+        .collect();
+    let indices = if v.indices.is_empty() {
+        (0..v.positions.len() as u32).collect()
+    } else {
+        v.indices.iter().map(|&i| u32::from(i)).collect()
+    };
+    Ok(Vertices::full(
+        mode,
+        positions,
+        texture_coords,
+        colors,
+        indices,
+    )?)
+}
+
+/// From an image shader's space to its image's unit square: the inverse of
+/// its matrix, the 2D part of a column-major 4x4, then the image's size.
+fn image_uv_of(matrix: &[f64; 16], size: Extent2D) -> Result<Affine2, RasterError> {
+    let m = matrix.map(|v| v as f32);
+    let to_canvas = Affine2::from_cols_array(&[m[0], m[1], m[4], m[5], m[12], m[13]]);
+    if to_canvas.matrix2.determinant() == 0.0 || size.width == 0 || size.height == 0 {
+        return Err(RasterError::Unsupported(
+            "a mesh's image shader with a singular matrix or an empty image".into(),
+        ));
+    }
+    let unit = Vec2::new(1.0 / size.width as f32, 1.0 / size.height as f32);
+    Ok(Affine2::from_scale(unit) * to_canvas.inverse())
+}
+
 /// A filter layer whose filter did not decode, named.
 fn undecoded(kind: &str) -> RasterError {
     RasterError::Unsupported(format!("a {kind} filter layer whose filter did not decode"))
+}
+
+/// A layer pushed and not yet popped.
+struct Open<'a> {
+    /// The canvas's depth before its save.
+    depth: usize,
+    /// A `PushShaderMask`, whose mask is drawn when it is popped.
+    mask: Option<&'a LayerOp>,
 }
 
 /// One layer operation, its save already made.
 fn replay_op(
     canvas: &mut Canvas,
     op: &LayerOp,
-    open: &mut Vec<usize>,
+    open: &mut Vec<Open<'_>>,
     slots: &mut Slots,
 ) -> Result<(), RasterError> {
     match op {
@@ -1136,9 +1243,21 @@ fn replay_op(
             restore_to(canvas, depth);
             drawn?;
         }
+        LayerOp::PushShaderMask { shader, .. } => {
+            if shader.is_none() {
+                return Err(RasterError::Unsupported(
+                    "a shader mask whose shader is not an ImageShader or a Gradient".into(),
+                ));
+            }
+            canvas.save_layer(Layer::opacity(1.0));
+        }
         LayerOp::Pop => {
-            if let Some(depth) = open.pop() {
-                restore_to(canvas, depth);
+            if let Some(o) = open.pop() {
+                let masked = o
+                    .mask
+                    .map_or(Ok(()), |m| draw_shader_mask(canvas, m, slots));
+                restore_to(canvas, o.depth);
+                masked?;
             }
         }
     }
@@ -1338,6 +1457,49 @@ fn draw_one(canvas: &mut Canvas, draw: &Draw, slots: &mut Slots) -> Result<(), R
             let (slot, size) = slots.slot(image)?;
             let p = image_paint(paint, EPaint::image(slot, rect(*dst)), *quality)?;
             canvas.draw_image_nine(slot, size, rect(*center), rect(*dst), &p)?;
+        }
+        Draw::Vertices {
+            vertices,
+            blend_mode,
+            paint,
+        } => {
+            // As Impeller draws them (`Canvas::DrawVertices`): with colors,
+            // the paint at full strength blended with them and the result
+            // faded by its alpha; with no shader, the colors alone (`Dst`,
+            // Skia's legacy `IGNORE_DRAW_VERTICES_BLEND_WITH_NO_SHADER`).
+            let colored = !vertices.colors.is_empty();
+            let [r, g, b, alpha] = paint.color;
+            let full;
+            let source = if colored {
+                full = Paint {
+                    color: [r, g, b, 1.0],
+                    ..paint.clone()
+                };
+                &full
+            } else {
+                paint
+            };
+            let mut p = paint_of(source, slots)?;
+            // An image read at texture coordinates is sampled at them, in
+            // the image's unit square: through the shader's matrix and the
+            // image's size here, not a shader transform, which a mesh refuses.
+            let image_uv = match &paint.shader {
+                Some(Shader::Image(s)) if !vertices.texture_coordinates.is_empty() => {
+                    let (_, size) = slots.slot(&s.image)?;
+                    p = p.with_shader_transform(Transform2D::IDENTITY);
+                    Some(image_uv_of(&s.matrix, size)?)
+                }
+                _ => None,
+            };
+            if colored {
+                let blend = match paint.shader {
+                    Some(_) => blend_of(*blend_mode)?,
+                    None => BlendMode::Dst,
+                };
+                p = p.with_tint_blend(blend).with_opacity(alpha);
+            }
+            let mesh = mesh_of(vertices, paint.shader.is_some(), image_uv)?;
+            canvas.draw_vertices(&mesh, &p)?;
         }
         Draw::Atlas {
             image,

@@ -1,0 +1,11 @@
+name: masks_and_meshes
+description: fl-engine test program. dart:ui's shader masks and drawVertices.
+publish_to: none
+environment:
+  sdk: ^3.13.0
+dependencies:
+  flutter:
+    sdk: flutter
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
