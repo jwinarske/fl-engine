@@ -118,7 +118,32 @@ first as `System.requestAppExit`, and only a `cancel` keeps it.
 `apps/platform_calls` makes each call through the framework, refuses one
 exit and takes the next.
 
+## Network images
+
+Wonderous's photos and artifacts are JPEGs over HTTPS (`www.wonderous.info`,
+`images.metmuseum.org`), loaded by `NetworkImage` through dart:io's client.
+That needed nothing of fl-engine's: the VM's TLS is BoringSSL, and on Linux
+it trusts the system's roots as the stock engine does, the bundle at
+`/etc/pki/tls/certs/ca-bundle.crt` if there is one (Fedora), or else the
+hashed directory `/etc/ssl/certs` (Debian, Ubuntu, Yocto's
+`ca-certificates`). The SDK is built without fallback roots
+(`dart_use_fallback_root_certificates` is false, as for the stock
+engine), so an image with neither trusts nothing and every HTTPS load
+fails its handshake: a board needs `ca-certificates`. What is installed
+there with `update-ca-certificates` is trusted too.
+
+Checked on this host and on the Pi 5 (Debian 13, 150 roots in
+`/etc/ssl/certs`) with a dart:io probe run by `fl-dart run-aot`: both
+Wonderous hosts answer 200, and a self-signed certificate
+(`self-signed.badssl.com`) is refused with `CERTIFICATE_VERIFY_FAILED`.
+
+`apps/network_images` checks the same in the app lane without the
+network: it serves a JPEG from loopback over HTTPS with a certificate
+the test makes for localhost. A client trusting the system's roots
+refuses it; `NetworkImage`, through `HttpOverrides` with a client trusting
+that certificate alone, loads and draws the photo; a missing file is a
+404.
+
 ## Next
 
-The network images over HTTPS, with the board's own trusted certificates;
-then Wonderous's screens one at a time, by its scripted input.
+Wonderous's screens one at a time, by its scripted input.

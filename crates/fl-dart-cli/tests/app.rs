@@ -119,6 +119,74 @@ fn platform_calls_are_answered_and_the_app_can_leave() {
     assert!(!out.contains("still here"), "{out}");
 }
 
+/// `NetworkImage` over HTTPS, as Wonderous loads its photos: dart:io's
+/// client and TLS, the bytes decoded and drawn. The app serves a JPEG from
+/// loopback with a certificate made here for localhost: a client trusting
+/// the system's roots refuses it, one trusting it alone loads the photo,
+/// and a missing file is a 404. The frame shows the photo filling its box.
+#[test]
+#[ignore = "app lane: needs FLUTTER_ROOT"]
+fn network_images_load_over_https() {
+    let app = build_app("network_images");
+    let dir = common::out_dir().join("network_images_tls");
+    std::fs::create_dir_all(&dir).unwrap();
+    let made = std::process::Command::new("openssl")
+        .args([
+            "req",
+            "-x509",
+            "-newkey",
+            "rsa:2048",
+            "-nodes",
+            "-days",
+            "1",
+            "-subj",
+            "/CN=localhost",
+            "-addext",
+            "subjectAltName=DNS:localhost",
+            "-keyout",
+        ])
+        .arg(dir.join("key.pem"))
+        .arg("-out")
+        .arg(dir.join("cert.pem"))
+        .output()
+        .expect("openssl makes the test's certificate");
+    assert!(made.status.success(), "{made:?}");
+    let png = common::out_dir().join("network_images.png");
+    let o = common::fl_dart_cmd()
+        .env("FL_TLS_DIR", &dir)
+        .args(["run-app".as_ref(), app.as_os_str(), "400x400@1".as_ref()])
+        .args(["--frames", "1", "--png"])
+        .arg(&png)
+        .output()
+        .unwrap();
+    assert!(o.status.success(), "{o:?}");
+    let out = String::from_utf8_lossy(&o.stdout);
+    assert!(
+        out.starts_with(
+            "system roots: refused, CERTIFICATE_VERIFY_FAILED\n\
+             photo: 64x64\n\
+             missing: status 404\n\
+             frame 1: view 0 400x400 layers=1 pictures=1 draws=1\n"
+        ),
+        "{out}"
+    );
+    // The photo, 200 square in the middle: its top left corner deep blue,
+    // its middle the cream disc; outside it, nothing drawn.
+    let pixels = read_png(&png, (400, 400));
+    let at = |x: usize, y: usize| &pixels[(y * 400 + x) * 4..][..4];
+    let corner = at(106, 106);
+    assert!(
+        corner[2] > 100 && corner[0] < 60 && corner[1] < 60,
+        "{corner:?}"
+    );
+    let middle = at(200, 200);
+    assert!(
+        middle[0] > 200 && middle[1] > 200 && middle[2] > 160,
+        "{middle:?}"
+    );
+    assert_eq!(at(50, 50)[3], 0, "outside the photo");
+}
+
 /// Writes RGBA8 `pixels` of `size` as a PNG.
 fn write_png(path: &Path, size: (u32, u32), pixels: &[u8]) {
     let file = std::fs::File::create(path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
