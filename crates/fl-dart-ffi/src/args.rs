@@ -95,6 +95,26 @@ pub unsafe fn f64s(h: sys::Dart_Handle) -> Option<Vec<f64>> {
         .map(|b| b.iter().map(|c| f64::from_ne_bytes(*c)).collect())
 }
 
+/// The elements of an `Int32List`, or `None` for null or any other type.
+///
+/// # Safety
+/// As [`bytes`].
+pub unsafe fn i32s(h: sys::Dart_Handle) -> Option<Vec<i32>> {
+    // SAFETY: per this function's contract.
+    unsafe { typed::<4>(h, sys::Dart_TypedData_Type::Dart_TypedData_kInt32) }
+        .map(|b| b.iter().map(|c| i32::from_ne_bytes(*c)).collect())
+}
+
+/// The elements of a `Uint16List`, or `None` for null or any other type.
+///
+/// # Safety
+/// As [`bytes`].
+pub unsafe fn u16s(h: sys::Dart_Handle) -> Option<Vec<u16>> {
+    // SAFETY: per this function's contract.
+    unsafe { typed::<2>(h, sys::Dart_TypedData_Type::Dart_TypedData_kUint16) }
+        .map(|b| b.iter().map(|c| u16::from_ne_bytes(*c)).collect())
+}
+
 /// The elements of typed data of type `want`, as `N`-byte chunks.
 ///
 /// # Safety

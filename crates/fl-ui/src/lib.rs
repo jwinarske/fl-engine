@@ -34,6 +34,7 @@ pub mod pointer;
 mod semantics;
 mod text;
 pub mod text_input;
+mod vertices;
 
 pub use buffer::{asset_bundle, set_asset_bundle};
 pub use clipboard::set_clipboard;
@@ -54,6 +55,7 @@ pub use platform::{
     set_frame_scheduler, set_frame_sink, set_reply_waker, set_response_sink, Frame,
 };
 pub use text::{load_font, set_style_report};
+pub use vertices::Vertices;
 
 /// Every dart:ui native this crate implements.
 pub static NATIVES: &[Symbol] = &[
@@ -172,6 +174,14 @@ pub static NATIVES: &[Symbol] = &[
         4,
         compositing::push_color_filter
     ),
+    fl_dart_ffi::symbol!(
+        "SceneBuilder::pushShaderMask",
+        10,
+        compositing::push_shader_mask
+    ),
+    fl_dart_ffi::symbol!("Vertices::init", 6, vertices::init),
+    fl_dart_ffi::symbol!("Vertices::dispose", 1, vertices::dispose),
+    fl_dart_ffi::symbol!("Canvas::drawVertices", 5, painting::draw_vertices),
     fl_dart_ffi::symbol!("ImageFilter::Create", 1, image_filter::create),
     fl_dart_ffi::symbol!("ImageFilter::initBlur", 9, image_filter::init_blur),
     fl_dart_ffi::symbol!("ImageFilter::initDilate", 3, image_filter::init_dilate),

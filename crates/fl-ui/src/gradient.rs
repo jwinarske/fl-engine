@@ -260,8 +260,14 @@ pub(crate) extern "C" fn init_sweep(
 /// The isolate is current with an API scope open; `shader` is a live handle.
 pub(crate) unsafe fn gradient_of(shader: sys::Dart_Handle) -> Option<Arc<Gradient>> {
     // SAFETY: per this function's contract.
-    unsafe {
-        let field = peer::field(shader)?;
-        peer::with::<Peer, _>(field, |g| g.clone()).flatten()
-    }
+    unsafe { gradient_of_field(peer::field(shader)?) }
+}
+
+/// The gradient a `Shader` wrapper holds, by its native field.
+///
+/// # Safety
+/// `field` is a native field fl-ui attached, or null.
+pub(crate) unsafe fn gradient_of_field(field: *mut c_void) -> Option<Arc<Gradient>> {
+    // SAFETY: per this function's contract.
+    unsafe { peer::with::<Peer, _>(field, |g| g.clone()) }.flatten()
 }

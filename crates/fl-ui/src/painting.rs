@@ -11,10 +11,11 @@ use std::sync::{Arc, Mutex};
 use fl_dart_ffi::{args, guard, peer, sys};
 
 use crate::color_filter::{self, ColorFilter};
-use crate::gradient::{gradient_of, Gradient};
-use crate::image::{image_of, image_shader_of, ImageData, ImageShader};
+use crate::gradient::{gradient_of, gradient_of_field, Gradient};
+use crate::image::{image_of, image_shader_of, image_shader_of_field, ImageData, ImageShader};
 use crate::image_filter::{self, ImageFilter};
 use crate::path::{self, Path, RRect};
+use crate::vertices::Vertices;
 
 /// One canvas call, as recorded. Geometry is in the canvas's coordinates at
 /// the time of the call, as dart:ui gives it.
@@ -137,6 +138,13 @@ pub enum Draw {
         blend_mode: i32,
         paint: Paint,
         quality: i32,
+    },
+    /// `drawVertices`: the mesh, its colors combined with the paint's by
+    /// `blend_mode`, the paint the source and the colors the destination.
+    Vertices {
+        vertices: Arc<Vertices>,
+        blend_mode: i32,
+        paint: Paint,
     },
 }
 
@@ -477,6 +485,20 @@ unsafe fn paint_objects(objects: sys::Dart_Handle) -> PaintObjects {
     }
 }
 
+/// The shader a `Shader` wrapper holds, by its native field, if it is one
+/// fl-ui reads: an image shader or a gradient.
+///
+/// # Safety
+/// `field` is a native field fl-ui attached, or null.
+pub(crate) unsafe fn shader_of_field(field: *mut c_void) -> Option<Shader> {
+    // SAFETY: per this function's contract.
+    unsafe {
+        image_shader_of_field(field)
+            .map(Shader::Image)
+            .or_else(|| gradient_of_field(field).map(Shader::Gradient))
+    }
+}
+
 /// What [`paint_objects`] read.
 #[derive(Default)]
 struct PaintObjects {
@@ -684,6 +706,33 @@ pub(crate) extern "C" fn draw_line(
 }
 
 /// `Void Function(Pointer<Void> canvas, Double l, t, r, b, Handle paintObjects, Handle paintData)`.
+/// `Void Function(Pointer<Void>, Pointer<Void> vertices, Int32 blendMode,
+/// Handle paintObjects, Handle paintData)`.
+pub(crate) extern "C" fn draw_vertices(
+    canvas: *mut c_void,
+    vertices: *mut c_void,
+    blend_mode: i32,
+    objects: sys::Dart_Handle,
+    data: sys::Dart_Handle,
+) {
+    guard((), || {
+        // SAFETY: vertices is the argument's native field.
+        let Some(vertices) = (unsafe { crate::vertices::of_field(vertices) }) else {
+            eprintln!("fl-ui: Canvas::drawVertices: not live Vertices");
+            return;
+        };
+        // SAFETY: as draw_paint.
+        let paint = unsafe { paint(objects, data) };
+        let d = Draw::Vertices {
+            vertices,
+            blend_mode,
+            paint,
+        };
+        // SAFETY: canvas is the receiver's native field.
+        unsafe { push(canvas, d) };
+    });
+}
+
 pub(crate) extern "C" fn draw_rect(
     canvas: *mut c_void,
     l: f64,
