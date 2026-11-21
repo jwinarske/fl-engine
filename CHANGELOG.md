@@ -16,6 +16,7 @@ Not published, no versions yet.
 * Every platform message is answered: what the Linux embedder has no handler or method for with an empty reply, which an optional channel reads as null, so a haptic, an orientation or a route report no longer waits forever. `flutter/platform`'s `SystemSound.play`, `System.initializationComplete`, `SystemNavigator.pop` and `System.exitApplication`, a cancelable exit put to the app first; leaving ends the loop. `apps/platform_calls` in the app lane
 * `NetworkImage` over HTTPS, with the board's own trusted roots, as the stock engine's: the VM's TLS needed nothing. `apps/network_images` in the app lane, a loopback server with a certificate made by the test
 * `PlatformDispatcher.requestDartPerformanceMode`: the VM's mode set, the one before returned, no idle time told the VM in the latency mode, as the engine does. Wonderous's screens to the details' four tabs, by a scripted tour in `docs/wonderous.md`
+* `Path.combine` (`Path::op`): the paths flattened and combined by `i_overlay`, the result even-odd; `apps/path_ops` against the stock engine's golden
 
 ### Milestone 4: input
 

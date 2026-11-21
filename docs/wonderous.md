@@ -200,11 +200,28 @@ Met objects and the events timeline are drawn.
   (`Dart_SetPerformanceMode`) and returns the one before; in the latency
   mode the loop tells the VM of no idle time, as `RuntimeController::
   NotifyIdle` tells it none
-* **`Path::op`** (`Path.combine`) is missing: the photo gallery cuts the
+* **`Path::op`** (`Path.combine`) was missing: the photo gallery cuts the
   selected photo's rounded window out of a dimming rectangle, and that
-  clip throws, so the gallery is drawn without its dimming
+  clip threw, so the gallery was drawn without its dimming
+
+## Path operations
+
+`Path.combine`'s five operations. The engine runs Skia's PathOps, exact on
+curves; fl-engine flattens both paths to polygons, curves to within a
+fiftieth of a logical pixel, and combines those with `i_overlay` (pure
+Rust, MIT or Apache-2.0). The result is even-odd, as Skia's is, its edges
+lines: scaled up many times after, its curves would show their facets.
+Each operand is filled by its own fill type first. A path with a point
+that is not finite, or past a million points flattened, is refused, and
+dart:ui throws as it does for Skia's failure. 188 kB of the release
+`fl-dart`.
+
+`apps/path_ops` against the stock engine's frame: the five operations on
+a circle and a square, Wonderous's rectangle and rounded window, an
+even-odd star and an ellipse, and cubics and a quadratic; and Wonderous's
+cutout as a clip at five window sizes. 0.3% of pixels differ, at edges.
 
 ## Next
 
-`Path::op`, then the rest of Wonderous's screens: the timeline, the
-collection, the artifact search and details, the wonder menu.
+The rest of Wonderous's screens: the timeline, the collection, the
+artifact search and details, the wonder menu.
