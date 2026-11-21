@@ -173,6 +173,8 @@ pub struct Glyphs {
     scaler: RefCell<ScaleContext>,
     /// What the auto-hinter finds of each face's glyphs, by face: the same
     /// at every size, and the dearest part of a size's hinting to make.
+    /// Emptied past [`STYLES_KEPT`]: an app run again loads its fonts again,
+    /// each a face of its own.
     styles: HashMap<u64, GlyphStyles>,
     /// Hinting set up for a size, by font and size: a frame's runs at one
     /// size share it, and the frames after. Emptied past [`HINTING_KEPT`].
@@ -217,6 +219,12 @@ fn font_key(run: &GlyphRun) -> u64 {
 /// screen of text uses a few; text that changes size every frame, as
 /// `text_churn`'s does, makes one a frame.
 const HINTING_KEPT: usize = 64;
+
+/// How many faces' glyph styles [`Glyphs`] keeps before it starts again:
+/// more than a screen uses, few enough that faces no longer drawn, an app's
+/// run before, are not kept for long. A face's are the size of its glyph
+/// count.
+const STYLES_KEPT: usize = 16;
 
 /// A run's face, whatever its variations: what the auto-hinter's glyph
 /// styles are kept by.
@@ -416,6 +424,11 @@ impl Glyphs {
             return;
         }
         if self.hinting.len() >= HINTING_KEPT {
+            self.hinting.clear();
+        }
+        if self.styles.len() >= STYLES_KEPT && !self.styles.contains_key(&face_key(run)) {
+            // The kept hinting holds the styles too.
+            self.styles.clear();
             self.hinting.clear();
         }
         let (data, index) = run.typeface.face.data();
