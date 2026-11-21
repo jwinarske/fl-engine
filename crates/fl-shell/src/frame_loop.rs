@@ -180,6 +180,9 @@ struct Pending {
     frame: Option<Instant>,
     /// A reply arrived from another thread.
     replies: bool,
+    /// The app asked to leave (`SystemNavigator.pop`, an exit it did not
+    /// cancel): the loop returns before its next step.
+    exit: bool,
     /// Messages for the framework, oldest first.
     outbound: VecDeque<Outbound>,
     /// The loop has returned: nothing more is dispatched.
@@ -385,6 +388,16 @@ impl Wake {
         }
     }
 
+    /// Ends the loop before its next step, as the app's leaving does: what
+    /// the Linux embedder's `quit_application` does. From any thread.
+    pub fn request_exit(&self) {
+        let mut p = self.inner.lock();
+        p.exit = true;
+        p.idle = false;
+        drop(p);
+        self.inner.changed.notify_one();
+    }
+
     /// A frame at the next vsync: what `ScheduleFrame` does.
     pub fn request_frame(&self) {
         let mut p = self.inner.lock();
@@ -466,10 +479,12 @@ pub struct Report {
     /// it shows to the end of its `_drawFrame`, the scene rendered, in
     /// microseconds: input latency on the UI thread (brief M4 §15).
     pub input_latency_us: Vec<u64>,
+    /// The loop ended because the app asked to leave ([`Wake::request_exit`]).
+    pub exited: bool,
 }
 
-/// Runs the isolate until `stop` says so, or until it can receive nothing
-/// more and has no frame to draw. `stop` is asked between steps, so a
+/// Runs the isolate until `stop` says so, until the app asks to leave, or
+/// until it can receive nothing more and has no frame to draw. `stop` is asked between steps, so a
 /// frame count it checks is never overshot by more than the step in hand.
 ///
 /// Installs `wake` as dart:ui's frame scheduler for the process. The
@@ -502,6 +517,14 @@ pub(crate) fn connect(wake: &Wake) {
     fl_ui::set_reply_waker(move || replies.reply_arrived());
     let responses = wake.clone();
     fl_ui::set_response_sink(move |id, data| responses.respond(id, data));
+    let leave = wake.clone();
+    fl_ui::system::set_exit_handler(move || leave.request_exit());
+    let sender = wake.clone();
+    fl_ui::system::set_framework_sender(move |channel, data, respond| {
+        sender.send(channel, Some(data), respond)
+    });
+    // Nor has it said it is ready.
+    fl_ui::system::reset();
     // A new isolate has been told of no key, and has no text field.
     fl_ui::key::reset_keyboard_state();
     fl_ui::text_input::reset();
@@ -532,13 +555,20 @@ fn run_steps(
     let mut awaited = false;
     let mut idle_check: Option<Instant> = None;
     while !stop() {
-        // Replies are queued by natives on this thread, during the step
-        // before, so there is nothing to wait for: they go first.
-        let step = if fl_ui::has_pending_replies() {
+        // Leaving goes before anything, a reply to the call that asked
+        // for it included: the app sees nothing after it. Replies are
+        // queued by natives on this thread, during the step before, so
+        // there is nothing to wait for: they go next.
+        let step = if inner.lock().exit {
+            Step::Exit
+        } else if fl_ui::has_pending_replies() {
             Step::Replies
         } else {
             let mut p = inner.lock();
             loop {
+                if p.exit {
+                    break Step::Exit;
+                }
                 if std::mem::take(&mut p.replies) {
                     break Step::Replies;
                 }
@@ -579,6 +609,10 @@ fn run_steps(
             }
         };
         match step {
+            Step::Exit => {
+                report.exited = true;
+                break;
+            }
             Step::Message => isolate.with(|s| s.handle_message())?,
             Step::Replies => isolate.with(|s| {
                 // SAFETY: inside `with`, this isolate is current with a scope
@@ -647,7 +681,8 @@ fn run_steps(
                 let live = isolate.with(|s| s.has_live_ports());
                 let decoding = fl_ui::awaiting_decodes();
                 let mut p = inner.lock();
-                if p.messages > 0
+                if p.exit
+                    || p.messages > 0
                     || p.frame.is_some()
                     || p.replies
                     || !p.outbound.is_empty()
@@ -693,6 +728,7 @@ fn run_steps(
 }
 
 enum Step {
+    Exit,
     Message,
     Replies,
     Dispatch(Outbound),

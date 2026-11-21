@@ -201,6 +201,10 @@ fn run_app(path: &str, mut app: AppArgs) -> Result<(), Failure> {
     if let Some(line) = vsync_line(&run.report.frame_times_us) {
         println!("{line}");
     }
+    // `SystemNavigator.pop`, or an exit the app did not cancel.
+    if run.report.exited {
+        println!("exited: the app asked to leave");
+    }
     if let Some(screen) = &screen {
         if let Some(r) = raster.as_ref() {
             r.wait_drawn();

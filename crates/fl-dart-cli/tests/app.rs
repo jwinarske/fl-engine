@@ -79,6 +79,46 @@ fn a_dart_plugin_is_registered_before_main_and_compute_runs() {
     assert!(out.contains("\nframe 1: "), "{out}");
 }
 
+/// The framework's calls on `flutter/platform` and `flutter/navigation`
+/// are answered as the Linux embedder answers them: those it has no
+/// method or handler for with an empty reply, which an optional channel
+/// reads as null and a plugin's as no handler, not left to wait forever.
+/// A cancelable exit is put to the app, which refuses the first and lets
+/// the second through; the loop then returns.
+#[test]
+#[ignore = "app lane: needs FLUTTER_ROOT"]
+fn platform_calls_are_answered_and_the_app_can_leave() {
+    let app = build_app("platform_calls");
+    let o = common::fl_dart(&["run-app".as_ref(), app.as_os_str(), "800x600@2".as_ref()]);
+    assert!(o.status.success(), "{o:?}");
+    let out = String::from_utf8_lossy(&o.stdout);
+    assert!(
+        out.starts_with(
+            "haptic: answered\n\
+             orientations: answered\n\
+             overlay: answered\n\
+             sound: answered\n\
+             single entry: answered\n\
+             route: answered\n\
+             plugin: no handler\n\
+             frame 1: "
+        ),
+        "{out}"
+    );
+    let mut at = 0;
+    for line in [
+        "asked to exit: 1\n",
+        "exit 1: cancel\n",
+        "asked to exit: 2\n",
+        "exited: the app asked to leave\n",
+    ] {
+        at += out[at..]
+            .find(line)
+            .unwrap_or_else(|| panic!("{line:?} in order: {out}"));
+    }
+    assert!(!out.contains("still here"), "{out}");
+}
+
 /// Writes RGBA8 `pixels` of `size` as a PNG.
 fn write_png(path: &Path, size: (u32, u32), pixels: &[u8]) {
     let file = std::fs::File::create(path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));

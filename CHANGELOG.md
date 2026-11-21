@@ -13,6 +13,7 @@ Not published, no versions yet.
 * `ColorFilter`, every kind, on a paint, an image, text and `saveLayer`, and `SceneBuilder.pushColorFilter`; `apps/color_filters` against the stock engine's golden
 * `ImageFilter` (blur, dilate, erode, color, compositions) on a paint and through `saveLayer`, `SceneBuilder.pushImageFilter` and `pushBackdropFilter`; `apps/image_filters` against the stock engine's golden
 * `SceneBuilder.pushShaderMask`; `Canvas.drawVertices` and `Vertices`; `apps/masks_and_meshes` against the stock engine's golden
+* Every platform message is answered: what the Linux embedder has no handler or method for with an empty reply, which an optional channel reads as null, so a haptic, an orientation or a route report no longer waits forever. `flutter/platform`'s `SystemSound.play`, `System.initializationComplete`, `SystemNavigator.pop` and `System.exitApplication`, a cancelable exit put to the app first; leaving ends the loop. `apps/platform_calls` in the app lane
 
 ### Milestone 4: input
 

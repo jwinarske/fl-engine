@@ -14,7 +14,7 @@
 use fl_input::text::Direct;
 use fl_input::xkb::XkbKey;
 
-use crate::{clipboard, json, text_input};
+use crate::{clipboard, json, system, text_input};
 
 /// xorshift64*: the same inputs on every run and every host.
 struct Rng(u64);
@@ -33,7 +33,7 @@ impl Rng {
 }
 
 /// The framework's calls on the two channels, as it encodes them.
-const CORPUS: [&str; 16] = [
+const CORPUS: [&str; 19] = [
     r#"{"method":"TextInput.setClient","args":[1,{"inputType":{"name":"TextInputType.multiline","signed":null,"decimal":null},"readOnly":false,"obscureText":false,"autocorrect":true,"enableDeltaModel":true,"inputAction":"TextInputAction.newline","textCapitalization":"TextCapitalization.none","keyboardAppearance":"Brightness.light"}]}"#,
     r#"{"method":"TextInput.updateConfig","args":{"inputType":{"name":"TextInputType.none"},"inputAction":"TextInputAction.done","enableDeltaModel":false}}"#,
     r#"{"method":"TextInput.setEditingState","args":{"text":"caf\u00e9 \ud83d\ude04 bar","selectionBase":3,"selectionExtent":7,"selectionAffinity":"TextAffinity.downstream","selectionIsDirectional":false,"composingBase":-1,"composingExtent":-1}}"#,
@@ -49,6 +49,9 @@ const CORPUS: [&str; 16] = [
     r#"{"method":"Clipboard.getData","args":"text/plain"}"#,
     r#"{"method":"Clipboard.hasStrings","args":"text/plain"}"#,
     r#"{"method":"SystemSound.play","args":"SystemSoundType.click"}"#,
+    r#"{"method":"System.initializationComplete","args":null}"#,
+    r#"{"method":"System.exitApplication","args":{"type":"cancelable","exitCode":0}}"#,
+    r#"{"method":"SystemNavigator.pop","args":null}"#,
     r#"[1e400, -0.0, 1E-9, "\u0000\ud800", {"a": [[[[[]]]]], "b": true}, null]"#,
 ];
 
@@ -101,7 +104,7 @@ fn mutate(rng: &mut Rng, seed: &[u8]) -> Vec<u8> {
     v
 }
 
-const METHODS: [&str; 14] = [
+const METHODS: [&str; 18] = [
     "TextInput.setClient",
     "TextInput.updateConfig",
     "TextInput.setEditingState",
@@ -115,11 +118,15 @@ const METHODS: [&str; 14] = [
     "Clipboard.getData",
     "Clipboard.hasStrings",
     "Clipboard.clear",
+    "SystemSound.play",
+    "System.initializationComplete",
+    "System.exitApplication",
+    "SystemNavigator.pop",
     "",
 ];
 
 /// The members the decoders look for, and one they do not.
-const KEYS: [&str; 16] = [
+const KEYS: [&str; 17] = [
     "text",
     "selectionBase",
     "selectionExtent",
@@ -135,6 +142,7 @@ const KEYS: [&str; 16] = [
     "width",
     "height",
     "method",
+    "type",
     "other",
 ];
 
@@ -245,9 +253,19 @@ fn channels_answer_every_mutation() {
         };
         // The parser alone, on anything.
         let _ = json::parse(&input);
+        // An exit put to the framework has no reply yet: the empty one
+        // stands for it, and the next is not refused as in progress.
+        let system = system::handle_call(Some(&input)).map(|a| match a {
+            system::Answer::Reply(reply) => reply,
+            system::Answer::AskFramework => {
+                system::reset();
+                b"[null]".to_vec()
+            }
+        });
         for reply in [
             text_input::handle_call(Some(&input)),
             clipboard::handle_call(Some(&input)),
+            system,
         ] {
             match reply {
                 Some(reply) => {
@@ -286,6 +304,7 @@ fn channels_answer_every_mutation() {
         assert_eq!(reply.is_some(), known, "{call}");
     }
     text_input::reset();
+    system::reset();
     println!("{iters} calls: {answered} answered, {ignored} not calls; {typed} messages typed");
     assert!(answered > iters / 20 && ignored > iters / 20 && typed > iters / 50);
 }
