@@ -52,8 +52,9 @@ pub use mouse_cursor::set_mouse_cursor;
 pub use painting::{Cap, ClipOp, Draw, Join, Paint, Picture, Shader, Style};
 pub use path::{Affine, FillType, Path, Point, RRect, Seg};
 pub use platform::{
-    deliver_replies, discard_replies, has_pending_replies, set_device_pixel_ratio,
-    set_frame_scheduler, set_frame_sink, set_reply_waker, set_response_sink, Frame,
+    deliver_replies, discard_replies, has_pending_replies, latency_mode, reset_performance_mode,
+    set_device_pixel_ratio, set_frame_scheduler, set_frame_sink, set_reply_waker,
+    set_response_sink, Frame,
 };
 pub use text::{load_font, set_style_report};
 pub use vertices::Vertices;
@@ -85,6 +86,11 @@ pub static NATIVES: &[Symbol] = &[
         "PlatformConfigurationNativeApi::SetSemanticsTreeEnabled",
         1,
         platform::set_semantics_tree_enabled
+    ),
+    fl_dart_ffi::symbol!(
+        "PlatformConfigurationNativeApi::RequestDartPerformanceMode",
+        1,
+        platform::request_dart_performance_mode
     ),
     fl_dart_ffi::symbol!(
         "PlatformConfigurationNativeApi::ScheduleFrame",

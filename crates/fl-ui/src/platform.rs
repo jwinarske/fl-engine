@@ -1,6 +1,6 @@
 //! `PlatformConfigurationNativeApi`: the dispatcher's way out to the engine.
 
-use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicI32, AtomicI64, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use fl_dart_ffi::{args, guard, peer, sys};
@@ -439,6 +439,45 @@ pub(crate) extern "C" fn request_view_focus_change(_view_id: i64, _state: i64, _
 /// `Void Function(Bool)`.
 pub(crate) extern "C" fn set_semantics_tree_enabled(_enabled: bool) {}
 
+/// The Dart performance mode the app asked for last: `DartPerformanceMode`'s
+/// index, 0 balanced, 1 latency, 2 throughput, 3 memory. The engine keeps
+/// it process-wide (`current_performance_mode_`); here it is reset with
+/// each isolate ([`reset_performance_mode`]), whose heap it is the mode of.
+static PERFORMANCE_MODE: AtomicI32 = AtomicI32::new(0);
+
+/// `Int Function(Int)`: the VM's performance mode set to `mode`, as
+/// `PlatformConfigurationNativeApi::RequestDartPerformanceMode` sets it,
+/// and the mode before returned. The framework asks for latency around a
+/// route's transition and for balanced after. A mode past the four is
+/// refused, the mode unchanged and returned: the VM takes the enum as is.
+pub(crate) extern "C" fn request_dart_performance_mode(mode: i32) -> i32 {
+    guard(PERFORMANCE_MODE.load(Ordering::Relaxed), || {
+        if !(0..=3).contains(&mode) {
+            eprintln!("fl-ui: RequestDartPerformanceMode: no mode {mode}");
+            return PERFORMANCE_MODE.load(Ordering::Relaxed);
+        }
+        PERFORMANCE_MODE.store(mode, Ordering::Relaxed);
+        // SAFETY: a native: the isolate is current, as the VM's call
+        // requires; the mode is one of its four.
+        let before = unsafe {
+            sys::Dart_SetPerformanceMode(sys::Dart_PerformanceMode(mode as std::ffi::c_uint))
+        };
+        before.0 as i32
+    })
+}
+
+/// Whether the app is in the latency mode, in which the engine tells the
+/// VM of no idle time (`RuntimeController::NotifyIdle`): a collection then
+/// would be the pause the app asked to be spared.
+pub fn latency_mode() -> bool {
+    PERFORMANCE_MODE.load(Ordering::Relaxed) == 1
+}
+
+/// The balanced mode, for a new isolate: the VM's own until it is asked.
+pub fn reset_performance_mode() {
+    PERFORMANCE_MODE.store(0, Ordering::Relaxed);
+}
+
 /// `Void Function()`, a leaf call: asks for `_beginFrame` and `_drawFrame`
 /// at the next vsync. Without a scheduler set, nothing.
 pub(crate) extern "C" fn schedule_frame() {
@@ -493,6 +532,15 @@ pub(crate) extern "C" fn render(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_performance_mode_past_the_four_is_refused() {
+        // Refused before the VM is called: none is needed here.
+        reset_performance_mode();
+        assert_eq!(request_dart_performance_mode(4), 0);
+        assert_eq!(request_dart_performance_mode(-1), 0);
+        assert!(!latency_mode());
+    }
 
     #[test]
     fn method_names_are_read_from_standard_method_calls() {
