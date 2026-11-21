@@ -10,6 +10,7 @@ use std::sync::{Arc, Mutex};
 use fl_dart_ffi::{args, guard, peer, sys};
 
 use crate::color_filter::{self, ColorFilter};
+use crate::image_filter::{self, ImageFilter};
 use crate::painting::Picture;
 use crate::path::{self, Path, RRect};
 
@@ -45,6 +46,20 @@ pub enum LayerOp {
     /// children unfiltered. Pushed either way, so the framework's pop has
     /// its layer.
     PushColorFilter(Option<Arc<ColorFilter>>),
+    /// Children drawn into a layer that `filter` filters as it comes back,
+    /// offset by `dx`, `dy`; `None` for one that did not decode, refused
+    /// as a color filter's is.
+    PushImageFilter {
+        filter: Option<Arc<ImageFilter>>,
+        dx: f64,
+        dy: f64,
+    },
+    /// What is behind the layer, filtered, then the children over it; the
+    /// filtered backdrop composited by `blend_mode`, a `BlendMode` index.
+    PushBackdropFilter {
+        filter: Option<Arc<ImageFilter>>,
+        blend_mode: i32,
+    },
     AddPicture {
         dx: f64,
         dy: f64,
@@ -279,6 +294,44 @@ pub(crate) extern "C" fn push_color_filter(
                 "SceneBuilder::pushColorFilter",
             )
         };
+    });
+}
+
+/// `Void Function(Pointer<Void>, Handle outLayer, Pointer<Void> filter, Double dx, Double dy, Handle oldLayer)`.
+pub(crate) extern "C" fn push_image_filter(
+    builder: *mut c_void,
+    out_layer: sys::Dart_Handle,
+    filter: *mut c_void,
+    dx: f64,
+    dy: f64,
+    _old_layer: sys::Dart_Handle,
+) {
+    guard((), || {
+        // SAFETY: filter is the argument's native field.
+        let filter = unsafe { image_filter::of_field(filter) };
+        let op = LayerOp::PushImageFilter { filter, dx, dy };
+        // SAFETY: as push_clip_rect.
+        unsafe { push_layer(builder, out_layer, op, "SceneBuilder::pushImageFilter") };
+    });
+}
+
+/// `Void Function(Pointer<Void>, Handle outLayer, Pointer<Void> filter, Int32 blendMode, Handle backdropId, Handle oldLayer)`.
+/// The backdrop id, which lets the engine share one backdrop among layers
+/// that ask for the same one, changes nothing drawn and is not kept.
+pub(crate) extern "C" fn push_backdrop_filter(
+    builder: *mut c_void,
+    out_layer: sys::Dart_Handle,
+    filter: *mut c_void,
+    blend_mode: i32,
+    _backdrop_id: sys::Dart_Handle,
+    _old_layer: sys::Dart_Handle,
+) {
+    guard((), || {
+        // SAFETY: filter is the argument's native field.
+        let filter = unsafe { image_filter::of_field(filter) };
+        let op = LayerOp::PushBackdropFilter { filter, blend_mode };
+        // SAFETY: as push_clip_rect.
+        unsafe { push_layer(builder, out_layer, op, "SceneBuilder::pushBackdropFilter") };
     });
 }
 

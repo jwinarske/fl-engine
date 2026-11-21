@@ -61,15 +61,29 @@ filters each pixel, as Skia does. Under `colorBurn` or a gamma curve the two
 differ by up to 40 levels mid-gradient. `apps/color_filters` draws those
 over a solid square.
 
-## Next
+## Image filters
 
-What is known to be missing in dart:ui, from reading the app; each is in
-emblema 0.3.8:
+`ImageFilter` (blur, dilate, erode, a color filter, compositions) on a
+paint, through `saveLayer`, as `SceneBuilder.pushImageFilter` and as
+`pushBackdropFilter`, each mapped to emblema's. A blur's deviations and a
+morphology's radii go as dart:ui states them, in the space the filter is
+used in, which is what emblema takes. A blur's tile mode is left to emblema,
+which picks edges by what it filters, as the engine's dynamic tile mode
+does. Refused by name: a blur's bounds, a matrix filter and a fragment
+shader's. A composition is bounded at 16 deep, and its depth is kept, so a
+chain that shares its parts is not walked. A backdrop is bounded by the
+clip it is under, as the engine's layer is.
+
+Found on the way, in emblema: a bounded backdrop held the whole frame shrunk
+into its region, not the part of it behind the layer, so every frosted panel
+showed a miniature of the page. Fixed there (jwinarske/emblema#276), taken
+with 0.3.9 too. Known differences from Impeller, in compositions:
+`apps/image_filters`' tolerance names them.
+
+## Next
 
 | dart:ui | Wonderous | emblema |
 |---|---|---|
-| `ImageFilter.blur`, `pushImageFilter` | the carousel's blurred background, flutter_animate's `blur` | `save_layer_filtered` |
-| `BackdropFilter`, `pushBackdropFilter` | the backdrop behind its dialogs | `save_layer_backdrop` |
 | `ShaderMask`, `pushShaderMask` | flutter_animate's `shimmer` | a layer with a shader and a blend |
 | `Canvas.drawVertices` | the time range on the artifact search | `draw_vertices` |
 

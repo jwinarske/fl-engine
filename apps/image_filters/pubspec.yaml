@@ -1,0 +1,11 @@
+name: image_filters
+description: fl-engine test program. dart:ui's image filters on paints, saveLayer and layers, and backdrop filters.
+publish_to: none
+environment:
+  sdk: ^3.13.0
+dependencies:
+  flutter:
+    sdk: flutter
+dev_dependencies:
+  flutter_test:
+    sdk: flutter

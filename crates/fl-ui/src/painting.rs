@@ -13,6 +13,7 @@ use fl_dart_ffi::{args, guard, peer, sys};
 use crate::color_filter::{self, ColorFilter};
 use crate::gradient::{gradient_of, Gradient};
 use crate::image::{image_of, image_shader_of, ImageData, ImageShader};
+use crate::image_filter::{self, ImageFilter};
 use crate::path::{self, Path, RRect};
 
 /// One canvas call, as recorded. Geometry is in the canvas's coordinates at
@@ -172,8 +173,9 @@ pub enum Join {
 /// A dart:ui `Paint`: its `ByteData`, 68 bytes in the layout
 /// painting.dart:1328-1365 declares, and its objects list. Of the objects,
 /// an `ImageShader` or a `Gradient` is decoded ([`Paint::shader`]), and a
-/// color filter ([`Paint::color_filter`]); any other shader, and an image
-/// filter, are not yet, and [`Paint::objects`] says one was set.
+/// color filter ([`Paint::color_filter`]) and an image filter
+/// ([`Paint::image_filter`]); any other shader is not yet, and
+/// [`Paint::objects`] says one was set.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Paint {
     /// Straight (not premultiplied) red, green, blue, alpha, 0 to 1, in
@@ -195,11 +197,12 @@ pub struct Paint {
     /// A blur mask filter: its `BlurStyle` index and sigma.
     pub mask_blur: Option<(i32, f32)>,
     pub invert_colors: bool,
-    /// A shader other than an image shader or a gradient, or an image
-    /// filter, is set, or a color filter that kept no filter.
+    /// A shader other than an image shader or a gradient is set, or a
+    /// color or image filter that kept no filter.
     pub objects: bool,
     pub shader: Option<Shader>,
     pub color_filter: Option<Arc<ColorFilter>>,
+    pub image_filter: Option<Arc<ImageFilter>>,
 }
 
 /// A paint's shader, of the kinds fl-ui reads.
@@ -229,6 +232,7 @@ impl Default for Paint {
             objects: false,
             shader: None,
             color_filter: None,
+            image_filter: None,
         }
     }
 }
@@ -274,6 +278,7 @@ impl Paint {
             objects: false,
             shader: None,
             color_filter: None,
+            image_filter: None,
         })
     }
 }
@@ -423,59 +428,63 @@ pub(crate) unsafe fn paint(objects: sys::Dart_Handle, data: sys::Dart_Handle) ->
         Paint::default()
     });
     // SAFETY: as above.
-    let (shader, color_filter, objects) = unsafe { paint_objects(objects) };
+    let o = unsafe { paint_objects(objects) };
     Paint {
-        objects,
-        shader,
-        color_filter,
+        objects: o.other,
+        shader: o.shader,
+        color_filter: o.color_filter,
+        image_filter: o.image_filter,
         ..p
     }
 }
 
 /// A paint's objects list, `[shader, colorFilter, imageFilter]`
 /// (painting.dart `_kShaderIndex` and on): the shader, if it is an image
-/// shader or a gradient, the color filter, and whether anything else is
-/// set.
+/// shader or a gradient, the color and image filters, and whether anything
+/// else is set.
 ///
 /// # Safety
 /// As [`fl_dart_ffi::args::bytes`].
-unsafe fn paint_objects(
-    objects: sys::Dart_Handle,
-) -> (Option<Shader>, Option<Arc<ColorFilter>>, bool) {
+unsafe fn paint_objects(objects: sys::Dart_Handle) -> PaintObjects {
+    let mut o = PaintObjects::default();
     // SAFETY: per this function's contract.
     unsafe {
         if !args::any_non_null(objects) {
-            return (None, None, false);
+            return o;
         }
         let mut n: isize = 0;
         if sys::Dart_IsError(sys::Dart_ListLength(objects, &mut n)) {
-            return (None, None, true);
+            o.other = true;
+            return o;
         }
-        let mut shader = None;
-        let mut color_filter = None;
-        let mut other = false;
         for i in 0..n {
-            let o = sys::Dart_ListGetAt(objects, i);
-            if sys::Dart_IsError(o) || sys::Dart_IsNull(o) {
+            let h = sys::Dart_ListGetAt(objects, i);
+            if sys::Dart_IsError(h) || sys::Dart_IsNull(h) {
                 continue;
             }
-            match i {
-                0 => match image_shader_of(o)
+            let read = match i {
+                0 => image_shader_of(h)
                     .map(Shader::Image)
-                    .or_else(|| gradient_of(o).map(Shader::Gradient))
-                {
-                    Some(s) => shader = Some(s),
-                    None => other = true,
-                },
-                1 => match color_filter::of(o) {
-                    Some(f) => color_filter = Some(f),
-                    None => other = true,
-                },
-                _ => other = true,
-            }
+                    .or_else(|| gradient_of(h).map(Shader::Gradient))
+                    .map(|s| o.shader = Some(s)),
+                1 => color_filter::of(h).map(|f| o.color_filter = Some(f)),
+                2 => image_filter::of(h).map(|f| o.image_filter = Some(f)),
+                _ => None,
+            };
+            o.other |= read.is_none();
         }
-        (shader, color_filter, other)
+        o
     }
+}
+
+/// What [`paint_objects`] read.
+#[derive(Default)]
+struct PaintObjects {
+    shader: Option<Shader>,
+    color_filter: Option<Arc<ColorFilter>>,
+    image_filter: Option<Arc<ImageFilter>>,
+    /// Something set that is not one of those.
+    other: bool,
 }
 
 /// An `RRect` argument; `None`, said, if it is not one.
