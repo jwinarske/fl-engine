@@ -43,7 +43,7 @@ drm = { version = "0.15", default-features = false }
 rustix = { version = "1.1", default-features = false, features = ["std", "event", "fs", "time"] }
 xkbcommon = { version = "0.9", default-features = false }
 trybuild = "1"
-# emblema 0.3.8, from the registry. 0.3.0 was the first release with what dart:ui
+# emblema 0.3.9, from the registry. 0.3.0 was the first release with what dart:ui
 # needs of it (blend and tile modes numbered as upstream, a shader's local
 # transform, per-axis tile modes, a glyph key's subpixel bucket, pipelines
 # built ahead of the first frame) and ten-bit scanout under its own fourcc.
@@ -60,9 +60,13 @@ trybuild = "1"
 # 0.3.7 counts what a context allocates and the most it has at once.
 # 0.3.8 shares a pass's multisample and stencil buffers between the frames in
 # flight, where each had its own.
-emblema = { version = "0.3.8", default-features = false }
-emblema-hal = "0.3.8"
-emblema-present-drm = "0.3.8"
+# 0.3.9 applies a paint's color filter before coverage, where a filter that
+# colors transparent black tinted a circle's whole quad, and filters a bounded
+# backdrop's own region of what is behind it, where it held the whole frame
+# shrunk into it.
+emblema = { version = "0.3.9", default-features = false }
+emblema-hal = "0.3.9"
+emblema-present-drm = "0.3.9"
 
 fl-dart-sys = { path = "crates/fl-dart-sys", version = "0.1.0", default-features = false }
 fl-dart-vm = { path = "crates/fl-dart-vm", version = "0.1.0", default-features = false }
