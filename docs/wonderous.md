@@ -144,6 +144,67 @@ refuses it; `NetworkImage`, through `HttpOverrides` with a client trusting
 that certificate alone, loads and draws the photo; a missing file is a
 404.
 
+## Screens
+
+Driven by `run-app --input` with the `kms` feature's keymap, from a
+fresh preferences directory: shared_preferences keeps onboarding as done
+under `$XDG_DATA_HOME/fl-dart`, and a second run would skip the intro.
+The details screen animates without end, so the script waits by time
+past it; `--frames` ends the run.
+
+```text
+# The intro's three pages by the arrow key, then into the app.
+wait 1500
+idle
+key arrowRight
+idle
+key arrowRight
+idle
+key arrowRight
+wait 3000
+idle
+# The chevron under the wonder's name: its details, the editorial.
+tap 622 626
+wait 3000
+scroll 640 400 0 5
+wait 1000
+scroll 640 400 0 5
+wait 1000
+scroll 640 400 0 5
+wait 3000
+# The nav rail: photos, artifacts, events.
+mouse move 34 364
+mouse down 34 364
+mouse up 34 364
+wait 5000
+mouse move 34 456
+mouse down 34 456
+mouse up 34 456
+wait 5000
+mouse move 34 546
+mouse down 34 546
+mouse up 34 546
+wait 5000
+```
+
+    XDG_DATA_HOME=$(mktemp -d) fl-dart run-app wonders.so 1280x720 \
+        --input tour.txt --keymap us --frames 2400 --frames-dir frames
+
+The intro, the home screen, the Great Wall's editorial with its photo
+over HTTPS, the photo gallery's Unsplash photos, the artifacts carousel's
+Met objects and the events timeline are drawn.
+
+* **`RequestDartPerformanceMode`** was missing: the framework asks for
+  the latency mode around a route's transition, and the tap into the
+  details threw. It sets the VM's mode as the engine does
+  (`Dart_SetPerformanceMode`) and returns the one before; in the latency
+  mode the loop tells the VM of no idle time, as `RuntimeController::
+  NotifyIdle` tells it none
+* **`Path::op`** (`Path.combine`) is missing: the photo gallery cuts the
+  selected photo's rounded window out of a dimming rectangle, and that
+  clip throws, so the gallery is drawn without its dimming
+
 ## Next
 
-Wonderous's screens one at a time, by its scripted input.
+`Path::op`, then the rest of Wonderous's screens: the timeline, the
+collection, the artifact search and details, the wonder menu.
