@@ -56,8 +56,8 @@
 //! frame ends with none asked for, 51 ms on, if none has been asked for
 //! since, for 100 ms. Not with less than a millisecond left, as
 //! `RuntimeController::NotifyIdle`. The VM collects garbage then, and
-//! empties its cache of heap pages. dart:ui's latency performance mode,
-//! which skips them upstream, is not implemented here.
+//! empties its cache of heap pages. None is sent while the app is in
+//! dart:ui's latency performance mode, as upstream sends none.
 
 use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, Weak};
@@ -523,8 +523,9 @@ pub(crate) fn connect(wake: &Wake) {
     fl_ui::system::set_framework_sender(move |channel, data, respond| {
         sender.send(channel, Some(data), respond)
     });
-    // Nor has it said it is ready.
+    // Nor has it said it is ready, nor asked for a performance mode.
     fl_ui::system::reset();
+    fl_ui::reset_performance_mode();
     // A new isolate has been told of no key, and has no text field.
     fl_ui::key::reset_keyboard_state();
     fl_ui::text_input::reset();
@@ -741,6 +742,11 @@ enum Step {
 /// Tells the VM the loop is idle until `until`, unless less than
 /// [`IDLE_AT_LEAST`] is left.
 fn notify_idle(isolate: &mut IsolateScope<'_>, until: Instant) {
+    // In the latency mode the app asked for, none, as the engine's
+    // `RuntimeController::NotifyIdle` sends none.
+    if fl_ui::latency_mode() {
+        return;
+    }
     let left = until.saturating_duration_since(Instant::now());
     if left >= IDLE_AT_LEAST {
         isolate.with(|s| s.notify_idle(left));
