@@ -28,8 +28,12 @@ emblema-hal = { workspace = true, optional = true }
 # the facade does not pass on.
 emblema-present-drm = { workspace = true, optional = true, features = ["gbm"] }
 png = "0.18"
-# Glyph coverage (brief M3 D2), on skrifa, as emblema's own example names.
+# Glyph coverage (brief M3 D2): the outline and its hinting from skrifa,
+# FreeType's light auto-hinter as Skia asks of it for Impeller's text, and
+# its coverage from swash's rasterizer (zeno); swash's scaler for the
+# outlines of text drawn as paths, unhinted.
 swash = { version = "0.2", default-features = false, features = ["scale", "render", "std"] }
+skrifa = "0.49"
 fl-text = { workspace = true }
 
 [dev-dependencies]

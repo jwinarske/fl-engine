@@ -582,6 +582,7 @@ dependencies = [
  "fl-text",
  "fl-ui",
  "png",
+ "skrifa 0.49.0",
  "swash",
  "trybuild",
 ]

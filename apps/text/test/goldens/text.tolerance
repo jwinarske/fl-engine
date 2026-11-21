@@ -4,10 +4,11 @@
 #
 # Layout matches (the metrics program holds it to the stock engine's
 # numbers). Glyphs are placed as Impeller places them, on a quarter pixel
-# across, hinted; what is left is the rasterizer: Skia's slight hinting
-# and coverage against skrifa's hinting and swash's, about 3 percent more
-# ink. Outlines (the 160 px glyphs, past the atlas) and the icons agree.
-# Measured 2026-11-01, lavapipe: 2.722% differ, 0.389% by more than 32;
-# unhinted on whole pixels it was 3.132% and 1.365%.
+# across, and hinted as Skia hints them for it, FreeType's light
+# auto-hinter (skrifa's port); what is left is the coverage, FreeType's
+# against swash's rasterizer. Outlines (the 160 px glyphs, past the atlas)
+# and the icons agree. Measured 2026-11-20, lavapipe: 2.581% differ, 0.102%
+# by more than 32; with the fonts' own TrueType hinting, as before, 2.722%
+# and 0.389%, and unhinted on whole pixels 3.132% and 1.365%.
 differ 3.5
-differ_over_32 0.6
+differ_over_32 0.2
