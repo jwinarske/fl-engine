@@ -20,6 +20,14 @@
 # app's own assets), from `flutter build bundle`. fl-dart run-app finds it
 # beside the program.
 #
+# And <out-dir>/<app>/ is the two laid out as `flutter build linux` lays out
+# a bundle, hard links where the file system allows: lib/libapp.so (or
+# lib/app.dill), data/flutter_assets, and in it the version.json that build
+# writes from the pubspec's name and version. fl-dart run-app takes the
+# directory. A plugin reading beside the running executable
+# (package_info_plus) finds the app's own files when fl-dart is copied into
+# the directory and run from there.
+#
 # The Flutter release must be the one that pins the VM (its DEPS
 # dart_revision equals third_party/dart-prebuilt/*/VERSION's revision);
 # anything else makes a snapshot fl-dart refuses by hash. Writes
@@ -49,6 +57,27 @@ fes="$cache/dart-sdk/bin/snapshots/frontend_server_aot.dart.snapshot"
 rm -rf "$out/$name.assets"
 (cd "$app" && "$flutter_root/bin/flutter" build bundle --release --no-pub \
   --target-platform linux-x64 --asset-dir "$out/$name.assets" >/dev/null)
+# version.json, as flutter_tools' getVersionInfo writes it for a Linux
+# build: the app's name, and its version and build number where the
+# pubspec states them (`version: 1.2.3+4`). `build bundle` writes none.
+app_name="$(sed -n 's/^name:[[:space:]]*\([A-Za-z0-9_]*\).*/\1/p' "$app/pubspec.yaml" | head -n 1)"
+app_version="$(sed -n 's/^version:[[:space:]]*\([0-9A-Za-z.+-]*\).*/\1/p' "$app/pubspec.yaml" | head -n 1)"
+version_json="{\"app_name\":\"$app_name\""
+if [[ -n "$app_version" ]]; then
+  version_json+=",\"version\":\"${app_version%%+*}\""
+  [[ "$app_version" == *+* ]] && version_json+=",\"build_number\":\"${app_version#*+}\""
+fi
+version_json+=",\"package_name\":\"$app_name\"}"
+printf '%s' "$version_json" > "$out/$name.assets/version.json"
+# The bundle: <out>/<app>/lib/<program> and data/flutter_assets, linked to
+# the two above rather than copied where the file system allows.
+bundle() {
+  rm -rf "${out:?}/$name"
+  mkdir -p "$out/$name/lib" "$out/$name/data"
+  cp -al "$out/$name.assets" "$out/$name/data/flutter_assets" 2>/dev/null ||
+    cp -a "$out/$name.assets" "$out/$name/data/flutter_assets"
+  ln -f "$1" "$out/$name/lib/$2" 2>/dev/null || cp -f "$1" "$out/$name/lib/$2"
+}
 
 # The Dart plugin registrant `flutter build bundle` generated, compiled in as
 # flutter_tools' compile.dart does, for the engine to run before `main`:
@@ -76,7 +105,8 @@ if [[ "$target" == kernel ]]; then
     "${plugins[@]}" \
     --output-dill "$out/$name.dill" \
     "$app/lib/main.dart" >/dev/null
-  echo "wrote $out/$name.dill"
+  bundle "$out/$name.dill" app.dill
+  echo "wrote $out/$name.dill and the bundle $out/$name"
   exit 0
 fi
 
@@ -111,4 +141,5 @@ done
   --output-dill "$work/app.dill" \
   "$app/lib/main.dart"
 "$gen_snapshot" --deterministic --snapshot_kind=app-aot-elf --elf="$out/$name.so" --strip "$work/app.dill"
-echo "wrote $out/$name.so"
+bundle "$out/$name.so" libapp.so
+echo "wrote $out/$name.so and the bundle $out/$name"

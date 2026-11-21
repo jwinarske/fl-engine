@@ -44,6 +44,15 @@ Future<void> main() async {
   await _say('single entry', SystemNavigator.selectSingleEntryHistory);
   await _say('route', () => SystemNavigator.routeInformationUpdated(uri: Uri.parse('/welcome')));
   await _say('plugin', () => const MethodChannel('fl/no_such_plugin').invokeMethod<void>('hello'));
+  // url_launcher_linux's two calls, as its pigeon code sends them; with no
+  // launcher set, nothing can be opened and the launch says why.
+  const String pigeon = 'dev.flutter.pigeon.url_launcher_linux.UrlLauncherApi';
+  const BasicMessageChannel<Object?> can = BasicMessageChannel<Object?>('$pigeon.canLaunchUrl', StandardMessageCodec());
+  const BasicMessageChannel<Object?> launch = BasicMessageChannel<Object?>('$pigeon.launchUrl', StandardMessageCodec());
+  print('url can launch: ${await can.send(<Object?>['https://www.wonderous.info/'])}');
+  print('url can launch a custom scheme: ${await can.send(<Object?>['wonderous://open'])}');
+  print('url launch: ${await launch.send(<Object?>['https://www.wonderous.info/'])}');
+  print('url launch that fails: ${await launch.send(<Object?>['https://fail.example/'])}');
   runApp(const ColoredBox(color: Color(0xFF4CAF50)));
   WidgetsBinding.instance.addPostFrameCallback((_) => _leave());
 }

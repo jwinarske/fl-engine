@@ -19,6 +19,8 @@ Not published, no versions yet.
 * `Path.combine` (`Path::op`): the paths flattened and combined by `i_overlay`, the result even-odd; `apps/path_ops` against the stock engine's golden
 * emblema 0.4.0: a Raspberry Pi 4's display, a GBM buffer imported one row taller where v3dv reads past it; the advanced blend modes blended in the shader where the device's blend unit has none, which fl-raster asks for. Wonderous runs on the Pi 4's touch panel
 * fl-raster says its first failed frame when it happens: a display run that stopped drawing looked hung until it ended
+* `url_launcher_linux`'s two calls answered by fl-ui through a platform's launcher, by ivi-homescreen-plugins' rules: six schemes, `xdg-open` and its exit status, waited for off the UI thread with the reply sent when it exits. `run-app --open-urls` sets it; without it none is opened
+* `build.sh` writes the app's `version.json` and lays the app out as a Linux bundle, which `run-app` takes: `package_info_plus` finds the app's version beside a copy of `fl-dart` in it
 
 ### Milestone 4: input
 

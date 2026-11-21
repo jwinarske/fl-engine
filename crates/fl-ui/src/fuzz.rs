@@ -14,7 +14,7 @@
 use fl_input::text::Direct;
 use fl_input::xkb::XkbKey;
 
-use crate::{clipboard, json, system, text_input};
+use crate::{clipboard, json, system, text_input, url_launcher};
 
 /// xorshift64*: the same inputs on every run and every host.
 struct Rng(u64);
@@ -253,6 +253,16 @@ fn channels_answer_every_mutation() {
         };
         // The parser alone, on anything.
         let _ = json::parse(&input);
+        // url_launcher's decoder, with no launcher set: whatever it is given
+        // is answered, and nothing is opened.
+        for channel in [
+            "dev.flutter.pigeon.url_launcher_linux.UrlLauncherApi.canLaunchUrl",
+            "dev.flutter.pigeon.url_launcher_linux.UrlLauncherApi.launchUrl",
+        ] {
+            // A launch is not made: with no launcher it answers at once,
+            // and the decoder is what is under test.
+            assert!(url_launcher::handle(channel, Some(&input)).is_some());
+        }
         // An exit put to the framework has no reply yet: the empty one
         // stands for it, and the next is not refused as in progress.
         let system = system::handle_call(Some(&input)).map(|a| match a {

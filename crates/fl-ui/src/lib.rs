@@ -36,6 +36,7 @@ mod semantics;
 pub mod system;
 mod text;
 pub mod text_input;
+mod url_launcher;
 mod vertices;
 
 pub use buffer::{asset_bundle, set_asset_bundle};
@@ -53,11 +54,12 @@ pub use mouse_cursor::set_mouse_cursor;
 pub use painting::{Cap, ClipOp, Draw, Join, Paint, Picture, Shader, Style};
 pub use path::{Affine, FillType, Path, Point, RRect, Seg};
 pub use platform::{
-    deliver_replies, discard_replies, has_pending_replies, latency_mode, reset_performance_mode,
-    set_device_pixel_ratio, set_frame_scheduler, set_frame_sink, set_reply_waker,
-    set_response_sink, Frame,
+    awaiting_replies, deliver_replies, discard_replies, has_pending_replies, latency_mode,
+    reset_performance_mode, set_device_pixel_ratio, set_frame_scheduler, set_frame_sink,
+    set_reply_waker, set_response_sink, Frame,
 };
 pub use text::{load_font, set_style_report};
+pub use url_launcher::{set_url_launcher, Launched, UrlLauncher};
 pub use vertices::Vertices;
 
 /// Every dart:ui native this crate implements.
@@ -395,7 +397,7 @@ pub static STUBS: &[(&str, &str)] = &[
     ),
     (
         "PlatformConfigurationNativeApi::SendPlatformMessage",
-        "null (success); flutter/assets answered from the bundle, flutter/restoration `get` with a null result, the Linux embedder's flutter/platform, flutter/keyboard, flutter/textinput and flutter/mousecursor methods, every other message with an empty reply"
+        "null (success); flutter/assets answered from the bundle, flutter/restoration `get` with a null result, the Linux embedder's flutter/platform, flutter/keyboard, flutter/textinput and flutter/mousecursor methods, url_launcher_linux's two calls by the platform's launcher, every other message with an empty reply"
     ),
     (
         "PlatformConfigurationNativeApi::SetSemanticsTreeEnabled",

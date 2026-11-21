@@ -1,6 +1,7 @@
 // A Dart-only plugin, bound by the registrant the Flutter tool generates
 // before main runs, as shared_preferences_linux is; and compute, which runs
 // its callback in a spawned isolate, as flutter_svg parses a picture.
+import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:dart_only_plugin/dart_only_plugin.dart';
@@ -23,5 +24,9 @@ Future<void> main() async {
   } on ArgumentError catch (e) {
     print('dart:ui in compute: ${e.message}');
   }
+  // Where package_info_plus reads the app's version on Linux: beside the
+  // running executable, as a bundle lays it out.
+  final File version = File('${File(Platform.resolvedExecutable).parent.path}/data/flutter_assets/version.json');
+  print('version.json beside the runner: ${version.existsSync() ? version.readAsStringSync() : 'none'}');
   runApp(const ColoredBox(color: Color(0xFF2196F3)));
 }

@@ -680,7 +680,8 @@ fn run_steps(
             Step::NotifyIdle(until) => notify_idle(isolate, until),
             Step::Idle => {
                 let live = isolate.with(|s| s.has_live_ports());
-                let decoding = fl_ui::awaiting_decodes();
+                // A decode, or a platform message answered off this thread.
+                let decoding = fl_ui::awaiting_replies();
                 let mut p = inner.lock();
                 if p.exit
                     || p.messages > 0
@@ -693,7 +694,8 @@ fn run_steps(
                 }
                 if !live && !decoding && p.sources == 0 {
                     // Nothing can post to it, nothing is asked of it, no
-                    // decode is to answer and no source is to deliver.
+                    // decode or message is to answer and no source is to
+                    // deliver.
                     break;
                 }
                 if !decoding && !p.idle {
