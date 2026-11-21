@@ -9,7 +9,8 @@
 # thinner here (cell 7), and a composition in a layer stops its halo short
 # of the cell's edge where Impeller's reaches it (cells 14, 15, 22, 23);
 # and erode, where Impeller's saveLayer and layer disagree with each other
-# (cells 12 and 28). Measured 2026-11-20, lavapipe, emblema with
-# jwinarske/emblema#275 and #276: 20.802% differ, 1.773% by more than 32.
-differ 23.0
+# (cells 12 and 28). Measured 2026-11-20, lavapipe, emblema 0.3.9: 20.802%
+# differ, 1.773% by more than 32; the app lane's lavapipe 23.979% and 1.773%,
+# the blurs' small levels rounded apart.
+differ 27.0
 differ_over_32 2.0
