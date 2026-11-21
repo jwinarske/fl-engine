@@ -19,10 +19,10 @@ use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 use emblema::{
-    Affine2, BackendPreference, BlendMode, Canvas, Color, Context, Extent2D, FillRule, Layer,
-    LineCap, LineJoin, MaskBlurStyle, MaterialVariant, MemoryBlocks, Paint as EPaint, PathBuilder,
-    PixelFormat, Rect, RoundingRadii, Sampling, ShaderVariant, SourceRect, Sprite, StrokeStyle,
-    Style as EStyle, Surface, TileMode, Vec2,
+    Affine2, BackendPreference, BlendMode, Canvas, Color, ColorFilter, Context, Extent2D, FillRule,
+    Layer, LineCap, LineJoin, MaskBlurStyle, MaterialVariant, MemoryBlocks, Paint as EPaint,
+    PathBuilder, PixelFormat, Rect, RoundingRadii, Sampling, ShaderVariant, SourceRect, Sprite,
+    StrokeStyle, Style as EStyle, Surface, TileMode, Vec2,
 };
 use fl_ui::{
     Cap, Clip, ClipOp, Draw, FillType, ImageData, ImageShader, Join, LayerOp, Paint, Picture,
@@ -1090,6 +1090,25 @@ fn replay(canvas: &mut Canvas, scene: &Scene, slots: &mut Slots) -> Result<(), R
                 canvas.translate(*dx as f32, *dy as f32);
                 canvas.save_layer(Layer::opacity(f32::from(*alpha) / 255.0));
             }
+            LayerOp::PushColorFilter(filter) => {
+                let filter = filter
+                    .as_deref()
+                    .ok_or_else(|| {
+                        RasterError::Unsupported(
+                            "a color filter layer whose filter did not decode".into(),
+                        )
+                    })
+                    .and_then(color_filter_of);
+                match filter {
+                    Ok(f) => {
+                        canvas.save_layer(Layer::opacity(1.0).with_color_filter(f));
+                    }
+                    Err(e) => {
+                        restore_to(canvas, base);
+                        return Err(e);
+                    }
+                }
+            }
             LayerOp::AddPicture { dx, dy, picture } => {
                 let depth = canvas.save_depth();
                 canvas.save();
@@ -1379,7 +1398,7 @@ fn image_paint(p: &Paint, base: EPaint, quality: i32) -> Result<EPaint, RasterEr
     }
     // The paint's alpha as its opacity, which survives the shader a
     // nine-slice puts in place of this one.
-    let paint = with_mask(base, p)
+    let paint = with_color_filter(with_mask(base, p), p)?
         .with_sampling(sampling_of(quality))
         .with_opacity(p.color[3]);
     Ok(paint
@@ -1542,7 +1561,10 @@ fn draw_glyphs(
     let (glyphs, first) = drawing;
     // A shader or a stroke needs the glyphs' shape, not their coverage,
     // as `ShouldRenderAsPath` sends them to paths on Impeller.
-    let as_path = paint.shader.is_some() || paint.objects || paint.style == Style::Stroke;
+    let as_path = paint.shader.is_some()
+        || paint.color_filter.is_some()
+        || paint.objects
+        || paint.style == Style::Stroke;
     let quads = if as_path {
         None
     } else {
@@ -1723,7 +1745,11 @@ fn unmapped(p: &Paint) -> Option<String> {
         ));
     }
     if p.objects {
-        return Some("a shader other than ImageShader, a color filter or an image filter".into());
+        return Some(
+            "a shader other than ImageShader or Gradient, an image filter, or a color filter \
+             that did not decode"
+                .into(),
+        );
     }
     if p.invert_colors {
         return Some("invertColors".into());
@@ -1739,7 +1765,31 @@ fn layer_of(p: &Paint) -> Result<Layer, RasterError> {
     {
         return Err(RasterError::Unsupported(what));
     }
-    Ok(Layer::opacity(p.color[3]).with_blend(blend_of(p.blend_mode)?))
+    let layer = Layer::opacity(p.color[3]).with_blend(blend_of(p.blend_mode)?);
+    Ok(match &p.color_filter {
+        Some(f) => layer.with_color_filter(color_filter_of(f)?),
+        None => layer,
+    })
+}
+
+/// dart:ui's color filter as emblema's: the same four kinds, and a mode's
+/// color, sRGB-encoded, kept so, as the engine's `DlColorFilter::MakeBlend`
+/// keeps it.
+fn color_filter_of(f: &fl_ui::ColorFilter) -> Result<ColorFilter, RasterError> {
+    Ok(match *f {
+        fl_ui::ColorFilter::Mode { color, blend } => ColorFilter::blend(color, blend_of(blend)?),
+        fl_ui::ColorFilter::Matrix(m) => ColorFilter::matrix(m),
+        fl_ui::ColorFilter::LinearToSrgbGamma => ColorFilter::linear_to_srgb(),
+        fl_ui::ColorFilter::SrgbToLinearGamma => ColorFilter::srgb_to_linear(),
+    })
+}
+
+/// `paint` with `p`'s color filter, if it has one.
+fn with_color_filter(paint: EPaint, p: &Paint) -> Result<EPaint, RasterError> {
+    Ok(match &p.color_filter {
+        Some(f) => paint.with_color_filter(color_filter_of(f)?),
+        None => paint,
+    })
 }
 
 fn paint_of(p: &Paint, slots: &mut Slots) -> Result<EPaint, RasterError> {
@@ -1771,7 +1821,7 @@ fn paint_of(p: &Paint, slots: &mut Slots) -> Result<EPaint, RasterError> {
             miter_limit: p.stroke_miter_limit,
         })),
     };
-    Ok(with_mask(paint, p)
+    Ok(with_color_filter(with_mask(paint, p), p)?
         .with_blend(blend_of(p.blend_mode)?)
         .with_anti_alias(p.anti_alias))
 }

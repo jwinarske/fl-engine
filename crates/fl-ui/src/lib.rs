@@ -17,6 +17,7 @@ use fl_dart_ffi::{lookup, Symbol};
 
 mod buffer;
 mod clipboard;
+mod color_filter;
 mod compositing;
 #[cfg(test)]
 mod fuzz;
@@ -35,6 +36,7 @@ pub mod text_input;
 
 pub use buffer::{asset_bundle, set_asset_bundle};
 pub use clipboard::set_clipboard;
+pub use color_filter::ColorFilter;
 pub use compositing::{Clip, LayerOp, Scene};
 pub use fl_text::font::live_faces;
 pub use gradient::{Gradient, GradientKind};
@@ -150,6 +152,24 @@ pub static NATIVES: &[Symbol] = &[
     fl_dart_ffi::symbol!("ImageShader::Create", 1, image::image_shader_create),
     fl_dart_ffi::symbol!("ImageShader::initWithImage", 6, image::image_shader_init),
     fl_dart_ffi::symbol!("ImageShader::dispose", 1, image::image_shader_dispose),
+    fl_dart_ffi::symbol!("ColorFilter::Create", 1, color_filter::create),
+    fl_dart_ffi::symbol!("ColorFilter::initMode", 3, color_filter::init_mode),
+    fl_dart_ffi::symbol!("ColorFilter::initMatrix", 2, color_filter::init_matrix),
+    fl_dart_ffi::symbol!(
+        "ColorFilter::initLinearToSrgbGamma",
+        1,
+        color_filter::init_linear_to_srgb_gamma
+    ),
+    fl_dart_ffi::symbol!(
+        "ColorFilter::initSrgbToLinearGamma",
+        1,
+        color_filter::init_srgb_to_linear_gamma
+    ),
+    fl_dart_ffi::symbol!(
+        "SceneBuilder::pushColorFilter",
+        4,
+        compositing::push_color_filter
+    ),
     fl_dart_ffi::symbol!("Gradient::Create", 1, gradient::create),
     fl_dart_ffi::symbol!("Gradient::initLinear", 6, gradient::init_linear),
     fl_dart_ffi::symbol!("Gradient::initRadial", 8, gradient::init_radial),

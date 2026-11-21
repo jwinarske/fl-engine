@@ -10,6 +10,7 @@ Not published, no versions yet.
 * `Isolate.spawn`, `Isolate.run` and Flutter's `compute`: an isolate in the program's group, set up as the root isolate is but without the embedder's dart:ui, as the engine refuses UI calls off the root isolate. `Isolate.spawnUri` is still refused
 * `Uri.base`, the working directory, as the engine gives it to dart:core
 * `apps/plugins` in the app lane
+* `ColorFilter`, every kind, on a paint, an image, text and `saveLayer`, and `SceneBuilder.pushColorFilter`; `apps/color_filters` against the stock engine's golden
 
 ### Milestone 4: input
 

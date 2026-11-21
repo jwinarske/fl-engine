@@ -9,6 +9,7 @@ use std::sync::{Arc, Mutex};
 
 use fl_dart_ffi::{args, guard, peer, sys};
 
+use crate::color_filter::{self, ColorFilter};
 use crate::painting::Picture;
 use crate::path::{self, Path, RRect};
 
@@ -39,6 +40,11 @@ pub enum LayerOp {
         dx: f64,
         dy: f64,
     },
+    /// Children composited through a color filter; `None` for one that did
+    /// not decode, which the raster side refuses rather than drawing the
+    /// children unfiltered. Pushed either way, so the framework's pop has
+    /// its layer.
+    PushColorFilter(Option<Arc<ColorFilter>>),
     AddPicture {
         dx: f64,
         dy: f64,
@@ -251,6 +257,28 @@ pub(crate) extern "C" fn push_opacity(
         };
         // SAFETY: as push_clip_rect.
         unsafe { push_layer(builder, out_layer, op, "SceneBuilder::pushOpacity") };
+    });
+}
+
+/// `Void Function(Pointer<Void>, Handle outLayer, Pointer<Void> filter, Handle oldLayer)`.
+pub(crate) extern "C" fn push_color_filter(
+    builder: *mut c_void,
+    out_layer: sys::Dart_Handle,
+    filter: *mut c_void,
+    _old_layer: sys::Dart_Handle,
+) {
+    guard((), || {
+        // SAFETY: filter is the argument's native field.
+        let filter = unsafe { color_filter::of_field(filter) };
+        // SAFETY: as push_clip_rect.
+        unsafe {
+            push_layer(
+                builder,
+                out_layer,
+                LayerOp::PushColorFilter(filter),
+                "SceneBuilder::pushColorFilter",
+            )
+        };
     });
 }
 
