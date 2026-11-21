@@ -32,6 +32,7 @@ mod path;
 mod platform;
 pub mod pointer;
 mod semantics;
+pub mod system;
 mod text;
 pub mod text_input;
 mod vertices;
@@ -386,7 +387,7 @@ pub static STUBS: &[(&str, &str)] = &[
     ),
     (
         "PlatformConfigurationNativeApi::SendPlatformMessage",
-        "null (success); flutter/assets answered from the bundle, flutter/restoration `get` with a null result, every other message dropped and never answered"
+        "null (success); flutter/assets answered from the bundle, flutter/restoration `get` with a null result, the Linux embedder's flutter/platform, flutter/keyboard, flutter/textinput and flutter/mousecursor methods, every other message with an empty reply"
     ),
     (
         "PlatformConfigurationNativeApi::SetSemanticsTreeEnabled",

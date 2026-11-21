@@ -7,6 +7,7 @@ use fl_dart_ffi::{args, guard, peer, sys};
 
 use crate::compositing::Scene;
 use crate::image::ImageData;
+use crate::system;
 
 /// One `FlutterView.render`: a scene for a view, at a size in physical
 /// pixels.
@@ -74,7 +75,7 @@ pub(crate) extern "C" fn send_channel_update(_name: sys::Dart_Handle, _listening
 /// `Handle Function(Handle name, Handle callback, Handle data)`. Null is
 /// success; a returned String is thrown as an error.
 ///
-/// Five channels are answered:
+/// Six channels are answered:
 /// * `flutter/assets`: the data is an asset key as UTF-8; the answer is the
 ///   asset's bytes from the bundle [`crate::set_asset_bundle`] set, or null,
 ///   which the framework reads as not found. Every request is answered,
@@ -90,12 +91,17 @@ pub(crate) extern "C" fn send_channel_update(_name: sys::Dart_Handle, _listening
 ///   which field has the keyboard, what is in it, where it is. A method
 ///   the Linux embedder does not implement is answered with null, which
 ///   the framework's optional channel reads as no such method
-/// * `flutter/platform`'s clipboard methods ([`crate::clipboard`])
+/// * `flutter/platform`'s clipboard methods ([`crate::clipboard`]) and its
+///   system methods ([`crate::system`]): sounds, the app's readiness, and
+///   leaving, which may wait for the framework's own answer
 /// * `flutter/mousecursor` ([`crate::mouse_cursor`]): the cursor a
 ///   `MouseRegion` asks for, shown by the platform if it has one
 ///
-/// Every other message is dropped: nothing on the path so far awaits one,
-/// and an unanswered request never completes rather than failing.
+/// Every other message, on these channels or any other, is answered with an
+/// empty reply, as the Linux embedder answers a channel it has no handler
+/// for and a method its handler does not have: an `OptionalMethodChannel`
+/// reads it as null, any other as `MissingPluginException`. Unanswered, the
+/// framework's `await` on a haptic or an orientation would never return.
 ///
 /// Replies are asynchronous, as the engine's are: queued here and delivered
 /// by [`deliver_replies`], which the shell's loop calls between steps.
@@ -136,10 +142,23 @@ pub(crate) extern "C" fn send_platform_message(
                 crate::mouse_cursor::handle_call(bytes.as_deref())
                     .map_or(ReplyArg::Null, ReplyArg::Bytes),
             ),
-            Some("flutter/platform") => {
-                crate::clipboard::handle_call(bytes.as_deref()).map(ReplyArg::Bytes)
-            }
-            _ => None,
+            Some("flutter/platform") => match crate::clipboard::handle_call(bytes.as_deref()) {
+                Some(reply) => Some(ReplyArg::Bytes(reply)),
+                None => match crate::system::handle_call(bytes.as_deref()) {
+                    Some(system::Answer::Reply(reply)) => Some(ReplyArg::Bytes(reply)),
+                    Some(system::Answer::AskFramework) => {
+                        // SAFETY: as above; callback is a live handle.
+                        let callback = unsafe {
+                            (!sys::Dart_IsNull(callback)).then(|| Persistent::new(callback))
+                        };
+                        system::ask_framework(callback);
+                        // Answered when the framework has.
+                        None
+                    }
+                    None => Some(ReplyArg::Null),
+                },
+            },
+            _ => Some(ReplyArg::Null),
         };
         if let Some(reply) = reply {
             // SAFETY: as above; callback is a live handle.
@@ -269,6 +288,27 @@ pub(crate) fn queue_persistent(callback: Persistent, arg: ReplyArg) {
         .push(Reply { callback, arg });
 }
 
+/// Which isolate's replies are being queued: counted up by
+/// [`discard_replies`], as each isolate's are let go.
+static GENERATION: AtomicU64 = AtomicU64::new(0);
+
+/// The isolate whose replies are being queued now, for a callback kept
+/// across steps: [`queue_persistent_in`] drops it if that isolate is gone.
+pub(crate) fn generation() -> u64 {
+    GENERATION.load(Ordering::Acquire)
+}
+
+/// [`queue_persistent`], for a callback kept since `generation`. One whose
+/// isolate is gone is dropped, not delivered to the next: the VM freed its
+/// handle with that isolate.
+pub(crate) fn queue_persistent_in(generation: u64, callback: Persistent, arg: ReplyArg) {
+    let mut replies = REPLIES.lock().unwrap_or_else(|e| e.into_inner());
+    // Checked under the lock discard_replies counts under.
+    if GENERATION.load(Ordering::Acquire) == generation {
+        replies.push(Reply { callback, arg });
+    }
+}
+
 static REPLIES: Mutex<Vec<Reply>> = Mutex::new(Vec::new());
 
 static REPLY_WAKER: Mutex<Option<Box<dyn Fn() + Send>>> = Mutex::new(None);
@@ -373,7 +413,10 @@ unsafe fn error_string(s: &str) -> sys::Dart_Handle {
 /// gone: the VM freed their handles with it. Decodes for it are dropped
 /// too, queued or finishing.
 pub fn discard_replies() {
-    REPLIES.lock().unwrap_or_else(|e| e.into_inner()).clear();
+    let mut replies = REPLIES.lock().unwrap_or_else(|e| e.into_inner());
+    GENERATION.fetch_add(1, Ordering::AcqRel);
+    replies.clear();
+    drop(replies);
     crate::image::end_generation();
 }
 

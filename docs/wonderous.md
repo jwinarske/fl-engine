@@ -98,9 +98,27 @@ the engine builds with). An image shader read at texture coordinates is
 sampled through its matrix and its image's size. Texture coordinates
 without a shader mean nothing and are dropped.
 
+## Platform channels
+
+Wonderous awaits what it asks the platform: a haptic before it navigates,
+its orientations as it starts, and go_router's route reports on
+`flutter/navigation`. fl-engine dropped every message it had no answer
+for, so each such `await` never returned. The Linux embedder answers a
+channel it has no handler for, and a method its `flutter/platform`
+handler does not have, with an empty reply; `OptionalMethodChannel`, which
+`flutter/platform` and `flutter/navigation` are, reads that as null, and
+a plugin's own channel as `MissingPluginException`. fl-engine now does
+the same for every message it does not answer otherwise.
+
+`flutter/platform`'s methods are the Linux embedder's: the clipboard's,
+`SystemSound.play` (no display's beep here), `System.initializationComplete`,
+`SystemNavigator.pop`, which ends the loop, and `System.exitApplication`.
+An exit the app may cancel, once it has said it is ready, is put to it
+first as `System.requestAppExit`, and only a `cancel` keeps it.
+`apps/platform_calls` makes each call through the framework, refuses one
+exit and takes the next.
+
 ## Next
 
-`flutter/platform` methods answered (haptics, orientations) and
-`flutter/navigation` (go_router's route reports); the network images over
-HTTPS, with the board's own trusted certificates; then Wonderous's screens
-one at a time, by its scripted input.
+The network images over HTTPS, with the board's own trusted certificates;
+then Wonderous's screens one at a time, by its scripted input.

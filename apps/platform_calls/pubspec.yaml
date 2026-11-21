@@ -1,0 +1,8 @@
+name: platform_calls
+description: fl-engine test program. The framework's calls on flutter/platform and flutter/navigation, and leaving.
+publish_to: none
+environment:
+  sdk: ^3.13.0
+dependencies:
+  flutter:
+    sdk: flutter
