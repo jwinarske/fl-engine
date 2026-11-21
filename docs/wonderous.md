@@ -33,19 +33,45 @@ Each step below is what stopped it, in the order it stopped.
 
 With those, the intro screen's first frames are drawn (7 layers, 67 draws).
 
+## Color filters
+
+`ColorFilter` (mode, matrix, both gammas) on a paint, an image draw, text,
+`saveLayer`, and `SceneBuilder.pushColorFilter`, each mapped to emblema's
+filter of the same kind. A mode's color stays sRGB-encoded, as the engine
+gives it to `DlColorFilter::MakeBlend`; a matrix's last column is divided by
+255, as `ColorFilter::initMatrix` divides it. A filter that does not decode
+keeps none, and its draw or layer is refused by name; a layer is still
+pushed, so the framework's pop has it. Text under a filter goes the path
+route, as text under a shader does.
+
+With them the intro screen is drawn: the logo, the arrows and the page
+indicator are SVGs tinted by `ColorFilter.mode`.
+
+Found on the way, in emblema: the analytic shapes (circle, oval, rounded
+rectangle) and glyphs were filtered after their coverage, so a filter that
+colors transparent black tinted the shape's whole quad, a square around each
+circle. Impeller filters the color and then covers it
+(`UberSDFContents::ApplyColorFilter`). Fixed there (jwinarske/emblema#275),
+taken with emblema 0.3.9.
+
+One difference is kept: Impeller filters a gradient's stop colors and
+interpolates what comes out (`LinearGradientContents::ApplyColorFilter`),
+which is the filtered gradient only for a filter affine in color; emblema
+filters each pixel, as Skia does. Under `colorBurn` or a gamma curve the two
+differ by up to 40 levels mid-gradient. `apps/color_filters` draws those
+over a solid square.
+
 ## Next
 
-The next frame stops at `ColorFilter::Create`, an SVG's tint. What is known to
-be missing in dart:ui, from reading the app; each is in emblema 0.3.8:
+What is known to be missing in dart:ui, from reading the app; each is in
+emblema 0.3.8:
 
 | dart:ui | Wonderous | emblema |
 |---|---|---|
-| `ColorFilter.mode`, `.matrix` on a paint | SVG icon tints, `Image.colorBlendMode`, flutter_animate's saturate and tint | `Paint::with_color_filter` |
 | `ImageFilter.blur`, `pushImageFilter` | the carousel's blurred background, flutter_animate's `blur` | `save_layer_filtered` |
 | `BackdropFilter`, `pushBackdropFilter` | the backdrop behind its dialogs | `save_layer_backdrop` |
 | `ShaderMask`, `pushShaderMask` | flutter_animate's `shimmer` | a layer with a shader and a blend |
 | `Canvas.drawVertices` | the time range on the artifact search | `draw_vertices` |
-| `pushColorFilter` | `ColorFiltered` | a layer's color filter |
 
 Then: `flutter/platform` methods answered (haptics, orientations) and
 `flutter/navigation` (go_router's route reports); the network images over

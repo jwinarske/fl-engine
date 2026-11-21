@@ -1,0 +1,14 @@
+# color_filters.png, rendered by the stock engine's flutter_tester with
+# Impeller, against fl-engine's frame through emblema, both at DPR 2.
+# Percent of pixels allowed to differ in any channel, and by more than 32.
+#
+# Every filter kind on a shape's paint, an image, text and saveLayer, and as
+# a layer. What differs by more than 32 is glyph edges, as in text.png. What
+# differs by less is everywhere a gradient is, where the two dither apart,
+# and the advanced modes' arithmetic, a few levels. Filters not affine in
+# color are drawn over a solid square: Impeller filters a gradient's stops
+# and emblema its pixels (docs/wonderous.md). Measured 2026-11-20, lavapipe,
+# emblema with its color filter before coverage (jwinarske/emblema#275):
+# 16.045% differ, 0.110% by more than 32.
+differ 18.0
+differ_over_32 0.2

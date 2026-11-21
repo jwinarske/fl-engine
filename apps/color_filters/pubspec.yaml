@@ -1,0 +1,11 @@
+name: color_filters
+description: fl-engine test program. dart:ui's color filters on paints, images, text, saveLayer and layers.
+publish_to: none
+environment:
+  sdk: ^3.13.0
+dependencies:
+  flutter:
+    sdk: flutter
+dev_dependencies:
+  flutter_test:
+    sdk: flutter

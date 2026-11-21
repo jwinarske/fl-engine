@@ -10,6 +10,7 @@ use std::sync::{Arc, Mutex};
 
 use fl_dart_ffi::{args, guard, peer, sys};
 
+use crate::color_filter::{self, ColorFilter};
 use crate::gradient::{gradient_of, Gradient};
 use crate::image::{image_of, image_shader_of, ImageData, ImageShader};
 use crate::path::{self, Path, RRect};
@@ -170,9 +171,9 @@ pub enum Join {
 
 /// A dart:ui `Paint`: its `ByteData`, 68 bytes in the layout
 /// painting.dart:1328-1365 declares, and its objects list. Of the objects,
-/// an `ImageShader` or a `Gradient` is decoded ([`Paint::shader`]); any
-/// other shader, and color and image filters, are not yet, and
-/// [`Paint::objects`] says one was set.
+/// an `ImageShader` or a `Gradient` is decoded ([`Paint::shader`]), and a
+/// color filter ([`Paint::color_filter`]); any other shader, and an image
+/// filter, are not yet, and [`Paint::objects`] says one was set.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Paint {
     /// Straight (not premultiplied) red, green, blue, alpha, 0 to 1, in
@@ -194,10 +195,11 @@ pub struct Paint {
     /// A blur mask filter: its `BlurStyle` index and sigma.
     pub mask_blur: Option<(i32, f32)>,
     pub invert_colors: bool,
-    /// A shader other than an image shader or a gradient, a color filter
-    /// or an image filter is set.
+    /// A shader other than an image shader or a gradient, or an image
+    /// filter, is set, or a color filter that kept no filter.
     pub objects: bool,
     pub shader: Option<Shader>,
+    pub color_filter: Option<Arc<ColorFilter>>,
 }
 
 /// A paint's shader, of the kinds fl-ui reads.
@@ -226,6 +228,7 @@ impl Default for Paint {
             invert_colors: false,
             objects: false,
             shader: None,
+            color_filter: None,
         }
     }
 }
@@ -270,6 +273,7 @@ impl Paint {
             invert_colors: i32_at(16)? != 0,
             objects: false,
             shader: None,
+            color_filter: None,
         })
     }
 }
@@ -419,50 +423,58 @@ pub(crate) unsafe fn paint(objects: sys::Dart_Handle, data: sys::Dart_Handle) ->
         Paint::default()
     });
     // SAFETY: as above.
-    let (shader, objects) = unsafe { paint_objects(objects) };
+    let (shader, color_filter, objects) = unsafe { paint_objects(objects) };
     Paint {
         objects,
         shader,
+        color_filter,
         ..p
     }
 }
 
 /// A paint's objects list, `[shader, colorFilter, imageFilter]`
 /// (painting.dart `_kShaderIndex` and on): the shader, if it is an image
-/// shader or a gradient, and whether anything else is set.
+/// shader or a gradient, the color filter, and whether anything else is
+/// set.
 ///
 /// # Safety
 /// As [`fl_dart_ffi::args::bytes`].
-unsafe fn paint_objects(objects: sys::Dart_Handle) -> (Option<Shader>, bool) {
+unsafe fn paint_objects(
+    objects: sys::Dart_Handle,
+) -> (Option<Shader>, Option<Arc<ColorFilter>>, bool) {
     // SAFETY: per this function's contract.
     unsafe {
         if !args::any_non_null(objects) {
-            return (None, false);
+            return (None, None, false);
         }
         let mut n: isize = 0;
         if sys::Dart_IsError(sys::Dart_ListLength(objects, &mut n)) {
-            return (None, true);
+            return (None, None, true);
         }
         let mut shader = None;
+        let mut color_filter = None;
         let mut other = false;
         for i in 0..n {
             let o = sys::Dart_ListGetAt(objects, i);
             if sys::Dart_IsError(o) || sys::Dart_IsNull(o) {
                 continue;
             }
-            let read = (i == 0)
-                .then(|| {
-                    image_shader_of(o)
-                        .map(Shader::Image)
-                        .or_else(|| gradient_of(o).map(Shader::Gradient))
-                })
-                .flatten();
-            match read {
-                Some(s) => shader = Some(s),
-                None => other = true,
+            match i {
+                0 => match image_shader_of(o)
+                    .map(Shader::Image)
+                    .or_else(|| gradient_of(o).map(Shader::Gradient))
+                {
+                    Some(s) => shader = Some(s),
+                    None => other = true,
+                },
+                1 => match color_filter::of(o) {
+                    Some(f) => color_filter = Some(f),
+                    None => other = true,
+                },
+                _ => other = true,
             }
         }
-        (shader, other)
+        (shader, color_filter, other)
     }
 }
 
