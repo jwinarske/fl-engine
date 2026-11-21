@@ -3,8 +3,9 @@
 # MaterialIcons from the Flutter cache. Percent of pixels allowed to differ
 # in any channel, and by more than 32.
 #
-# Over 32 only at glyph edges: the rasterizers' hinting and coverage
-# (text.tolerance). Measured 2026-11-01, lavapipe: 1.259% differ, 0.175%
-# by more than 32; unhinted on whole pixels it was 1.423% and 0.550%.
+# At glyph edges: the rasterizers' coverage (text.tolerance). Measured
+# 2026-11-20, lavapipe: 1.187% differ, none by more than 32; with the
+# fonts' own TrueType hinting, as before, 1.259% and 0.175%, and unhinted
+# on whole pixels 1.423% and 0.550%.
 differ 1.7
-differ_over_32 0.3
+differ_over_32 0.05

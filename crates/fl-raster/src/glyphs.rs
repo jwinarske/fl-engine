@@ -16,8 +16,14 @@
 //! Glyphs too large for the atlas, and text whose paint has a shader or a
 //! stroke, are drawn as their outlines, as Impeller draws them as paths.
 //!
-//! As Impeller's: hinted (skrifa, through swash; Skia's is slight), and
-//! on a quarter pixel across, the pen's fraction biased by an eighth
+//! As Impeller's: hinted as Skia hints for it, `kSlight`, which its FreeType
+//! port loads with `FT_LOAD_TARGET_LIGHT`, and so with the auto-hinter
+//! whatever instructions the font carries: skrifa's port of that hinter, in
+//! its light mode, the outlines snapped up and down only. A font's own
+//! TrueType instructions are not run. They were, through swash, until
+//! 2026-11-20: further from Impeller's glyphs, and dear for a font with many,
+//! Noto Sans's a frame of `text_churn` 28 ms on a VisionFive 2 where Roboto's
+//! was 8. On a quarter pixel across, the pen's fraction biased by an eighth
 //! (`ComputeFractionalPosition`), each quarter its own glyph in the atlas;
 //! down, on a whole pixel. Text under a rotation or a skew is on whole
 //! pixels, as Impeller's subpixel axis is the device's x.
@@ -32,8 +38,13 @@ use emblema::{
     Vec2,
 };
 use fl_text::paint::GlyphRun;
-use swash::scale::{Render, ScaleContext, Source};
-use swash::zeno::{Format, Verb};
+use skrifa::instance::Size;
+use skrifa::outline::{
+    Engine, GlyphStyles, HintingInstance, HintingOptions, OutlinePen, SmoothMode, Target,
+};
+use skrifa::MetadataProvider;
+use swash::scale::ScaleContext;
+use swash::zeno::{Command, Format, Mask, Origin, Scratch, Verb};
 use swash::FontRef;
 
 use crate::RasterError;
@@ -160,6 +171,16 @@ pub struct Glyphs {
     /// Glyphs no page had room for this frame, drawn as outlines.
     refused: std::collections::HashSet<GlyphKey>,
     scaler: RefCell<ScaleContext>,
+    /// What the auto-hinter finds of each face's glyphs, by face: the same
+    /// at every size, and the dearest part of a size's hinting to make.
+    /// Emptied past [`STYLES_KEPT`]: an app run again loads its fonts again,
+    /// each a face of its own.
+    styles: HashMap<u64, GlyphStyles>,
+    /// Hinting set up for a size, by font and size: a frame's runs at one
+    /// size share it, and the frames after. Emptied past [`HINTING_KEPT`].
+    hinting: HashMap<(u64, u16), HintingInstance>,
+    /// The rasterizer's buffers, kept between glyphs.
+    scratch: Scratch,
     /// Atlas writes to the device, for the soak lane.
     uploads: u64,
     _raster_thread: PhantomData<*const ()>,
@@ -174,6 +195,9 @@ impl Default for Glyphs {
             placed: HashMap::new(),
             refused: std::collections::HashSet::new(),
             scaler: RefCell::new(ScaleContext::new()),
+            styles: HashMap::new(),
+            hinting: HashMap::new(),
+            scratch: Scratch::new(),
             uploads: 0,
             _raster_thread: PhantomData,
         }
@@ -189,6 +213,52 @@ fn font_key(run: &GlyphRun) -> u64 {
         v.to_bits().hash(&mut h);
     }
     h.finish()
+}
+
+/// How many sizes' hinting [`Glyphs`] keeps before it starts again. A
+/// screen of text uses a few; text that changes size every frame, as
+/// `text_churn`'s does, makes one a frame.
+const HINTING_KEPT: usize = 64;
+
+/// How many faces' glyph styles [`Glyphs`] keeps before it starts again:
+/// more than a screen uses, few enough that faces no longer drawn, an app's
+/// run before, are not kept for long. A face's are the size of its glyph
+/// count.
+const STYLES_KEPT: usize = 16;
+
+/// A run's face, whatever its variations: what the auto-hinter's glyph
+/// styles are kept by.
+fn face_key(run: &GlyphRun) -> u64 {
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    run.typeface.face.id.hash(&mut h);
+    h.finish()
+}
+
+/// A glyph's outline as the rasterizer takes it.
+#[derive(Default)]
+struct Commands(Vec<Command>);
+
+impl OutlinePen for Commands {
+    fn move_to(&mut self, x: f32, y: f32) {
+        self.0.push(Command::MoveTo([x, y].into()));
+    }
+    fn line_to(&mut self, x: f32, y: f32) {
+        self.0.push(Command::LineTo([x, y].into()));
+    }
+    fn quad_to(&mut self, cx0: f32, cy0: f32, x: f32, y: f32) {
+        self.0
+            .push(Command::QuadTo([cx0, cy0].into(), [x, y].into()));
+    }
+    fn curve_to(&mut self, cx0: f32, cy0: f32, cx1: f32, cy1: f32, x: f32, y: f32) {
+        self.0.push(Command::CurveTo(
+            [cx0, cy0].into(),
+            [cx1, cy1].into(),
+            [x, y].into(),
+        ));
+    }
+    fn close(&mut self) {
+        self.0.push(Command::Close);
+    }
 }
 
 /// The device size a run's glyphs show at, under `m`'s scale: the larger
@@ -353,18 +423,51 @@ impl Glyphs {
         if missing.is_empty() {
             return;
         }
+        if self.hinting.len() >= HINTING_KEPT {
+            self.hinting.clear();
+        }
+        if self.styles.len() >= STYLES_KEPT && !self.styles.contains_key(&face_key(run)) {
+            // The kept hinting holds the styles too.
+            self.styles.clear();
+            self.hinting.clear();
+        }
         let (data, index) = run.typeface.face.data();
-        let Some(fref) = FontRef::from_index(data.as_slice(), index as usize) else {
+        let Ok(fref) = skrifa::FontRef::from_index(data.as_slice(), index) else {
             return;
         };
-        let mut ctx = self.scaler.borrow_mut();
-        let vars: Vec<([u8; 4], f32)> = run.typeface.variations.iter().copied().collect();
-        let mut scaler = ctx
-            .builder(fref)
-            .size(px)
-            .hint(true)
-            .variations(vars.iter())
-            .build();
+        let outlines = fref.outline_glyphs();
+        let location = fref.axes().location(
+            run.typeface
+                .variations
+                .iter()
+                .map(|(tag, v)| (skrifa::Tag::new(tag), *v)),
+        );
+        // Out of the map while the glyphs are drawn, and back after.
+        let size_key = (font, px as u16);
+        let hinting = match self.hinting.remove(&size_key) {
+            Some(kept) => kept,
+            None => {
+                let styles = self
+                    .styles
+                    .entry(face_key(run))
+                    .or_insert_with(|| GlyphStyles::new(&outlines))
+                    .clone();
+                let options = HintingOptions {
+                    engine: Engine::Auto(Some(styles)),
+                    target: Target::Smooth {
+                        mode: SmoothMode::Light,
+                        symmetric_rendering: true,
+                        preserve_linear_metrics: false,
+                    },
+                };
+                let Ok(made) = HintingInstance::new(&outlines, Size::new(px), &location, options)
+                else {
+                    return;
+                };
+                made
+            }
+        };
+        let mut path = Commands::default();
         for (key, glyph, q) in missing {
             // Twice in the run: placed, or refused, the first time.
             if self.cache.atlas.get(key).is_some()
@@ -373,19 +476,28 @@ impl Glyphs {
             {
                 continue;
             }
-            let Some(img) = Render::new(&[Source::Outline])
-                .format(Format::Alpha)
-                .offset(swash::zeno::Vector::new(f32::from(q) / 4.0, 0.0))
-                .render(&mut scaler, glyph)
-            else {
+            path.0.clear();
+            let drawn = outlines
+                .get(skrifa::GlyphId::new(u32::from(glyph)))
+                .map(|outline| outline.draw(&hinting, &mut path));
+            if !matches!(drawn, Some(Ok(_))) {
                 self.refused.insert(key);
                 continue;
-            };
-            let p = img.placement;
+            }
+            // Font space, y up, in pixels; moved by the quarter it is on.
+            let offset = swash::zeno::Vector::new(f32::from(q) / 4.0, 0.0);
+            let mut texels = Vec::new();
+            let p = Mask::with_scratch(&path.0[..], &mut self.scratch)
+                .format(Format::Alpha)
+                .origin(Origin::BottomLeft)
+                .offset(offset)
+                .render_offset(offset)
+                .inspect(|fmt, w, h| texels.resize(fmt.buffer_size(w, h), 0))
+                .render_into(&mut texels[..], None);
             let coverage = Coverage {
                 width: p.width,
                 height: p.height,
-                texels: img.data,
+                texels,
             };
             if Self::insert(
                 &mut self.cache,
@@ -409,6 +521,7 @@ impl Glyphs {
                 self.refused.insert(key);
             }
         }
+        self.hinting.insert(size_key, hinting);
     }
 
     /// Whether [`Glyphs::upload`] would write, make or free a device image:
