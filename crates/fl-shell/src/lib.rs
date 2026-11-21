@@ -89,6 +89,11 @@ pub fn prepare(s: &mut HandleScope<'_>, view: &ViewConfig) -> Result<(), DartErr
     let dprs = s.new_f64_list(&[view.device_pixel_ratio])?;
     let rates = s.new_f64_list(&[view.refresh_rate])?;
     s.invoke(ui, "_updateDisplays", &[ids, widths, heights, dprs, rates])?;
+
+    // Last, as the engine binds the plugins in `RunFromLibrary`, the view
+    // and settings already given, just before it runs `main`
+    // (dart_isolate.cc).
+    s.register_dart_plugins()?;
     Ok(())
 }
 

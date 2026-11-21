@@ -177,6 +177,7 @@ On the board:
 * [docs/m4-input.md](docs/m4-input.md) - milestone 4 brief: input, and KMS on the boards
 * [docs/m4-status.md](docs/m4-status.md) - milestone 4 progress and findings
 * [docs/m4-exit.md](docs/m4-exit.md) - milestone 4 exit criteria and their evidence
+* [docs/wonderous.md](docs/wonderous.md) - running Wonderous: what stopped it, and what is next
 * [docs/m1-exit.md](docs/m1-exit.md) - milestone 1 exit criteria and their evidence
 * [docs/m1-status.md](docs/m1-status.md) - decisions and findings since the brief. Newer where they disagree
 * [docs/m1-s15-findings.md](docs/m1-s15-findings.md) - open embedding questions, answered from Dart and Flutter source

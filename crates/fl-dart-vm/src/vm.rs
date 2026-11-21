@@ -68,8 +68,11 @@ impl Vm {
         // every flag false, which is a valid starting state for the struct.
         let mut params: sys::Dart_InitializeParams = unsafe { std::mem::zeroed() };
         params.version = sys::DART_INITIALIZE_PARAMS_CURRENT_VERSION as i32;
-        // No create_group: isolates the VM would create on its own (spawn, the
-        // service, the kernel isolate) are refused, which is what M1 wants.
+        // No create_group: a group the VM would create on its own
+        // (`Isolate.spawnUri`, the service, the kernel isolate) is refused.
+        // An isolate in an existing group (`Isolate.spawn`, `Isolate.run`,
+        // Flutter's `compute`) is set up as its root is.
+        params.initialize_isolate = Some(isolate::on_initialize);
         params.shutdown_isolate = Some(isolate::on_shutdown);
         params.cleanup_isolate = Some(isolate::on_cleanup);
         params.cleanup_group = Some(isolate::on_cleanup_group);

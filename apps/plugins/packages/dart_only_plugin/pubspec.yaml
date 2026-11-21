@@ -1,0 +1,16 @@
+name: dart_only_plugin
+description: fl-engine test plugin. Its Linux implementation is Dart alone, as path_provider_linux's is.
+publish_to: none
+environment:
+  sdk: ^3.13.0
+  # Past 2.11, or Flutter does not take a desktop plugin's inline Dart
+  # class as its own implementation.
+  flutter: ">=3.47.0"
+dependencies:
+  flutter:
+    sdk: flutter
+flutter:
+  plugin:
+    platforms:
+      linux:
+        dartPluginClass: DartOnlyPlugin
