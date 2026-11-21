@@ -23,6 +23,7 @@ mod compositing;
 mod fuzz;
 mod gradient;
 mod image;
+mod image_filter;
 mod json;
 pub mod key;
 mod mouse_cursor;
@@ -44,6 +45,7 @@ pub use image::{
     awaiting_decodes, clear_image_sink, set_image_sink, set_max_image_pixels, ImageData,
     ImageShader,
 };
+pub use image_filter::ImageFilter;
 pub use mouse_cursor::set_mouse_cursor;
 pub use painting::{Cap, ClipOp, Draw, Join, Paint, Picture, Shader, Style};
 pub use path::{Affine, FillType, Path, Point, RRect, Seg};
@@ -169,6 +171,32 @@ pub static NATIVES: &[Symbol] = &[
         "SceneBuilder::pushColorFilter",
         4,
         compositing::push_color_filter
+    ),
+    fl_dart_ffi::symbol!("ImageFilter::Create", 1, image_filter::create),
+    fl_dart_ffi::symbol!("ImageFilter::initBlur", 9, image_filter::init_blur),
+    fl_dart_ffi::symbol!("ImageFilter::initDilate", 3, image_filter::init_dilate),
+    fl_dart_ffi::symbol!("ImageFilter::initErode", 3, image_filter::init_erode),
+    fl_dart_ffi::symbol!("ImageFilter::initMatrix", 3, image_filter::init_matrix),
+    fl_dart_ffi::symbol!(
+        "ImageFilter::initColorFilter",
+        2,
+        image_filter::init_color_filter
+    ),
+    fl_dart_ffi::symbol!(
+        "ImageFilter::initComposeFilter",
+        3,
+        image_filter::init_compose
+    ),
+    fl_dart_ffi::symbol!("ImageFilter::initShader", 2, image_filter::init_shader),
+    fl_dart_ffi::symbol!(
+        "SceneBuilder::pushImageFilter",
+        6,
+        compositing::push_image_filter
+    ),
+    fl_dart_ffi::symbol!(
+        "SceneBuilder::pushBackdropFilter",
+        6,
+        compositing::push_backdrop_filter
     ),
     fl_dart_ffi::symbol!("Gradient::Create", 1, gradient::create),
     fl_dart_ffi::symbol!("Gradient::initLinear", 6, gradient::init_linear),

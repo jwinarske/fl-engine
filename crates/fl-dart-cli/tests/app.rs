@@ -621,7 +621,12 @@ fn text_draws_no_fallback_glyph() {
 }
 
 /// Natives no app reaches yet, and the M3 stage whose programs will.
-const NOT_YET: &[(&str, &str)] = &[];
+const NOT_YET: &[(&str, &str)] = &[
+    // Refused when drawn (fl-raster names them), so no app here can use
+    // one yet; docs/wonderous.md.
+    ("ImageFilter::initMatrix", "a matrix image filter"),
+    ("ImageFilter::initShader", "a fragment shader image filter"),
+];
 
 /// Exit criterion 5: every native fl-ui implements is called by one of the
 /// apps here. `--natives` lists what a run resolved, and the VM resolves a
@@ -630,7 +635,7 @@ const NOT_YET: &[(&str, &str)] = &[];
 #[test]
 #[ignore = "app lane: needs FLUTTER_ROOT"]
 fn every_native_is_called_by_an_app() {
-    let runs: [(&str, &[&str]); 16] = [
+    let runs: [(&str, &[&str]); 17] = [
         ("colored_box", &[]),
         ("shapes", &["--frames", "1"]),
         ("material", &[]),
@@ -647,6 +652,7 @@ fn every_native_is_called_by_an_app() {
         ("gif", &["--frames", "1"]),
         ("gradients", &["1600x1200@2", "--frames", "1"]),
         ("color_filters", &["1600x1200@2", "--frames", "1"]),
+        ("image_filters", &["1600x1200@2", "--frames", "1"]),
     ];
     let mut called = std::collections::BTreeSet::new();
     for (name, opts) in runs {
@@ -817,6 +823,14 @@ fn gradients_matches_its_golden() {
 #[ignore = "app lane: needs FLUTTER_ROOT and a Vulkan driver"]
 fn color_filters_matches_its_golden() {
     matches_golden_at("color_filters", (1600, 1200), 2);
+}
+
+/// dart:ui's image filters, each on a paint, through saveLayer, as a layer
+/// and on a backdrop, against the stock engine's.
+#[test]
+#[ignore = "app lane: needs FLUTTER_ROOT and a Vulkan driver"]
+fn image_filters_matches_its_golden() {
+    matches_golden_at("image_filters", (1600, 1200), 2);
 }
 
 /// Animated GIF and WebP (exit criterion 4): each animation's frame and

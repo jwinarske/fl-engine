@@ -11,6 +11,7 @@ Not published, no versions yet.
 * `Uri.base`, the working directory, as the engine gives it to dart:core
 * `apps/plugins` in the app lane
 * `ColorFilter`, every kind, on a paint, an image, text and `saveLayer`, and `SceneBuilder.pushColorFilter`; `apps/color_filters` against the stock engine's golden
+* `ImageFilter` (blur, dilate, erode, color, compositions) on a paint and through `saveLayer`, `SceneBuilder.pushImageFilter` and `pushBackdropFilter`; `apps/image_filters` against the stock engine's golden
 
 ### Milestone 4: input
 

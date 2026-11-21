@@ -18,6 +18,7 @@ use std::sync::{Arc, Condvar, Mutex};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
+use emblema::ImageFilter;
 use emblema::{
     Affine2, BackendPreference, BlendMode, Canvas, Color, ColorFilter, Context, Extent2D, FillRule,
     Layer, LineCap, LineJoin, MaskBlurStyle, MaterialVariant, MemoryBlocks, Paint as EPaint,
@@ -1056,75 +1057,91 @@ fn raster_main<T: Target>(
 }
 
 /// Walks the layer operations into `canvas`. A `pop` with nothing pushed is
-/// ignored, as the engine's builder ignores it; layers left open are closed.
+/// ignored, as the engine's builder ignores it; layers left open are closed,
+/// and so are they when an operation fails.
 fn replay(canvas: &mut Canvas, scene: &Scene, slots: &mut Slots) -> Result<(), RasterError> {
     let base = canvas.save_depth();
     // The canvas depth before each open layer, so a pop restores exactly
     // what its push saved, a clip's save layer included.
     let mut open: Vec<usize> = Vec::new();
-    for op in &scene.ops {
+    let replayed = scene.ops.iter().try_for_each(|op| {
         if !matches!(op, LayerOp::Pop | LayerOp::AddPicture { .. }) {
             open.push(canvas.save_depth());
             canvas.save();
         }
-        match op {
-            LayerOp::PushTransform(m) => {
-                canvas.concat_4x4(&m.map(|v| v as f32));
-            }
-            LayerOp::PushOffset { dx, dy } => {
-                canvas.translate(*dx as f32, *dy as f32);
-            }
-            LayerOp::PushClipRect { ltrb, clip } => {
-                canvas.clip_rect(rect(*ltrb))?;
-                clip_layer(canvas, *clip);
-            }
-            LayerOp::PushClipRRect { rrect, clip } => {
-                canvas.clip_path(&rrect_path(rrect))?;
-                clip_layer(canvas, *clip);
-            }
-            LayerOp::PushClipPath { path, clip } => {
-                clip_to(canvas, path)?;
-                clip_layer(canvas, *clip);
-            }
-            LayerOp::PushOpacity { alpha, dx, dy } => {
-                canvas.translate(*dx as f32, *dy as f32);
-                canvas.save_layer(Layer::opacity(f32::from(*alpha) / 255.0));
-            }
-            LayerOp::PushColorFilter(filter) => {
-                let filter = filter
-                    .as_deref()
-                    .ok_or_else(|| {
-                        RasterError::Unsupported(
-                            "a color filter layer whose filter did not decode".into(),
-                        )
-                    })
-                    .and_then(color_filter_of);
-                match filter {
-                    Ok(f) => {
-                        canvas.save_layer(Layer::opacity(1.0).with_color_filter(f));
-                    }
-                    Err(e) => {
-                        restore_to(canvas, base);
-                        return Err(e);
-                    }
-                }
-            }
-            LayerOp::AddPicture { dx, dy, picture } => {
-                let depth = canvas.save_depth();
-                canvas.save();
-                canvas.translate(*dx as f32, *dy as f32);
-                let drawn = draw_picture(canvas, picture, slots);
+        replay_op(canvas, op, &mut open, slots)
+    });
+    restore_to(canvas, base);
+    replayed
+}
+
+/// A filter layer whose filter did not decode, named.
+fn undecoded(kind: &str) -> RasterError {
+    RasterError::Unsupported(format!("a {kind} filter layer whose filter did not decode"))
+}
+
+/// One layer operation, its save already made.
+fn replay_op(
+    canvas: &mut Canvas,
+    op: &LayerOp,
+    open: &mut Vec<usize>,
+    slots: &mut Slots,
+) -> Result<(), RasterError> {
+    match op {
+        LayerOp::PushTransform(m) => {
+            canvas.concat_4x4(&m.map(|v| v as f32));
+        }
+        LayerOp::PushOffset { dx, dy } => {
+            canvas.translate(*dx as f32, *dy as f32);
+        }
+        LayerOp::PushClipRect { ltrb, clip } => {
+            canvas.clip_rect(rect(*ltrb))?;
+            clip_layer(canvas, *clip);
+        }
+        LayerOp::PushClipRRect { rrect, clip } => {
+            canvas.clip_path(&rrect_path(rrect))?;
+            clip_layer(canvas, *clip);
+        }
+        LayerOp::PushClipPath { path, clip } => {
+            clip_to(canvas, path)?;
+            clip_layer(canvas, *clip);
+        }
+        LayerOp::PushOpacity { alpha, dx, dy } => {
+            canvas.translate(*dx as f32, *dy as f32);
+            canvas.save_layer(Layer::opacity(f32::from(*alpha) / 255.0));
+        }
+        LayerOp::PushColorFilter(filter) => {
+            let filter = filter.as_deref().ok_or_else(|| undecoded("color"))?;
+            canvas.save_layer(Layer::opacity(1.0).with_color_filter(color_filter_of(filter)?));
+        }
+        LayerOp::PushImageFilter { filter, dx, dy } => {
+            let filter = image_filter_of(filter.as_deref().ok_or_else(|| undecoded("image"))?)?;
+            canvas.translate(*dx as f32, *dy as f32);
+            canvas.save_layer_filtered(Layer::opacity(1.0), None, &filter)?;
+        }
+        LayerOp::PushBackdropFilter { filter, blend_mode } => {
+            let filter = image_filter_of(filter.as_deref().ok_or_else(|| undecoded("backdrop"))?)?;
+            let layer = Layer::opacity(1.0).with_blend(blend_of(*blend_mode)?);
+            // The region under the current clip, as the engine's backdrop
+            // filter layer filters it: unbounded, emblema filters the whole
+            // frame and composites it into the layer as such.
+            let region = canvas.local_clip_bounds();
+            canvas.save_layer_backdrop(layer, Some(region), &filter)?;
+        }
+        LayerOp::AddPicture { dx, dy, picture } => {
+            let depth = canvas.save_depth();
+            canvas.save();
+            canvas.translate(*dx as f32, *dy as f32);
+            let drawn = draw_picture(canvas, picture, slots);
+            restore_to(canvas, depth);
+            drawn?;
+        }
+        LayerOp::Pop => {
+            if let Some(depth) = open.pop() {
                 restore_to(canvas, depth);
-                drawn?;
-            }
-            LayerOp::Pop => {
-                if let Some(depth) = open.pop() {
-                    restore_to(canvas, depth);
-                }
             }
         }
     }
-    restore_to(canvas, base);
     Ok(())
 }
 
@@ -1163,9 +1180,16 @@ fn draw_one(canvas: &mut Canvas, draw: &Draw, slots: &mut Slots) -> Result<(), R
         }
         Draw::SaveLayer { bounds, paint } => {
             let layer = layer_of(paint)?;
-            match bounds {
-                Some(b) => canvas.save_layer_bounds(layer, rect(*b)),
-                None => canvas.save_layer(layer),
+            match (&paint.image_filter, bounds) {
+                (Some(f), b) => {
+                    canvas.save_layer_filtered(layer, b.map(rect), &image_filter_of(f)?)?;
+                }
+                (None, Some(b)) => {
+                    canvas.save_layer_bounds(layer, rect(*b));
+                }
+                (None, None) => {
+                    canvas.save_layer(layer);
+                }
             };
         }
         Draw::Restore => {
@@ -1398,7 +1422,7 @@ fn image_paint(p: &Paint, base: EPaint, quality: i32) -> Result<EPaint, RasterEr
     }
     // The paint's alpha as its opacity, which survives the shader a
     // nine-slice puts in place of this one.
-    let paint = with_color_filter(with_mask(base, p), p)?
+    let paint = with_image_filter(with_color_filter(with_mask(base, p), p)?, p)?
         .with_sampling(sampling_of(quality))
         .with_opacity(p.color[3]);
     Ok(paint
@@ -1563,6 +1587,7 @@ fn draw_glyphs(
     // as `ShouldRenderAsPath` sends them to paths on Impeller.
     let as_path = paint.shader.is_some()
         || paint.color_filter.is_some()
+        || paint.image_filter.is_some()
         || paint.objects
         || paint.style == Style::Stroke;
     let quads = if as_path {
@@ -1784,6 +1809,50 @@ fn color_filter_of(f: &fl_ui::ColorFilter) -> Result<ColorFilter, RasterError> {
     })
 }
 
+/// dart:ui's image filter as emblema's. A blur's deviations and a
+/// morphology's radii are in the space it is used in, as emblema takes them.
+/// A blur's tile mode is left to emblema, which chooses its edges by what
+/// the filter is applied to, as the engine's dynamic tile mode does (decal
+/// for a layer, mirror for a backdrop). Refused by name: a blur's bounds, a
+/// matrix, and a fragment shader.
+fn image_filter_of(f: &fl_ui::ImageFilter) -> Result<ImageFilter, RasterError> {
+    let unsupported = |what: &str| Err(RasterError::Unsupported(what.into()));
+    match f {
+        fl_ui::ImageFilter::Blur {
+            bounds: Some(_), ..
+        } => unsupported("a blur image filter's bounds"),
+        fl_ui::ImageFilter::Blur {
+            sigma_x, sigma_y, ..
+        } => Ok(ImageFilter::Blur {
+            sigma_x: *sigma_x,
+            sigma_y: *sigma_y,
+        }),
+        fl_ui::ImageFilter::Dilate { radius_x, radius_y } => Ok(ImageFilter::Dilate {
+            radius_x: *radius_x,
+            radius_y: *radius_y,
+        }),
+        fl_ui::ImageFilter::Erode { radius_x, radius_y } => Ok(ImageFilter::Erode {
+            radius_x: *radius_x,
+            radius_y: *radius_y,
+        }),
+        fl_ui::ImageFilter::Matrix { .. } => unsupported("a matrix image filter"),
+        fl_ui::ImageFilter::Color(c) => Ok(ImageFilter::Color(color_filter_of(c)?)),
+        fl_ui::ImageFilter::Compose { outer, inner, .. } => Ok(ImageFilter::compose(
+            image_filter_of(outer)?,
+            image_filter_of(inner)?,
+        )),
+        fl_ui::ImageFilter::Shader => unsupported("a fragment shader image filter"),
+    }
+}
+
+/// `paint` with `p`'s image filter, if it has one.
+fn with_image_filter(paint: EPaint, p: &Paint) -> Result<EPaint, RasterError> {
+    Ok(match &p.image_filter {
+        Some(f) => paint.with_image_filter(image_filter_of(f)?),
+        None => paint,
+    })
+}
+
 /// `paint` with `p`'s color filter, if it has one.
 fn with_color_filter(paint: EPaint, p: &Paint) -> Result<EPaint, RasterError> {
     Ok(match &p.color_filter {
@@ -1821,9 +1890,11 @@ fn paint_of(p: &Paint, slots: &mut Slots) -> Result<EPaint, RasterError> {
             miter_limit: p.stroke_miter_limit,
         })),
     };
-    Ok(with_color_filter(with_mask(paint, p), p)?
-        .with_blend(blend_of(p.blend_mode)?)
-        .with_anti_alias(p.anti_alias))
+    Ok(
+        with_image_filter(with_color_filter(with_mask(paint, p), p)?, p)?
+            .with_blend(blend_of(p.blend_mode)?)
+            .with_anti_alias(p.anti_alias),
+    )
 }
 
 /// `paint` with `p`'s blur mask filter, if it has one.
