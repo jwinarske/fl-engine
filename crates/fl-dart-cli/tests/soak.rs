@@ -67,6 +67,18 @@ impl std::fmt::Debug for Report {
     }
 }
 
+#[cfg(feature = "aot")]
+impl Report {
+    /// One of the line's lists, `key=a,b,...`, in order; empty if absent.
+    fn list(&self, key: &str) -> Vec<u64> {
+        self.line
+            .split_whitespace()
+            .find_map(|kv| kv.strip_prefix(key)?.strip_prefix('='))
+            .map(|list| list.split(',').filter_map(|v| v.parse().ok()).collect())
+            .unwrap_or_default()
+    }
+}
+
 /// The report a leak-harness command prints, from `args`.
 fn report(args: &[&std::ffi::OsStr]) -> Report {
     // One malloc arena. With glibc's default, burst's threads land in new
@@ -116,12 +128,7 @@ const DART_HEAP_STEP_LIMIT_KB: u64 = 2048;
 /// heap held to a step of its own.
 #[cfg(feature = "aot")]
 fn growth_apart_from_dart(r: &Report) -> (u64, u64) {
-    let dart: Vec<u64> = r
-        .line
-        .split_whitespace()
-        .find_map(|kv| kv.strip_prefix("rss_dart_tenths_kb="))
-        .map(|list| list.split(',').filter_map(|v| v.parse().ok()).collect())
-        .unwrap_or_default();
+    let dart = r.list("rss_dart_tenths_kb");
     let (first, last) = (
         dart.first().copied().unwrap_or(0),
         dart.last().copied().unwrap_or(0),
@@ -350,6 +357,12 @@ fn soak(name: &'static str, cycles: u32, per_cycle: u64, opts: &[&str], draw: bo
 /// * text_churn: 100 frames a cycle of text never the same, 10,000 in all;
 ///   the atlas evicts, stays within its limit, and so do the placements
 ///   kept beside it
+///
+/// RSS is held from the second of the ten samples, not the first. text's
+/// malloc heap steps up once between them, in some runs and not others,
+/// and is flat after it: in CI 3.3 MB at the second tenth, then within
+/// 200 kB to the end, with descriptors, threads and GPU images unchanged.
+/// Measured from the first, that step failed CI now and then, last on #84.
 #[cfg(feature = "aot")]
 #[test]
 #[ignore = "soak lane: needs FLUTTER_ROOT"]
@@ -396,10 +409,15 @@ fn app_cycles_stay_flat() {
         args.extend(opts.iter().map(std::ffi::OsStr::new));
         let r = report(&args);
         assert_eq!(r["frames"], u64::from(n) * per_cycle, "{name}: {r:?}");
-        let growth = r["rss_end_kb"].saturating_sub(r["rss_tenth_kb"]);
+        // From the second sample, a fifth of the way in: see the note on
+        // this test. A leak grows with the cycles, and over the last eight
+        // tenths 512 kB is still about 2 kB a cycle at 300.
+        let tenths = r.list("rss_tenths_kb");
+        let from = tenths.get(1).copied().unwrap_or(r["rss_tenth_kb"]);
+        let growth = r["rss_end_kb"].saturating_sub(from);
         assert!(
             growth <= RSS_GROWTH_LIMIT_KB,
-            "{name}: RSS grew {growth} kB over the last nine tenths of {n} cycles: {r:?}"
+            "{name}: RSS grew {growth} kB over the last eight tenths of {n} cycles: {r:?}"
         );
         assert_eq!(
             r["fds_end"], r["fds_warm"],
