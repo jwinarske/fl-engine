@@ -1060,6 +1060,16 @@ fn path_ops_matches_its_golden() {
     matches_golden_at("path_ops", (1600, 1200), 2);
 }
 
+/// The fifteen advanced blend modes, each on a solid paint, a gradient's
+/// rounded rectangle and a layer, over a destination partly translucent.
+/// No device here blends them in its blend unit (lavapipe's is left unused
+/// since emblema 0.4.2), so this is the in-shader path every board draws.
+#[test]
+#[ignore = "app lane: needs FLUTTER_ROOT"]
+fn blend_modes_matches_its_golden() {
+    matches_golden_at("blend_modes", (1600, 1200), 2);
+}
+
 /// Animated GIF and WebP (exit criterion 4): each animation's frame and
 /// repetition counts and every frame's size and duration, the first again
 /// after the last, as the stock engine gives them (test/report.txt, from
