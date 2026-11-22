@@ -1,0 +1,11 @@
+name: blend_modes
+description: fl-engine test program. dart:ui's fifteen advanced blend modes, on a paint and on a layer.
+publish_to: none
+environment:
+  sdk: ^3.13.0
+dependencies:
+  flutter:
+    sdk: flutter
+dev_dependencies:
+  flutter_test:
+    sdk: flutter

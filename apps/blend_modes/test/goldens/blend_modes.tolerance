@@ -1,0 +1,14 @@
+# blend_modes.png, rendered by the stock engine's flutter_tester with Impeller,
+# against fl-engine's frame through emblema, both at DPR 2.
+# Percent of pixels allowed to differ in any channel, and by more than 32.
+#
+# The fifteen advanced blend modes, each on a solid circle, a gradient's
+# rounded rectangle and a layer of two shapes, over a gradient with a
+# translucent band. emblema blends them in the shader, against a copy of
+# what is under each draw. Most pixels differ by a level or two: the
+# gradients' dither and their interpolation, as in gradients.tolerance. What
+# differs by more is antialiased edges, and Impeller's own seams across the
+# circles. Measured 2026-11-22: lavapipe 24.962% differ, 0.017% by more than
+# 32; radv 26.983%, 0.017%.
+differ 35
+differ_over_32 0.1
