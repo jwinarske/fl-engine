@@ -21,6 +21,7 @@ Not published, no versions yet.
 * fl-raster says its first failed frame when it happens: a display run that stopped drawing looked hung until it ended
 * `url_launcher_linux`'s two calls answered by fl-ui through a platform's launcher, by ivi-homescreen-plugins' rules: six schemes, `xdg-open` and its exit status, waited for off the UI thread with the reply sent when it exits. `run-app --open-urls` sets it; without it none is opened
 * `build.sh` writes the app's `version.json` and lays the app out as a Linux bundle, which `run-app` takes: `package_info_plus` finds the app's version beside a copy of `fl-dart` in it
+* Every Wonderous screen drawn, by scripted tours: the timeline, the menu, the collection, the About dialog with the app's version, the artifact search and details, the photo viewer. Its videos fail on any Linux, the app making a web view controller with no Linux implementation (`docs/wonderous.md`)
 
 ### Milestone 4: input
 

@@ -288,9 +288,35 @@ emblema, taken with 0.4.0:
 fl-raster now says its first failed frame as it happens, not only when the
 run ends: a display run that stops drawing is no longer silent.
 
+## Every screen
+
+The rest of the app, by scripted tours offscreen at 1280x720 (2026-11-21,
+Wonderous `30ccc36`), each from fresh preferences: the global timeline
+(opened from a wonder's events, and dragged), the wonder menu over its
+blurred home, the collection, the About dialog, the artifact search and its
+time-range selector, an artifact's details over HTTPS, the photo gallery's
+full-screen viewer, and the home screen through each wonder. Each is drawn
+with nothing refused and nothing thrown. Run from its bundle with `fl-dart`
+in it, the About dialog shows the app's version (2.2.7). The menu's
+language button draws 简 in the system's fallback font (Droid Sans
+Fallback); Wonderous bundles no font with it.
+
+**The videos fail, on any Linux.** A wonder's editorial links a YouTube
+video. On a desktop Wonderous means to show a placeholder in the player's
+place (`fullscreen_video_viewer.dart`: `PlatformInfo.isMobile || kIsWeb`),
+but it makes the `YoutubePlayerController` first, in `initState`, and that
+makes a `webview_flutter` `NavigationDelegate`, which needs a
+`WebViewPlatform` registered. `webview_flutter` has no Linux
+implementation, so the controller throws (`Null check operator used on a
+null value`, `PlatformNavigationDelegate`) and the viewer is never drawn.
+The same happens under the stock Linux embedder: it is the app's, and no
+engine can register a platform implementation the app does not depend on.
+A web view for Linux exists as a platform view (ivi-homescreen-plugins'
+`webview_flutter_view`, Chromium Embedded Framework); fl-engine has no
+platform views yet, and this is to be looked at again when it does.
+
 ## Next
 
-The rest of Wonderous's screens: the timeline, the collection, the
-artifact search and details, the wonder menu. `prepare` building the
-shader variants that blend in the shader, so a board's first editorial
-does not wait on them.
+`prepare` building the shader variants that blend in the shader, so a
+board's first editorial does not wait on them. Then platform views, and
+with them the video.
