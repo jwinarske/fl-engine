@@ -22,6 +22,7 @@ Not published, no versions yet.
 * `url_launcher_linux`'s two calls answered by fl-ui through a platform's launcher, by ivi-homescreen-plugins' rules: six schemes, `xdg-open` and its exit status, waited for off the UI thread with the reply sent when it exits. `run-app --open-urls` sets it; without it none is opened
 * `build.sh` writes the app's `version.json` and lays the app out as a Linux bundle, which `run-app` takes: `package_info_plus` finds the app's version beside a copy of `fl-dart` in it
 * Every Wonderous screen drawn, by scripted tours: the timeline, the menu, the collection, the About dialog with the app's version, the artifact search and details, the photo viewer. Its videos fail on any Linux, the app making a web view controller with no Linux implementation (`docs/wonderous.md`)
+* `fl-dart prepare` builds the advanced blend modes' in-shader pipelines too, on a device whose blend unit has none: a Pi 4's first `colorBurn` no longer stalls about 630 ms building one. emblema 0.4.1 builds the ones the draws use, where 0.4.0 built source-over ones
 
 ### Milestone 4: input
 
