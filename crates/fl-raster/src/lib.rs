@@ -473,7 +473,11 @@ impl Offscreen {
     /// source-over at one sample and at the canvas's four, with and without
     /// a clip, for solid colors, gradients and glyphs, for rounded
     /// rectangles and shadows, and for images and layers; and a clip's mask.
-    /// Otherwise the first frame builds them: on a Pi 5 with Mesa's shader
+    /// On a device without advanced blending, those three again blending in
+    /// the shader, for the advanced modes: on a Pi 4 with Mesa's shader cache
+    /// empty about 630 ms each a format, which the first such draw paid,
+    /// taking `prepare` from 2.9 s to 8.6 s once and leaving it at 150 ms
+    /// once the pipelines are kept. Otherwise the first frame builds them: on a Pi 5 with Mesa's shader
     /// cache empty 57 ms a sample count since emblema#247, which compiles
     /// the core variant of its shader, 1.8 s before (m3-status.md,
     /// first-use compiles). For `fl-dart prepare`, which
@@ -482,6 +486,11 @@ impl Offscreen {
     /// without it is correct.
     pub fn prepare(&mut self) -> Result<(), RasterError> {
         let ctx = &mut self.device.ctx;
+        // Where the blend unit has no advanced modes, a `colorBurn` or a
+        // `luminosity` draws with the variant that reads its destination
+        // (see `record`), whatever the mode: one more each for what those
+        // draws are filled with. Where it has them, nothing draws with it.
+        let in_shader = !ctx.capabilities().advanced_blend;
         // A pipeline is built for its target's format, and a driver's cache
         // may keep it by that: this target's and a display's.
         for format in [
@@ -498,6 +507,20 @@ impl Offscreen {
                     ..ShaderVariant::CORE
                 };
                 ctx.prepare_variant(format, CANVAS_SAMPLES, variant)?;
+            }
+            if in_shader {
+                for material in [
+                    MaterialVariant::Core,
+                    MaterialVariant::Shape,
+                    MaterialVariant::Image,
+                ] {
+                    let variant = ShaderVariant {
+                        material,
+                        reads_destination: true,
+                        ..ShaderVariant::CORE
+                    };
+                    ctx.prepare_variant(format, CANVAS_SAMPLES, variant)?;
+                }
             }
         }
         self.device.save_pipelines();
