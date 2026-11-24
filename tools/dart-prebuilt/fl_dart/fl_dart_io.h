@@ -9,6 +9,7 @@
 #define FL_DART_IO_H_
 
 #include <stdbool.h>
+#include <stdint.h>
 
 #include "dart_api.h"
 
@@ -22,6 +23,16 @@ DART_EXPORT void fl_dart_io_bootstrap(void);
 
 // Process-wide: stops what bootstrap started. Once, after Dart_Cleanup.
 DART_EXPORT void fl_dart_io_cleanup(void);
+
+// Process-wide: how many of dart:io's blocking operations (files,
+// directories, DNS lookups, process launches) may run at once, each on a
+// VM worker thread. The SDK's default is 32. Takes effect only if called
+// before the first such operation, which creates the port that reads it, so
+// call it before Dart_Initialize. Values below 1 are taken as 1.
+DART_EXPORT void fl_dart_io_set_max_concurrency(intptr_t max_concurrency);
+
+// The value fl_dart_io_set_max_concurrency last set, or the SDK's default.
+DART_EXPORT intptr_t fl_dart_io_max_concurrency(void);
 
 // Per isolate: resolves dart:io's natives and runs its _setupHooks (timers,
 // event handler). Requires a current isolate with an open scope, after the
