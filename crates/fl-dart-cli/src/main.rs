@@ -3,7 +3,7 @@
 //! ```text
 //! fl-dart run hello.dill [args...]       # JIT, dev hosts (--features jit)
 //! fl-dart run-aot hello.aot [args...]    # precompiled runtime, every target
-//! fl-dart run-app libapp.so [WxH[@dpr]] [--assets DIR] [--png out.png] [--frames-dir DIR] [--ops] [--natives] [--styles] [--font FAMILY=PATH]... [--message CHANNEL[=TEXT]]... [--input SCRIPT] [--keymap LAYOUT[:VARIANT]] [--compose LOCALE] [--frames N] [--hz H] [--times] [--open-urls] [--kms [--connector NAME] [--mode WxH[@HZ]] [--capture out.png]]
+//! fl-dart run-app libapp.so [WxH[@dpr]] [--assets DIR] [--png out.png] [--frames-dir DIR] [--ops] [--natives] [--styles] [--font FAMILY=PATH]... [--message CHANNEL[=TEXT]]... [--input SCRIPT] [--keymap LAYOUT[:VARIANT]] [--compose LOCALE] [--frames N] [--hz H] [--times] [--open-urls] [--io-concurrency N] [--kms [--connector NAME] [--mode WxH[@HZ]] [--capture out.png]]
 //!                                       # a Flutter app, through dart:ui (M2);
 //!                                       # JIT takes the app's kernel instead
 //! fl-dart app-cycle libapp.so <n> [run-app options]
@@ -117,7 +117,7 @@ fn usage() -> ExitCode {
         "libapp.so"
     };
     eprintln!(
-        "       fl-dart run-app <{app}> [WxH[@dpr]] [--assets DIR] [--png out.png] [--frames-dir DIR] [--ops] [--natives] [--styles] [--font FAMILY=PATH]... [--message CHANNEL[=TEXT]]... [--input SCRIPT] [--keymap LAYOUT[:VARIANT]] [--compose LOCALE] [--frames N] [--hz H] [--times] [--open-urls] [--kms [--connector NAME] [--mode WxH[@HZ]] [--capture out.png]]\n       fl-dart app-cycle <{app}> <n> [run-app options]\n       fl-dart prepare"
+        "       fl-dart run-app <{app}> [WxH[@dpr]] [--assets DIR] [--png out.png] [--frames-dir DIR] [--ops] [--natives] [--styles] [--font FAMILY=PATH]... [--message CHANNEL[=TEXT]]... [--input SCRIPT] [--keymap LAYOUT[:VARIANT]] [--compose LOCALE] [--frames N] [--hz H] [--times] [--open-urls] [--io-concurrency N] [--kms [--connector NAME] [--mode WxH[@HZ]] [--capture out.png]]\n       fl-dart app-cycle <{app}> <n> [run-app options]\n       fl-dart prepare"
     );
     ExitCode::from(64)
 }
@@ -146,8 +146,14 @@ impl From<DartError> for Failure {
 /// The VM, checked against the version the bindings and snapshots assume.
 /// A VM that is not the pinned one is refused before anything is loaded into
 /// it; this is the run-time half of the build script's VERSION check.
-fn start_vm() -> Result<Vm, Failure> {
-    let vm = Vm::init(VmConfig::default()).map_err(|e| Failure::Other(e.to_string()))?;
+/// The VM, dart:io's blocking calls limited to `io_concurrency` at once, or
+/// to [`fl_dart_vm::default_io_concurrency`] with `None`.
+fn start_vm(io_concurrency: Option<usize>) -> Result<Vm, Failure> {
+    let cfg = VmConfig {
+        io_concurrency,
+        ..VmConfig::default()
+    };
+    let vm = Vm::init(cfg).map_err(|e| Failure::Other(e.to_string()))?;
     let v = vm.version_string();
     let pinned = fl_dart_vm::sys::DART_SDK_VERSION;
     if v.split_whitespace().next() != Some(pinned) {
@@ -162,7 +168,7 @@ fn start_vm() -> Result<Vm, Failure> {
 #[cfg(feature = "jit")]
 fn run_kernel(path: &str, args: &[&str]) -> Result<(), Failure> {
     let dill = std::fs::read(path).map_err(|e| Failure::Other(format!("{path}: {e}")))?;
-    let vm = start_vm()?;
+    let vm = start_vm(None)?;
     // Dropped before `vm`: no poster is in the VM when it is cleaned up.
     let _posters = ffi::Posters;
     let mut isolate = vm.isolate_from_kernel(&dill, config(path))?;
@@ -174,7 +180,7 @@ fn run_kernel(path: &str, args: &[&str]) -> Result<(), Failure> {
 #[cfg(feature = "aot")]
 fn run_aot(path: &str, args: &[&str]) -> Result<(), Failure> {
     let snapshot = std::sync::Arc::new(fl_dart_vm::AotSnapshot::open(path.as_ref())?);
-    let vm = start_vm()?;
+    let vm = start_vm(None)?;
     // Dropped before `vm`: no poster is in the VM when it is cleaned up.
     let _posters = ffi::Posters;
     let mut isolate = vm.isolate_from_aot(&snapshot, config(path))?;
@@ -193,7 +199,7 @@ fn run_app(path: &str, mut app: AppArgs) -> Result<(), Failure> {
     let program = load_app(path)?;
     set_assets(path, &app)?;
     fl_ui::set_style_report(app.styles);
-    let vm = start_vm()?;
+    let vm = start_vm(app.io_concurrency)?;
     // Dropped before `vm`: no poster is in the VM when it is cleaned up.
     let _posters = ffi::Posters;
     let (raster, screen) = raster_for(path, &mut app)?;
@@ -243,7 +249,7 @@ fn run_app(path: &str, mut app: AppArgs) -> Result<(), Failure> {
 /// churns too; it is made once, as a device is.
 fn app_cycle(path: &str, n: u32, mut app: AppArgs) -> Result<(), Failure> {
     let program = load_app(path)?;
-    let vm = start_vm()?;
+    let vm = start_vm(app.io_concurrency)?;
     // Dropped before `vm`: no poster is in the VM when it is cleaned up.
     let _posters = ffi::Posters;
     let (raster, _screen) = raster_for(path, &mut app)?;
@@ -1188,9 +1194,12 @@ struct AppArgs {
     /// `--open-urls`: an app's `url_launcher` opens URLs with `xdg-open`;
     /// without it none is opened, and the plugin says so.
     open_urls: bool,
+    /// `--io-concurrency`: how many of dart:io's blocking calls run at
+    /// once; [`fl_dart_vm::default_io_concurrency`] if not given.
+    io_concurrency: Option<usize>,
 }
 
-/// `[WxH[@dpr]] [--assets DIR] [--png out.png] [--frames-dir DIR] [--ops] [--natives] [--styles] [--font FAMILY=PATH]... [--message CHANNEL[=TEXT]]... [--input SCRIPT] [--keymap LAYOUT[:VARIANT]] [--compose LOCALE] [--frames N] [--hz H] [--times] [--open-urls] [--kms [--connector NAME] [--mode WxH[@HZ]] [--capture out.png]]`,
+/// `[WxH[@dpr]] [--assets DIR] [--png out.png] [--frames-dir DIR] [--ops] [--natives] [--styles] [--font FAMILY=PATH]... [--message CHANNEL[=TEXT]]... [--input SCRIPT] [--keymap LAYOUT[:VARIANT]] [--compose LOCALE] [--frames N] [--hz H] [--times] [--open-urls] [--io-concurrency N] [--kms [--connector NAME] [--mode WxH[@HZ]] [--capture out.png]]`,
 /// in any order; no size is the default view. Sizes are physical pixels.
 /// `--assets` names the app's asset bundle; without it, `<app>.assets` beside
 /// the program is used if it is there, as `tools/flutter-app/build.sh` puts
@@ -1200,6 +1209,9 @@ struct AppArgs {
 /// (`package_info_plus` reads `data/flutter_assets/version.json` there)
 /// finds the app's own when fl-dart is copied into the bundle and run from
 /// it. `--open-urls` lets `url_launcher` open URLs with `xdg-open`.
+/// `--io-concurrency` sets how many of dart:io's blocking calls (files,
+/// directories, DNS lookups) run at once, each on a VM worker; twice the
+/// CPUs, from 4 to 32, if not given.
 /// `--frames-dir` writes every frame there, `frame-NNNN.png`, as `--png`
 /// writes the last. `--ops` prints each frame's [`outline`]; `--natives`, at the end, every
 /// dart:ui native the app called; `--styles`, each paragraph and text
@@ -1259,6 +1271,9 @@ fn app_args(args: &[&str]) -> Option<AppArgs> {
             "--kms" => app.kms = true,
             "--times" => app.times = true,
             "--open-urls" => app.open_urls = true,
+            "--io-concurrency" => {
+                app.io_concurrency = Some(it.next()?.parse().ok().filter(|n| *n > 0)?)
+            }
             "--capture" => app.capture = Some(std::path::PathBuf::from(it.next()?)),
             "--mode" => {
                 let said = it.next()?;
@@ -1311,7 +1326,7 @@ fn run_main(isolate: &mut fl_dart_vm::Isolate<'_>, args: &[&str]) -> Result<(), 
 /// open descriptors before and after. The lane compares the two, under ASan
 /// or valgrind; a count that grows with `n` is the leak.
 fn cycle(path: &str, n: u32) -> Result<(), Failure> {
-    let vm = start_vm()?;
+    let vm = start_vm(None)?;
     // Dropped before `vm`: no poster is in the VM when it is cleaned up.
     let _posters = ffi::Posters;
     #[cfg(feature = "jit")]

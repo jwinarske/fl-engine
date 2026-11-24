@@ -37,7 +37,7 @@ pub use port::{CObject, NativePort};
 #[cfg(feature = "aot")]
 pub use snapshot::AotSnapshot;
 pub use snapshot::{check_aot_header, check_kernel};
-pub use vm::{Vm, VmConfig};
+pub use vm::{default_io_concurrency, Vm, VmConfig};
 
 /// The raw bindings, for what this layer does not wrap yet.
 pub use fl_dart_sys as sys;
