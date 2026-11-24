@@ -36,6 +36,7 @@ mod semantics;
 pub mod system;
 mod text;
 pub mod text_input;
+pub mod texture;
 mod url_launcher;
 mod vertices;
 
@@ -308,6 +309,7 @@ pub static NATIVES: &[Symbol] = &[
     fl_dart_ffi::symbol!("SceneBuilder::pushClipPath", 5, compositing::push_clip_path),
     fl_dart_ffi::symbol!("SceneBuilder::pushOpacity", 6, compositing::push_opacity),
     fl_dart_ffi::symbol!("SceneBuilder::addPicture", 5, compositing::add_picture),
+    fl_dart_ffi::symbol!("SceneBuilder::addTexture", 8, compositing::add_texture),
     fl_dart_ffi::symbol!("SceneBuilder::pop", 1, compositing::pop),
     fl_dart_ffi::symbol!("SceneBuilder::addRetained", 2, compositing::add_retained),
     fl_dart_ffi::symbol!("SceneBuilder::build", 2, compositing::build),

@@ -540,6 +540,9 @@ fn app_once(
     // Decoded images go to the device as they arrive, not with the frame.
     if let Some(r) = raster {
         fl_ui::set_image_sink(r.uploader());
+        // An external texture's frame, or its unregistering, wakes the
+        // raster thread, which draws the last scene that showed one again.
+        fl_ui::texture::set_texture_wake(Some(Box::new(r.texture_waker())));
     }
     let wake = fl_shell::Wake::default();
     let mut cfg = fl_shell::isolate_config(path, &wake);
@@ -631,6 +634,7 @@ fn app_once(
     // them is what lets `finish` have the thread to itself.
     fl_ui::set_frame_sink(|_| {});
     fl_ui::clear_image_sink();
+    fl_ui::texture::set_texture_wake(None);
     let report = report?;
     let count = *rendered.lock().unwrap_or_else(|e| e.into_inner());
     if count == 0 {
@@ -1112,7 +1116,8 @@ fn summary(scene: &fl_ui::Scene) -> String {
                 pictures += 1;
                 draws += picture.draws.len();
             }
-            LayerOp::Pop => {}
+            // A leaf, as a picture is, and no picture.
+            LayerOp::Pop | LayerOp::AddTexture { .. } => {}
             _ => layers += 1,
         }
     }
@@ -1149,7 +1154,7 @@ fn outline(scene: &fl_ui::Scene) -> String {
         }
         let _ = writeln!(out, "{:w$}{}", "", kind(op), w = depth * 2);
         match op {
-            LayerOp::Pop => {}
+            LayerOp::Pop | LayerOp::AddTexture { .. } => {}
             LayerOp::AddPicture { picture, .. } => draws(&mut out, depth + 1, &picture.draws),
             _ => depth += 1,
         }
