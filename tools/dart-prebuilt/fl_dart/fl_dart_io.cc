@@ -6,6 +6,12 @@
 
 #include "include/bin/dart_io_api.h"
 
+#if defined(DART_IO_SECURE_SOCKET_DISABLED)
+#include "bin/io_service_no_ssl.h"
+#else
+#include "bin/io_service.h"
+#endif
+
 extern "C" {
 
 void fl_dart_io_bootstrap(void) {
@@ -14,6 +20,15 @@ void fl_dart_io_bootstrap(void) {
 
 void fl_dart_io_cleanup(void) {
   dart::bin::CleanupDartIo();
+}
+
+void fl_dart_io_set_max_concurrency(intptr_t max_concurrency) {
+  dart::bin::IOService::set_max_concurrency(max_concurrency < 1 ? 1
+                                                                : max_concurrency);
+}
+
+intptr_t fl_dart_io_max_concurrency(void) {
+  return dart::bin::IOService::max_concurrency();
 }
 
 Dart_Handle fl_dart_io_setup_isolate(const char* script_uri,

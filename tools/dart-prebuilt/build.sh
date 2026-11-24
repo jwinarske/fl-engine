@@ -182,6 +182,12 @@ if grep 'N4dart3bin9SSLFilter4InitE' "$defined" >/dev/null; then
 else
   [[ "$mode" == aot-nossl ]] || die "$archive defines no dart::bin::SSLFilter::Init: built without secure sockets"
 fi
+# The shim's C entry points, which fl-dart-sys binds by hand: an archive
+# without one fails here rather than at a downstream link.
+for sym in fl_dart_io_bootstrap fl_dart_io_cleanup fl_dart_io_setup_isolate \
+  fl_dart_io_set_max_concurrency fl_dart_io_max_concurrency; do
+  grep -E " T ${sym}\$" "$defined" >/dev/null || die "$archive does not define $sym"
+done
 own_cxx=""
 grep -E ' [TWV] __cxa_' "$defined" >/dev/null && own_cxx=1
 sdk_cxx_a=""

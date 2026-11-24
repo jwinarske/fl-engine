@@ -7,6 +7,8 @@
 # product one. Mixing them links, and then fails at run time on configuration
 # checks, so they are fixed here rather than chosen by the caller.
 
+import("//runtime/runtime_args.gni")
+
 template("fl_dart") {
   static_library(target_name) {
     complete_static_lib = true
@@ -24,6 +26,11 @@ template("fl_dart") {
       "fl_dart_io.h",
     ]
     deps = [ "//third_party/icu:icuuc" ] + invoker.extra_deps
+    # As runtime/bin sets it for dart:io: fl_dart_io.cc includes the IOService
+    # header that matches the build, and each refuses to compile in the other.
+    if (dart_disable_secure_socket) {
+      defines = [ "DART_IO_SECURE_SOCKET_DISABLED" ]
+    }
     # TSan (and MSan) builds compile their own instrumented libc++, in its own
     # ABI namespace (std::_d), which BUILDCONFIG.gn adds to executables only.
     # A static library has to carry it itself; build.sh then skips merging
