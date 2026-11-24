@@ -20,6 +20,30 @@ pub struct VmConfig {
     /// Passed to `Dart_SetVMFlags` before initialization, e.g.
     /// `--enable-asserts`. Empty is the normal case.
     pub flags: Vec<String>,
+    /// How many of dart:io's blocking calls (files, directories, DNS
+    /// lookups) may run at once, each on a worker thread of the VM's own.
+    /// `None` is [`default_io_concurrency`].
+    pub io_concurrency: Option<usize>,
+}
+
+/// The default for [`VmConfig::io_concurrency`]: twice the CPUs, from 4 to
+/// the SDK's own 32.
+///
+/// dart:io runs each blocking call on a VM worker, up to 32 at once, and a
+/// worker stays 5 s after its call before it exits. Wonderous opening a
+/// wonder's page has 25 calls in flight and starts a worker for each: 36
+/// threads in the process where 16 do with 4 (2026-11-23, x86_64), its RSS
+/// and frames the same within the noise between runs. On a Raspberry Pi 5,
+/// where this is 8: 16 or 17 threads at the peak, 31 to 40 at 32, the RSS
+/// within a few MB of 380 either way. Twice the CPUs keeps a
+/// call that waits on the disk or the network from holding up the rest, and a
+/// board's four cores get 8.
+pub fn default_io_concurrency() -> usize {
+    io_concurrency_for(std::thread::available_parallelism().map_or(1, |n| n.get()))
+}
+
+fn io_concurrency_for(cpus: usize) -> usize {
+    cpus.saturating_mul(2).clamp(4, 32)
 }
 
 /// The Dart VM. One per process.
@@ -79,6 +103,12 @@ impl Vm {
         params.entropy_source = Some(entropy_source);
         params.start_kernel_isolate = false;
 
+        // Before dart:io makes its first blocking call, which is when the
+        // port that reads the limit is made.
+        let io = cfg.io_concurrency.unwrap_or_else(default_io_concurrency);
+        // SAFETY: writes one static of dart:io's, before anything reads it.
+        unsafe { sys::fl_dart_io_set_max_concurrency(isize::try_from(io).unwrap_or(isize::MAX)) };
+
         // dart:io's event handler, before the VM -- the order Flutter's
         // DartVM uses. It is what services `Timer` wakeups.
         // SAFETY: once per process, guarded by INITIALIZED above.
@@ -103,6 +133,13 @@ impl Vm {
     pub fn version_string(&self) -> String {
         // SAFETY: returns a static string; callable once the VM is initialized.
         unsafe { crate::error::cstr(sys::Dart_VersionString()) }
+    }
+
+    /// How many of dart:io's blocking calls may run at once
+    /// ([`VmConfig::io_concurrency`]), as dart:io holds it.
+    pub fn io_concurrency(&self) -> usize {
+        // SAFETY: reads one static of dart:io's.
+        usize::try_from(unsafe { sys::fl_dart_io_max_concurrency() }).unwrap_or(1)
     }
 
     /// `Dart_NotifyLowMemory`: frees what the VM keeps for reuse, its cache
@@ -172,4 +209,20 @@ extern "C" fn entropy_source(buffer: *mut u8, length: isize) -> bool {
             .is_ok()
     })
     .unwrap_or(false)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::io_concurrency_for;
+
+    #[test]
+    fn io_concurrency_is_twice_the_cpus_from_4_to_32() {
+        assert_eq!(io_concurrency_for(1), 4);
+        assert_eq!(io_concurrency_for(2), 4);
+        assert_eq!(io_concurrency_for(4), 8);
+        assert_eq!(io_concurrency_for(8), 16);
+        assert_eq!(io_concurrency_for(16), 32);
+        assert_eq!(io_concurrency_for(64), 32);
+        assert_eq!(io_concurrency_for(usize::MAX), 32);
+    }
 }

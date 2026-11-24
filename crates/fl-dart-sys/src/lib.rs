@@ -46,8 +46,9 @@ mod tools {
 pub use tools::*;
 
 /// dart:io's embedder support, through fl-engine's C shim
-/// (`tools/dart-prebuilt/fl_dart/fl_dart_io.h`). Bound by hand: three
-/// functions of our own, not the SDK's, compiled into every artifact.
+/// (`tools/dart-prebuilt/fl_dart/fl_dart_io.h`). Bound by hand: functions
+/// of our own, not the SDK's, compiled into every artifact (build.sh fails
+/// one that lacks any).
 mod io {
     use super::api::Dart_Handle;
     extern "C" {
@@ -56,6 +57,13 @@ mod io {
         pub fn fl_dart_io_bootstrap();
         /// Process-wide, once, after `Dart_Cleanup`.
         pub fn fl_dart_io_cleanup();
+        /// Process-wide: how many of dart:io's blocking calls (files,
+        /// directories, DNS lookups) run at once, each on a VM worker
+        /// thread; the SDK's default is 32. Read when the first such call
+        /// is made, so set before `Dart_Initialize`. Below 1 is taken as 1.
+        pub fn fl_dart_io_set_max_concurrency(max_concurrency: isize);
+        /// What `fl_dart_io_set_max_concurrency` last set, or the default.
+        pub fn fl_dart_io_max_concurrency() -> isize;
         /// Per isolate, with a current isolate and open scope, after loading:
         /// dart:io's natives and `_setupHooks`. `script_uri` may be null.
         pub fn fl_dart_io_setup_isolate(

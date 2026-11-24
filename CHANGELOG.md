@@ -24,6 +24,7 @@ Not published, no versions yet.
 * Every Wonderous screen drawn, by scripted tours: the timeline, the menu, the collection, the About dialog with the app's version, the artifact search and details, the photo viewer. Its videos fail on any Linux, the app making a web view controller with no Linux implementation (`docs/wonderous.md`)
 * `fl-dart prepare` builds the advanced blend modes' in-shader pipelines too, on a device whose blend unit has none: a Pi 4's first `colorBurn` no longer stalls about 630 ms building one. emblema 0.4.1 builds the ones the draws use, where 0.4.0 built source-over ones
 * `apps/blend_modes`, the fifteen advanced blend modes on a solid paint, a gradient's rounded rectangle and a layer, against the stock engine's golden. emblema 0.4.2: lavapipe's advanced blend ops left unused, since they made every varying flat and a circle under `multiply` drew nothing; CI blends those modes in the shader, as the boards do
+* dart:io's blocking calls (files, directories, DNS) run at most twice the CPUs at once, from 4 to 32, where the SDK allows 32, each on a VM worker thread: Wonderous opening a wonder's page peaked at 36 threads, 16 with 4. `run-app --io-concurrency N` sets it
 
 ### Milestone 4: input
 
