@@ -332,8 +332,4 @@ image under one drew wrong there; emblema 0.4.2 leaves them unused, and
 
 ## Next
 
-Platform views, and with them the video: `docs/platform-views.md`
-(fl-engine#86), proposed. fl-engine hosts ivi-homescreen v3's
-`libihs_shared` platform-view ABI, so a plugin built for it runs on both,
-and the web view is a Chromium Embedded Framework plugin on that ABI, its
-calls over Dart FFI.
+Platform views, and with them the video.
