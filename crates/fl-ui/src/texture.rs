@@ -203,7 +203,7 @@ fn copy_pixels(b: &FlutterDesktopPixelBuffer) -> Frame {
 }
 
 /// The textures unregistered since the last call, with their completions,
-/// for the raster thread to destroy and then run [`complete`] on.
+/// for the raster thread to destroy and then run [`Unregistered::complete`] on.
 pub fn take_unregistered() -> Vec<Unregistered> {
     registry()
         .as_mut()
