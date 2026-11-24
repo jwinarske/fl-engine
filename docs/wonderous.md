@@ -315,8 +315,21 @@ A web view for Linux exists as a platform view (ivi-homescreen-plugins'
 `webview_flutter_view`, Chromium Embedded Framework); fl-engine has no
 platform views yet, and this is to be looked at again when it does.
 
+## Since
+
+`fl-dart prepare` builds the shader variants that blend the advanced modes
+in the shader, on a device whose blend unit has none of them (fl-engine#83,
+on emblema 0.4.1, which prepares the pipelines those draws use). On a Pi 4
+with Mesa's shader cache empty, prepare takes 8.6 s rather than 2.9 s, once:
+about 630 ms for each variant and format, which the first advanced draw
+paid in a frame before. Kept, a prepare is about 150 ms either way.
+
+CI draws the advanced modes the way the boards do. lavapipe's own advanced
+blend ops gave every fragment one vertex's inputs, so a shape, gradient or
+image under one drew wrong there; emblema 0.4.2 leaves them unused, and
+`apps/blend_modes` holds all fifteen modes to the stock engine's golden
+(fl-engine#84).
+
 ## Next
 
-`prepare` building the shader variants that blend in the shader, so a
-board's first editorial does not wait on them. Then platform views, and
-with them the video.
+Platform views, and with them the video.
