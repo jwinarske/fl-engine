@@ -1072,24 +1072,74 @@ fn textures_matches_its_golden() {
     matches_golden_at("textures", (1600, 1200), 2);
 }
 
+/// The same texture as a dma-buf (`FL_TEXTURE=dmabuf`): a GPU surface of
+/// fl-engine's type 4, which a Vulkan device of the producer's own draws
+/// and exports, with a margin past the visible 64 by 64 that must not be
+/// drawn. Against the same golden: the pixels are the same.
+#[test]
+#[ignore = "app lane: needs FLUTTER_ROOT"]
+fn a_dma_buf_texture_matches_the_textures_golden() {
+    let app = build_app("textures");
+    let png = common::out_dir().join("apps/textures-dmabuf.png");
+    let _ = std::fs::remove_file(&png);
+    let o = common::fl_dart_cmd()
+        .env("FL_TEXTURE", "dmabuf")
+        .args([
+            "run-app".as_ref(),
+            app.as_os_str(),
+            "1600x1200@2".as_ref(),
+            "--png".as_ref(),
+            png.as_os_str(),
+            "--frames".as_ref(),
+            "1".as_ref(),
+        ])
+        .output()
+        .unwrap();
+    assert!(o.status.success(), "{o:?}");
+    let out = String::from_utf8_lossy(&o.stdout);
+    assert!(out.contains("producer true"), "{out}");
+    compare_with_golden_named("textures", "textures", &png, (1600, 1200));
+}
+
 /// The producer marks a new frame available once the app is idle: the raster
 /// thread draws the last scene again with it, a frame the app never built.
 /// The square's first cell goes from the pattern's first color to the one
-/// its next phase puts there.
+/// its next phase puts there. As a pixel buffer, and as a dma-buf handed
+/// over in the producer's other buffer.
 #[test]
 #[ignore = "app lane: needs FLUTTER_ROOT"]
 fn a_texture_frame_marked_available_is_drawn() {
+    a_texture_frame_is_drawn_from(None);
+}
+
+#[test]
+#[ignore = "app lane: needs FLUTTER_ROOT"]
+fn a_dma_buf_frame_marked_available_is_drawn() {
+    a_texture_frame_is_drawn_from(Some("dmabuf"));
+}
+
+fn a_texture_frame_is_drawn_from(kind: Option<&str>) {
     let app = build_app("textures");
-    let dir = common::out_dir().join("apps/textures-frames");
+    let dir = common::out_dir().join(format!(
+        "apps/textures-frames{}",
+        kind.map_or(String::new(), |k| format!("-{k}"))
+    ));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
-    let o = common::fl_dart(&[
-        "run-app".as_ref(),
-        app.as_os_str(),
-        "1600x1200@2".as_ref(),
-        "--frames-dir".as_ref(),
-        dir.as_os_str(),
-    ]);
+    let mut c = common::fl_dart_cmd();
+    if let Some(k) = kind {
+        c.env("FL_TEXTURE", k);
+    }
+    let o = c
+        .args([
+            "run-app".as_ref(),
+            app.as_os_str(),
+            "1600x1200@2".as_ref(),
+            "--frames-dir".as_ref(),
+            dir.as_os_str(),
+        ])
+        .output()
+        .unwrap();
     assert!(o.status.success(), "{o:?}");
     let out = String::from_utf8_lossy(&o.stdout);
     assert!(out.contains("next true"), "{out}");
