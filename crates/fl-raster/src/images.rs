@@ -28,18 +28,52 @@ struct Entry {
 /// [`crate::Offscreen`] does.
 pub struct GpuImages {
     map: HashMap<usize, Entry>,
-    /// External textures' newest frames, one image each, by texture id:
-    /// written in place while the size holds, gone when the texture is
-    /// unregistered (`fl_ui::texture`).
+    /// External textures' images, by texture id, gone when the texture is
+    /// unregistered (`fl_ui::texture`): a pixel buffer's newest frame, one
+    /// image written in place while the size holds; a dma-buf's buffers,
+    /// each imported once.
     textures: HashMap<i64, Texture>,
     bytes: u64,
     _raster_thread: PhantomData<*const ()>,
 }
 
-struct Texture {
+enum Texture {
+    Written {
+        image: Image,
+        size: Extent2D,
+        bytes: u64,
+    },
+    /// The buffers a dma-buf producer has handed over, the newest -- what is
+    /// drawn -- last; at most [`MAX_IMPORTS`]. Not counted in
+    /// [`GpuImages::bytes`]: the memory is the producer's.
+    Imported {
+        imports: Vec<Import>,
+        /// What is drawn of the newest, from its top left corner.
+        visible: Extent2D,
+    },
+}
+
+struct Import {
+    key: fl_ui::texture::BufferKey,
     image: Image,
     size: Extent2D,
-    bytes: u64,
+}
+
+/// The buffers of one dma-buf texture kept imported: what a producer
+/// cycles through, a swapchain's three and one spare. Past that the least
+/// recently shown goes.
+const MAX_IMPORTS: usize = 4;
+
+impl Texture {
+    /// The image drawn, its size, and what is drawn of it.
+    fn shown(&self) -> Option<(&Image, Extent2D, Extent2D)> {
+        match self {
+            Texture::Written { image, size, .. } => Some((image, *size, *size)),
+            Texture::Imported { imports, visible } => {
+                imports.last().map(|i| (&i.image, i.size, *visible))
+            }
+        }
+    }
 }
 
 fn key(data: &Arc<ImageData>) -> usize {
@@ -178,11 +212,15 @@ impl GpuImages {
         size: Extent2D,
         rgba: &[u8],
     ) -> Result<(), RasterError> {
-        if self.textures.get(&id).is_some_and(|t| t.size != size) {
+        if self
+            .textures
+            .get(&id)
+            .is_some_and(|t| !matches!(t, Texture::Written { size: s, .. } if *s == size))
+        {
             self.remove_texture(ctx, id);
         }
-        if let Some(t) = self.textures.get_mut(&id) {
-            return ctx.write_image(&mut t.image, rgba).map_err(Into::into);
+        if let Some(Texture::Written { image, .. }) = self.textures.get_mut(&id) {
+            return ctx.write_image(image, rgba).map_err(Into::into);
         }
         let mut image = ctx.create_image(size, PixelFormat::Rgba8Unorm)?;
         if let Err(e) = ctx.write_image(&mut image, rgba) {
@@ -191,15 +229,104 @@ impl GpuImages {
         }
         let bytes = rgba.len() as u64;
         self.bytes += bytes;
-        self.textures.insert(id, Texture { image, size, bytes });
+        self.textures
+            .insert(id, Texture::Written { image, size, bytes });
         Ok(())
     }
 
-    /// Destroys texture `id`'s image, if it has one.
+    /// Shows texture `id`'s dma-buf frame: the buffer's image if it was
+    /// imported before, else a new import, the least recently shown going
+    /// past [`MAX_IMPORTS`]. `settle` runs before an image frames may still
+    /// be drawing from is destroyed, and its failure is this one's. A buffer
+    /// the device will not import is the inner error: the texture keeps
+    /// what it showed.
+    pub(crate) fn show_dma_buf(
+        &mut self,
+        ctx: &mut Context,
+        id: i64,
+        frame: fl_ui::texture::DmaBufFrame,
+        settle: &mut dyn FnMut() -> Result<(), RasterError>,
+    ) -> Result<Result<(), RasterError>, RasterError> {
+        if matches!(self.textures.get(&id), Some(Texture::Written { .. })) {
+            settle()?;
+            self.remove_texture(ctx, id);
+        }
+        let visible = Extent2D::new(frame.visible_width, frame.visible_height);
+        if let Some(Texture::Imported {
+            imports,
+            visible: v,
+        }) = self.textures.get_mut(&id)
+        {
+            if let Some(i) = imports.iter().position(|i| i.key == frame.key) {
+                let again = imports.remove(i);
+                imports.push(again);
+                *v = visible;
+                return Ok(Ok(()));
+            }
+        }
+
+        let format = match emblema::Fourcc(frame.fourcc) {
+            emblema::Fourcc::ARGB8888 => PixelFormat::Bgra8Unorm,
+            emblema::Fourcc::ABGR8888 => PixelFormat::Rgba8Unorm,
+            other => {
+                return Ok(Err(RasterError::Unsupported(format!(
+                    "a dma-buf texture in {other}; AR24 and AB24 are drawn"
+                ))))
+            }
+        };
+        let size = Extent2D::new(frame.width, frame.height);
+        let key = frame.key;
+        let desc = emblema::ExternalImageDesc {
+            planes: frame
+                .planes
+                .into_iter()
+                .map(|p| emblema::DmaBufPlane {
+                    fd: p.fd,
+                    offset: p.offset,
+                    stride: p.pitch,
+                })
+                .collect(),
+            fourcc: emblema::Fourcc(frame.fourcc),
+            modifier: emblema::Modifier(frame.modifier),
+        };
+        let image = match ctx.import_image(desc, size, format) {
+            Ok(image) => image,
+            Err(e) => return Ok(Err(e.into())),
+        };
+        let t = self.textures.entry(id).or_insert(Texture::Imported {
+            imports: Vec::new(),
+            visible,
+        });
+        let Texture::Imported {
+            imports,
+            visible: v,
+        } = t
+        else {
+            unreachable!("a written texture was removed above");
+        };
+        imports.push(Import { key, image, size });
+        *v = visible;
+        if imports.len() > MAX_IMPORTS {
+            settle()?;
+            let oldest = imports.remove(0);
+            ctx.destroy_image(oldest.image);
+        }
+        Ok(Ok(()))
+    }
+
+    /// Destroys texture `id`'s images, if it has any.
     pub(crate) fn remove_texture(&mut self, ctx: &mut Context, id: i64) {
-        if let Some(t) = self.textures.remove(&id) {
-            self.bytes -= t.bytes;
-            ctx.destroy_image(t.image);
+        match self.textures.remove(&id) {
+            Some(Texture::Written { image, bytes, .. }) => {
+                self.bytes -= bytes;
+                ctx.destroy_image(image);
+            }
+            Some(Texture::Imported { imports, .. }) => {
+                for i in imports {
+                    ctx.destroy_image(i.image);
+                }
+            }
+            None => {}
         }
     }
 
@@ -283,19 +410,24 @@ impl<'a> Slots<'a> {
         Ok((s, size))
     }
 
-    /// The slot texture `id`'s frame is drawn from this frame, and its size,
-    /// or `None` if it has none on the device.
-    pub(crate) fn texture_slot(&mut self, id: i64) -> Result<Option<(u32, Extent2D)>, RasterError> {
-        let Some(t) = self.gpu.textures.get(&id) else {
+    /// The slot texture `id`'s frame is drawn from this frame, the image's
+    /// size, and what is drawn of it from its top left corner; or `None` if
+    /// it has none on the device.
+    pub(crate) fn texture_slot(
+        &mut self,
+        id: i64,
+    ) -> Result<Option<(u32, Extent2D, Extent2D)>, RasterError> {
+        let Some((image, size, visible)) = self.gpu.textures.get(&id).and_then(Texture::shown)
+        else {
             return Ok(None);
         };
         if let Some(s) = self.textures.get(&id) {
-            return Ok(Some((*s, t.size)));
+            return Ok(Some((*s, size, visible)));
         }
         let s = u32::try_from(self.table.len())
             .map_err(|_| RasterError::Unsupported("too many images in one frame".into()))?;
-        self.table.push(&t.image);
+        self.table.push(image);
         self.textures.insert(id, s);
-        Ok(Some((s, t.size)))
+        Ok(Some((s, size, visible)))
     }
 }

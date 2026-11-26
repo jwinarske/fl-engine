@@ -345,9 +345,9 @@ checksum = "0e9c71c2167ca323c882b99918929403426e2373ea17242ff5653e0d5e1058be"
 
 [[package]]
 name = "emblema"
-version = "0.4.2"
+version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7712dd81694caa22e955eb5f09bfdc9d8c8520b4b85a4ed0b96c1efe156f059d"
+checksum = "28b96b21b785b004e40af3f45f895fb3e1079bb685e84b6922db4c40396248c8"
 dependencies = [
  "emblema-core",
  "emblema-hal",
@@ -359,9 +359,9 @@ dependencies = [
 
 [[package]]
 name = "emblema-core"
-version = "0.4.2"
+version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6ab9578e0696570a2d307dbac77f91c49339507c7a873f13f3d196cbe8990595"
+checksum = "0042951b90216d173ae40a4647f903d3cfa3cf832f01bd938ca9f06791714b8c"
 dependencies = [
  "emblema-geometry",
  "emblema-hal",
@@ -373,9 +373,9 @@ dependencies = [
 
 [[package]]
 name = "emblema-geometry"
-version = "0.4.2"
+version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "11379b9d7350934e895745c67f41a81f20343e74732fd355157a43a39c6b23d8"
+checksum = "ff521adf6c112e26d3befef69fc938026864342818c5a2d2d130494346ab0b2d"
 dependencies = [
  "earcutr",
  "glam",
@@ -384,18 +384,18 @@ dependencies = [
 
 [[package]]
 name = "emblema-hal"
-version = "0.4.2"
+version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e0b346b367dee77cb26fb7f8eb67cdd97bbd3daf51ddf32a8412eaf6d1a07850"
+checksum = "4f9b9784cf69d4d150808a92a73db75bd8977506f5c75dc1d024900dd1012ea5"
 dependencies = [
  "thiserror 1.0.69",
 ]
 
 [[package]]
 name = "emblema-hal-vulkan"
-version = "0.4.2"
+version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "53f40200ac45f19a083de4f90812c08d7fd342e1819a7d3fadc2b929b5c12610"
+checksum = "d940fc6df6716c2be652057c1df2dc89653184f0a77830076161bae10f318547"
 dependencies = [
  "ash",
  "emblema-hal",
@@ -405,9 +405,9 @@ dependencies = [
 
 [[package]]
 name = "emblema-present"
-version = "0.4.2"
+version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "18cc95789fe24093db1345146f348c6f70fdced8fcec6ff97a8897ee81fc15ae"
+checksum = "811c5f8d9fbd5cc44d3ed39a6b0f1b078df0400461e7bb862a9193518ecd9374"
 dependencies = [
  "emblema-hal",
  "log",
@@ -415,9 +415,9 @@ dependencies = [
 
 [[package]]
 name = "emblema-present-drm"
-version = "0.4.2"
+version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f6af127d259b2fe73dd038240f6b47472ab05f859db1e2e3c1f27a2f4aedad6f"
+checksum = "da511f230fea383df2c92869c01b51a787fc8d4d29f568166410a0664cfee444"
 dependencies = [
  "drm",
  "drmkit-gbm",
@@ -430,9 +430,9 @@ dependencies = [
 
 [[package]]
 name = "emblema-renderer"
-version = "0.4.2"
+version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8281206232eff29fdc6efb49850b16c201c8701406f6fbe6affc904791ea65ec"
+checksum = "ddb1cd37164620ea841df97e18709080bbca4b91cc3ab0c2f1ff83218e6c1b5d"
 dependencies = [
  "emblema-geometry",
  "emblema-hal",
@@ -441,18 +441,18 @@ dependencies = [
 
 [[package]]
 name = "emblema-shaders"
-version = "0.4.2"
+version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "24b8f6a112d87b59f7ce527a849a81f3f5a61c95b18dc26eb87a3d8a9eebd85d"
+checksum = "ccfd726fad881c2d6fd67c5cd0bc5bf5aa6e7aea3a42742935159a543096dc85"
 dependencies = [
  "naga",
 ]
 
 [[package]]
 name = "emblema-text"
-version = "0.4.2"
+version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a02c6c83c6823b3b97f459be438f7d4d0fffae42836ee05f3c792c57e7994570"
+checksum = "ba717619c363b9c364734417357b04f7e2af7535b01492dc4bab01172e4d956b"
 
 [[package]]
 name = "equivalent"
@@ -499,6 +499,8 @@ dependencies = [
 name = "fl-dart-cli"
 version = "0.1.0"
 dependencies = [
+ "emblema",
+ "emblema-hal",
  "fl-assets",
  "fl-dart-vm",
  "fl-input",
@@ -619,6 +621,7 @@ dependencies = [
  "fl-input",
  "fl-text",
  "i_overlay",
+ "rustix",
  "trybuild",
 ]
 

@@ -56,6 +56,10 @@ fl-platform-kms = { workspace = true, optional = true }
 fl-shell = { workspace = true }
 fl-ui = { workspace = true }
 fl-raster = { workspace = true }
+# The dma-buf texture test producer (src/ffi.rs): a device of its own that
+# draws a frame and exports it, as a camera or another renderer would.
+emblema = { workspace = true, features = ["vulkan"] }
+emblema-hal = { workspace = true }
 
 [dev-dependencies]
 png = "0.18"

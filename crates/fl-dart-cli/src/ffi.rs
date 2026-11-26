@@ -252,3 +252,208 @@ pub extern "C" fn fl_dart_texture_next(id: i64) -> bool {
         id,
     )
 }
+
+/// A test producer for `apps/textures` with `FL_TEXTURE=dmabuf`: the same
+/// pattern as [`fl_dart_texture_pattern`]'s, drawn by a Vulkan device of its
+/// own into one of two exported dma-bufs, handed over through a GPU-surface
+/// texture of type `fl_ui::texture::GPU_SURFACE_DMA_BUF`. Each buffer is
+/// [`DMA_BUF_WIDTH`] wide, the columns past the pattern's 64 magenta: only
+/// the visible 64 by 64 may be drawn.
+struct DmaBufProducer {
+    ctx: emblema::vulkan::VulkanContext,
+    buffers: [DmaBufBuffer; 2],
+    /// The buffer handed over.
+    front: usize,
+    phase: usize,
+    dma_buf: fl_ui::texture::FlutterDesktopDmaBuf,
+    descriptor: fl_ui::texture::FlutterDesktopGpuSurfaceDescriptor,
+}
+
+struct DmaBufBuffer {
+    texture: emblema::vulkan::VulkanTexture,
+    /// The export's planes, kept open for as long as the buffer lives.
+    planes: Vec<emblema::DmaBufPlane>,
+    modifier: u64,
+}
+
+/// A buffer's width: the pattern, then a 16-texel magenta margin.
+const DMA_BUF_WIDTH: u32 = TEXTURE_SIDE as u32 + 16;
+
+// SAFETY: the descriptor's handle points into the producer's own box, and
+// the device is only used under the lock.
+unsafe impl Send for DmaBufProducer {}
+
+static DMA_BUF_PRODUCER: std::sync::Mutex<Option<Box<DmaBufProducer>>> =
+    std::sync::Mutex::new(None);
+
+/// Draws the pattern at `phase` into `target`: cell `(x, y)` from the top
+/// left, `PALETTE[(x + 4 * y + 5 * phase) % 8]`, and the margin magenta.
+fn draw_pattern(
+    ctx: &mut emblema::vulkan::VulkanContext,
+    target: &mut emblema::vulkan::VulkanTexture,
+    phase: usize,
+) -> Result<(), emblema::Error> {
+    use emblema_hal::{Batch, BlendMode, Material, PassDescriptor};
+    let w = DMA_BUF_WIDTH as f32;
+    let h = TEXTURE_SIDE as f32;
+    // Texels to clip space, which emblema's HAL has y up: the buffer's top
+    // row is clip space's +1.
+    let quad = |x0: f32, y0: f32, x1: f32, y1: f32| {
+        let (cx0, cy0) = (x0 / w * 2.0 - 1.0, 1.0 - y0 / h * 2.0);
+        let (cx1, cy1) = (x1 / w * 2.0 - 1.0, 1.0 - y1 / h * 2.0);
+        [[cx0, cy0], [cx1, cy0], [cx1, cy1], [cx0, cy1]]
+    };
+    let mut batch = Batch::new();
+    for y in 0..4 {
+        for x in 0..4 {
+            let c = PALETTE[(x + 4 * y + 5 * phase) % 8];
+            let (x0, y0) = ((x * 16) as f32, (y * 16) as f32);
+            batch.push(
+                &quad(x0, y0, x0 + 16.0, y0 + 16.0),
+                &[0, 1, 2, 0, 2, 3],
+                Material::solid(c.map(|v| f32::from(v) / 255.0)),
+                BlendMode::Src,
+            )?;
+        }
+    }
+    batch.push(
+        &quad(TEXTURE_SIDE as f32, 0.0, w, h),
+        &[0, 1, 2, 0, 2, 3],
+        Material::solid([1.0, 0.0, 1.0, 1.0]),
+        BlendMode::Src,
+    )?;
+    ctx.submit_batch(target, &batch, PassDescriptor::clear([0.0, 0.0, 0.0, 1.0]))
+}
+
+impl DmaBufProducer {
+    fn new() -> Result<Box<DmaBufProducer>, emblema::Error> {
+        let mut ctx = emblema::vulkan::VulkanContext::new(emblema::vulkan::DevicePreference::Auto)?;
+        let extent = emblema::Extent2D::new(DMA_BUF_WIDTH, TEXTURE_SIDE as u32);
+        let make = |ctx: &mut emblema::vulkan::VulkanContext| {
+            let mut texture = ctx.create_exportable_texture(
+                extent,
+                emblema::PixelFormat::Bgra8Unorm,
+                &[emblema::Modifier::LINEAR],
+            )?;
+            draw_pattern(ctx, &mut texture, 0)?;
+            let desc = ctx.export_texture(&texture)?;
+            Ok::<_, emblema::Error>(DmaBufBuffer {
+                texture,
+                planes: desc.planes,
+                modifier: desc.modifier.0,
+            })
+        };
+        let buffers = [make(&mut ctx)?, make(&mut ctx)?];
+        let mut p = Box::new(DmaBufProducer {
+            ctx,
+            buffers,
+            front: 0,
+            phase: 0,
+            dma_buf: fl_ui::texture::FlutterDesktopDmaBuf {
+                struct_size: std::mem::size_of::<fl_ui::texture::FlutterDesktopDmaBuf>(),
+                fourcc: emblema::Fourcc::ARGB8888.0,
+                plane_count: 0,
+                modifier: 0,
+                fds: [-1; fl_ui::texture::DMA_BUF_MAX_PLANES],
+                offsets: [0; fl_ui::texture::DMA_BUF_MAX_PLANES],
+                pitches: [0; fl_ui::texture::DMA_BUF_MAX_PLANES],
+                acquire_fence: -1,
+            },
+            descriptor: fl_ui::texture::FlutterDesktopGpuSurfaceDescriptor {
+                struct_size: std::mem::size_of::<fl_ui::texture::FlutterDesktopGpuSurfaceDescriptor>(
+                ),
+                handle: std::ptr::null_mut(),
+                width: DMA_BUF_WIDTH as usize,
+                height: TEXTURE_SIDE,
+                visible_width: TEXTURE_SIDE,
+                visible_height: TEXTURE_SIDE,
+                format: 0,
+                release_callback: None,
+                release_context: std::ptr::null_mut(),
+            },
+        });
+        p.descriptor.handle = std::ptr::addr_of_mut!(p.dma_buf).cast();
+        p.describe_front();
+        Ok(p)
+    }
+
+    /// Points the dma-buf at the front buffer's planes.
+    fn describe_front(&mut self) {
+        use std::os::fd::AsRawFd;
+        let b = &self.buffers[self.front];
+        self.dma_buf.plane_count = b.planes.len() as u32;
+        self.dma_buf.modifier = b.modifier;
+        for (i, p) in b
+            .planes
+            .iter()
+            .enumerate()
+            .take(fl_ui::texture::DMA_BUF_MAX_PLANES)
+        {
+            self.dma_buf.fds[i] = p.fd.as_raw_fd();
+            self.dma_buf.offsets[i] = p.offset;
+            self.dma_buf.pitches[i] = p.stride;
+        }
+    }
+}
+
+/// Makes the dma-buf test producer: whether this machine has a device that
+/// exports one.
+#[no_mangle]
+pub extern "C" fn fl_dart_texture_dmabuf_init() -> bool {
+    let mut slot = DMA_BUF_PRODUCER.lock().unwrap_or_else(|e| e.into_inner());
+    if slot.is_some() {
+        return true;
+    }
+    match DmaBufProducer::new() {
+        Ok(p) => {
+            *slot = Some(p);
+            true
+        }
+        Err(e) => {
+            eprintln!("fl-dart: no dma-buf test producer: {e}");
+            false
+        }
+    }
+}
+
+/// `FlutterDesktopGpuSurfaceTextureCallback`: the front buffer, lent until
+/// the next call; nothing to release.
+#[no_mangle]
+pub extern "C" fn fl_dart_texture_dmabuf(
+    _width: usize,
+    _height: usize,
+    _user_data: *mut std::ffi::c_void,
+) -> *const fl_ui::texture::FlutterDesktopGpuSurfaceDescriptor {
+    let slot = DMA_BUF_PRODUCER.lock().unwrap_or_else(|e| e.into_inner());
+    match slot.as_ref() {
+        // The box stays where it is for the producer's life.
+        Some(p) => &p.descriptor,
+        None => std::ptr::null(),
+    }
+}
+
+/// Draws the pattern's next phase into the back buffer, hands that over,
+/// and marks texture `id`'s frame available: whether it exists.
+#[no_mangle]
+pub extern "C" fn fl_dart_texture_dmabuf_next(id: i64) -> bool {
+    {
+        let mut slot = DMA_BUF_PRODUCER.lock().unwrap_or_else(|e| e.into_inner());
+        let Some(p) = slot.as_mut() else {
+            return false;
+        };
+        p.phase += 1;
+        let back = 1 - p.front;
+        let phase = p.phase;
+        let DmaBufProducer { ctx, buffers, .. } = &mut **p;
+        if let Err(e) = draw_pattern(ctx, &mut buffers[back].texture, phase) {
+            eprintln!("fl-dart: the dma-buf test producer did not draw: {e}");
+            return false;
+        }
+        p.front = back;
+        p.describe_front();
+    }
+    fl_ui::texture::FlutterDesktopTextureRegistrarMarkExternalTextureFrameAvailable(
+        std::ptr::null_mut(),
+        id,
+    )
+}

@@ -26,6 +26,8 @@ fl-input = { workspace = true }
 fl-text = { workspace = true }
 fl-dart-ffi = { workspace = true }
 i_overlay = { workspace = true }
+# A dma-buf texture's descriptors: duplicated, identified and waited on.
+rustix = { workspace = true }
 
 [dev-dependencies]
 trybuild = { workspace = true }

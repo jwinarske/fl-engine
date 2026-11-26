@@ -368,8 +368,9 @@ pub struct Stages {
 /// External textures (`fl_ui::texture`) before a scene is recorded: the
 /// images of those unregistered are destroyed and their producers told; each
 /// texture the scene shows, unless frozen, takes the frame its producer has
-/// marked since the last, written over its image once the frames drawing from
-/// that are done.
+/// marked since the last: a pixel buffer written over its image once the
+/// frames drawing from that are done, a dma-buf imported unless it was
+/// before.
 fn textures(
     ctx: &mut Context,
     images: &mut GpuImages,
@@ -409,6 +410,13 @@ fn textures(
                     settle()?;
                 }
                 images.write_texture(ctx, *id, Extent2D::new(width, height), &rgba)?;
+            }
+            fl_ui::texture::Frame::DmaBuf(frame) => {
+                // A buffer this device will not import is the producer's to
+                // hear about, not the frame's: the texture keeps what it had.
+                if let Err(e) = images.show_dma_buf(ctx, *id, frame, settle)? {
+                    eprintln!("fl-raster: texture {id}: {e}");
+                }
             }
             fl_ui::texture::Frame::Refused(why) => {
                 eprintln!("fl-raster: texture {id}: {why}");
@@ -1401,14 +1409,14 @@ fn replay_op(
         } => {
             // Nothing for a texture with no frame on the device, as the
             // engine draws nothing for a texture it cannot resolve.
-            if let Some((slot, size)) = slots.texture_slot(*id)? {
+            if let Some((slot, size, visible)) = slots.texture_slot(*id)? {
                 let dst = Rect::new(
                     *dx as f32,
                     *dy as f32,
                     (*dx + *width) as f32,
                     (*dy + *height) as f32,
                 );
-                let src = Rect::new(0.0, 0.0, size.width as f32, size.height as f32);
+                let src = Rect::new(0.0, 0.0, visible.width as f32, visible.height as f32);
                 // A texture's image has no mip levels: medium and high
                 // sample it linearly.
                 let sampling = match quality {
