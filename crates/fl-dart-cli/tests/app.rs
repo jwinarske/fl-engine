@@ -1096,8 +1096,9 @@ fn a_dma_buf_texture_matches_the_textures_golden() {
         .output()
         .unwrap();
     assert!(o.status.success(), "{o:?}");
-    let out = String::from_utf8_lossy(&o.stdout);
-    assert!(out.contains("producer true"), "{out}");
+    if no_dma_buf_producer(&o) {
+        return;
+    }
     compare_with_golden_named("textures", "textures", &png, (1600, 1200));
 }
 
@@ -1116,6 +1117,25 @@ fn a_texture_frame_marked_available_is_drawn() {
 #[ignore = "app lane: needs FLUTTER_ROOT"]
 fn a_dma_buf_frame_marked_available_is_drawn() {
     a_texture_frame_is_drawn_from(Some("dmabuf"));
+}
+
+/// Whether the textures app ran without its dma-buf producer, said as a
+/// skip: a device that exports no dma-buf has none to make. CI's lavapipe
+/// (Mesa 25.2) is one, as the scanout tests' note in ci.yml says; 26.2
+/// exports, and a developer's driver does.
+fn no_dma_buf_producer(o: &std::process::Output) -> bool {
+    let out = String::from_utf8_lossy(&o.stdout);
+    if out.contains("producer true") {
+        return false;
+    }
+    assert!(out.contains("producer false"), "{out}");
+    let why = String::from_utf8_lossy(&o.stderr);
+    let why = why
+        .lines()
+        .find(|l| l.contains("no dma-buf test producer"))
+        .unwrap_or("no reason given");
+    eprintln!("skipping: {why}");
+    true
 }
 
 fn a_texture_frame_is_drawn_from(kind: Option<&str>) {
@@ -1141,6 +1161,9 @@ fn a_texture_frame_is_drawn_from(kind: Option<&str>) {
         .output()
         .unwrap();
     assert!(o.status.success(), "{o:?}");
+    if kind.is_some() && no_dma_buf_producer(&o) {
+        return;
+    }
     let out = String::from_utf8_lossy(&o.stdout);
     assert!(out.contains("next true"), "{out}");
     let mut frames: Vec<_> = std::fs::read_dir(&dir)

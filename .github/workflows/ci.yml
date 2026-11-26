@@ -209,6 +209,8 @@ jobs:
         run: |
           # The default build has no keymap, and says so of a script with keys.
           ci/annotate-on-fail.sh cargo test -p fl-dart-cli --test app -- --ignored keys_need_the_kms_feature
+          # The dma-buf texture tests skip, saying so, until the runner's
+          # lavapipe exports dma-bufs, as the scanout tests below do.
           ci/annotate-on-fail.sh cargo test -p fl-dart-cli --features kms --test app -- --ignored
       # What the exit criteria look like, kept: each app's frame from the
       # tests above with its golden and diff, ticker's 30 frames and gif's 16.
