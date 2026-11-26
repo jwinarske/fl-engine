@@ -843,7 +843,7 @@ const NOT_YET: &[(&str, &str)] = &[
 #[test]
 #[ignore = "app lane: needs FLUTTER_ROOT"]
 fn every_native_is_called_by_an_app() {
-    let runs: [(&str, &[&str]); 19] = [
+    let runs: [(&str, &[&str]); 20] = [
         ("colored_box", &[]),
         ("shapes", &["--frames", "1"]),
         ("material", &[]),
@@ -863,6 +863,7 @@ fn every_native_is_called_by_an_app() {
         ("image_filters", &["1600x1200@2", "--frames", "1"]),
         ("masks_and_meshes", &["1600x1200@2", "--frames", "1"]),
         ("path_ops", &["1600x1200@2", "--frames", "1"]),
+        ("textures", &["1600x1200@2", "--frames", "1"]),
     ];
     let mut called = std::collections::BTreeSet::new();
     for (name, opts) in runs {
@@ -1058,6 +1059,59 @@ fn masks_and_meshes_matches_its_golden() {
 #[ignore = "app lane: needs FLUTTER_ROOT"]
 fn path_ops_matches_its_golden() {
     matches_golden_at("path_ops", (1600, 1200), 2);
+}
+
+/// A `Texture` widget over a pixel-buffer texture registered through
+/// Flutter's desktop C API, looked up in the process as a plugin's library
+/// resolves it: nearest sampling scaled up, and linear sampling turned,
+/// faded and clipped. Against the stock engine's frame with the producer's
+/// pattern as an image in its place.
+#[test]
+#[ignore = "app lane: needs FLUTTER_ROOT"]
+fn textures_matches_its_golden() {
+    matches_golden_at("textures", (1600, 1200), 2);
+}
+
+/// The producer marks a new frame available once the app is idle: the raster
+/// thread draws the last scene again with it, a frame the app never built.
+/// The square's first cell goes from the pattern's first color to the one
+/// its next phase puts there.
+#[test]
+#[ignore = "app lane: needs FLUTTER_ROOT"]
+fn a_texture_frame_marked_available_is_drawn() {
+    let app = build_app("textures");
+    let dir = common::out_dir().join("apps/textures-frames");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let o = common::fl_dart(&[
+        "run-app".as_ref(),
+        app.as_os_str(),
+        "1600x1200@2".as_ref(),
+        "--frames-dir".as_ref(),
+        dir.as_os_str(),
+    ]);
+    assert!(o.status.success(), "{o:?}");
+    let out = String::from_utf8_lossy(&o.stdout);
+    assert!(out.contains("next true"), "{out}");
+    let mut frames: Vec<_> = std::fs::read_dir(&dir)
+        .unwrap()
+        .map(|e| e.unwrap().path())
+        .collect();
+    frames.sort();
+    let (first, last) = (frames.first().unwrap(), frames.last().unwrap());
+    // The square's first cell: logical (40..104, 40..104), physical twice.
+    let at = |png: &std::path::Path| {
+        let px = read_png(png, (1600, 1200));
+        let i = (140 * 1600 + 140) * 4;
+        [px[i], px[i + 1], px[i + 2], px[i + 3]]
+    };
+    assert_eq!(at(first), [229, 57, 53, 255], "phase 0's first color");
+    assert_eq!(
+        at(last),
+        [0, 172, 193, 255],
+        "phase 1's, in {}",
+        last.display()
+    );
 }
 
 /// The fifteen advanced blend modes, each on a solid paint, a gradient's

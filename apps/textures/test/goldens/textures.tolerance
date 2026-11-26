@@ -1,0 +1,13 @@
+# textures.png, rendered by the stock engine's flutter_tester with Impeller,
+# against fl-engine's frame through emblema, both at DPR 2.
+# Percent of pixels allowed to differ in any channel, and by more than 32.
+#
+# fl-engine shows a pixel-buffer texture through a Texture widget; the
+# golden draws the same 64x64 pattern as an image in its place, with the
+# same FilterQuality: nearest, scaled up four times, and linear, stretched,
+# turned, faded to 0.8 and clipped to a rounded rectangle. What differs is
+# the linear copy's cell edges and the clip's, a level or a few, and the
+# faded colors by a level. Measured 2026-11-23: lavapipe 8.066% differ,
+# 0.011% by more than 32; radv 1.121%, 0.011%.
+differ 10
+differ_over_32 0.1

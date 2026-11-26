@@ -1,0 +1,11 @@
+name: textures
+description: fl-engine test program. A Texture widget over a pixel-buffer texture registered through Flutter's desktop C API.
+publish_to: none
+environment:
+  sdk: ^3.13.0
+dependencies:
+  flutter:
+    sdk: flutter
+dev_dependencies:
+  flutter_test:
+    sdk: flutter

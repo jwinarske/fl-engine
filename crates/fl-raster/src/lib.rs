@@ -177,6 +177,16 @@ impl Device {
         self.images.upload(&mut self.ctx, image)
     }
 
+    /// Destroys the images of external textures unregistered since the last
+    /// frame and tells their producers; the frames drawing from them must be
+    /// done first.
+    fn release_textures(&mut self) {
+        for g in fl_ui::texture::take_unregistered() {
+            self.images.remove_texture(&mut self.ctx, g.id);
+            g.complete();
+        }
+    }
+
     /// Takes the pipelines kept in `path` by a run before, and keeps this
     /// run's there.
     fn keep_pipelines(&mut self, path: PathBuf) {
@@ -355,6 +365,60 @@ pub struct Stages {
     pub show: Stage,
 }
 
+/// External textures (`fl_ui::texture`) before a scene is recorded: the
+/// images of those unregistered are destroyed and their producers told; each
+/// texture the scene shows, unless frozen, takes the frame its producer has
+/// marked since the last, written over its image once the frames drawing from
+/// that are done.
+fn textures(
+    ctx: &mut Context,
+    images: &mut GpuImages,
+    scene: &Scene,
+    settle: &mut dyn FnMut() -> Result<(), RasterError>,
+) -> Result<(), RasterError> {
+    let gone = fl_ui::texture::take_unregistered();
+    if !gone.is_empty() {
+        settle()?;
+        for g in gone {
+            images.remove_texture(ctx, g.id);
+            g.complete();
+        }
+    }
+    for op in &scene.ops {
+        let LayerOp::AddTexture {
+            width,
+            height,
+            id,
+            freeze,
+            ..
+        } = op
+        else {
+            continue;
+        };
+        if *freeze && images.has_texture(*id) {
+            continue;
+        }
+        let size = |v: f64| v.max(0.0).round() as usize;
+        match fl_ui::texture::frame(*id, size(*width), size(*height)) {
+            fl_ui::texture::Frame::Pixels {
+                width,
+                height,
+                rgba,
+            } => {
+                if images.has_texture(*id) {
+                    settle()?;
+                }
+                images.write_texture(ctx, *id, Extent2D::new(width, height), &rgba)?;
+            }
+            fl_ui::texture::Frame::Refused(why) => {
+                eprintln!("fl-raster: texture {id}: {why}");
+            }
+            fl_ui::texture::Frame::Unknown | fl_ui::texture::Frame::Unchanged => {}
+        }
+    }
+    Ok(())
+}
+
 /// `scene` as one recording over transparent black, and the images its
 /// paints name, by slot. Over a device's fields, not the device: the target
 /// draws with the context while the slots still borrow the images.
@@ -387,6 +451,7 @@ fn record<'a>(
     for image in &found {
         images.upload(ctx, image)?;
     }
+    textures(ctx, images, scene, settle)?;
     // The first replay finds and rasterizes the frame's glyphs; the atlas
     // goes up once; the second draws.
     glyphs.begin_frame();
@@ -667,6 +732,10 @@ enum Work {
     Upload(Arc<ImageData>),
     /// The last scene once more: what the target showed is gone.
     Again,
+    /// An external texture marked a frame or was unregistered: the last
+    /// scene that showed a texture is drawn again, as the engine draws its
+    /// last layer tree again for one, with the frame it now has.
+    Textures,
     /// Nothing more is coming from the thread's owner: what is queued
     /// before this is drawn, and the thread ends. Said, not left to the
     /// channel's closing, since an uploader or a redrawer handed out may
@@ -892,6 +961,20 @@ impl RasterThread {
     /// can lose what it shows: a display, when its session comes back from
     /// a switch of terminals, and the app has nothing new to draw. Never
     /// waits, and is no frame of the app's: it counts as none.
+    /// What wakes the thread for an external texture
+    /// (`fl_ui::set_texture_wake`): a frame its producer marked, or its
+    /// unregistering. The last scene that showed a texture is drawn again,
+    /// and counts as a frame; an unregistered texture's image is destroyed
+    /// and its producer told, whatever is drawn. Never waits.
+    pub fn texture_waker(&self) -> impl Fn() + Send + Sync + 'static {
+        let tx = self.tx.clone();
+        move || {
+            if let Some(tx) = &tx {
+                let _ = tx.send(Work::Textures);
+            }
+        }
+    }
+
     pub fn redrawer(&self) -> impl Fn() + Send + 'static {
         let tx = self.tx.clone();
         move || {
@@ -964,6 +1047,9 @@ fn raster_main<T: Target>(
     // dropped, so the UI thread is never left waiting on a full queue.
     let keeps = target.loses_its_frame();
     let mut last_scene: Option<Arc<Scene>> = None;
+    // The last scene that showed an external texture, while it is the last
+    // scene: what a texture's new frame draws again.
+    let mut textured: Option<Arc<Scene>> = None;
     loop {
         // The pass's buffers, once the first frame is drawn and nothing is
         // asked for a while; and a pipeline built since the file was
@@ -1001,7 +1087,28 @@ fn raster_main<T: Target>(
                 if keeps {
                     last_scene = Some(Arc::clone(&s));
                 }
+                textured = s
+                    .ops
+                    .iter()
+                    .any(|op| matches!(op, LayerOp::AddTexture { .. }))
+                    .then(|| Arc::clone(&s));
                 s
+            }
+            Work::Textures => {
+                if r.error.is_some() {
+                    continue;
+                }
+                match textured.as_ref() {
+                    // A frame of its own: drawn, counted and captured as one.
+                    Some(s) => Arc::clone(s),
+                    None => {
+                        // Nothing shows a texture: only the unregistered
+                        // are let go of.
+                        target.settle();
+                        target.device().release_textures();
+                        continue;
+                    }
+                }
             }
             Work::Finish => break,
             Work::Again => {
@@ -1071,6 +1178,8 @@ fn raster_main<T: Target>(
     // What is still referenced once the UI side is done: a leak shows here.
     target.settle();
     let d = target.device();
+    // Producers whose textures went in the last frames are told.
+    d.release_textures();
     d.images.sweep(&mut d.ctx);
     r.gpu_images = d.images.len();
     r.gpu_bytes = d.images.bytes();
@@ -1101,7 +1210,10 @@ fn replay(canvas: &mut Canvas, scene: &Scene, slots: &mut Slots) -> Result<(), R
     // mask a layer draws over its children before it is restored.
     let mut open: Vec<Open<'_>> = Vec::new();
     let replayed = scene.ops.iter().try_for_each(|op| {
-        if !matches!(op, LayerOp::Pop | LayerOp::AddPicture { .. }) {
+        if !matches!(
+            op,
+            LayerOp::Pop | LayerOp::AddPicture { .. } | LayerOp::AddTexture { .. }
+        ) {
             let mask = matches!(op, LayerOp::PushShaderMask { .. }).then_some(op);
             open.push(Open {
                 depth: canvas.save_depth(),
@@ -1277,6 +1389,37 @@ fn replay_op(
             let drawn = draw_picture(canvas, picture, slots);
             restore_to(canvas, depth);
             drawn?;
+        }
+        LayerOp::AddTexture {
+            dx,
+            dy,
+            width,
+            height,
+            id,
+            quality,
+            ..
+        } => {
+            // Nothing for a texture with no frame on the device, as the
+            // engine draws nothing for a texture it cannot resolve.
+            if let Some((slot, size)) = slots.texture_slot(*id)? {
+                let dst = Rect::new(
+                    *dx as f32,
+                    *dy as f32,
+                    (*dx + *width) as f32,
+                    (*dy + *height) as f32,
+                );
+                let src = Rect::new(0.0, 0.0, size.width as f32, size.height as f32);
+                // A texture's image has no mip levels: medium and high
+                // sample it linearly.
+                let sampling = match quality {
+                    0 => emblema::Sampling::Nearest,
+                    _ => emblema::Sampling::Linear,
+                };
+                let p = EPaint::image(slot, dst)
+                    .with_source_pixels(src, size)
+                    .with_sampling(sampling);
+                canvas.draw_rect(dst, &p)?;
+            }
         }
         LayerOp::PushShaderMask { shader, .. } => {
             if shader.is_none() {

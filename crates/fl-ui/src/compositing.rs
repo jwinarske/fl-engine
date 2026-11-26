@@ -76,6 +76,18 @@ pub enum LayerOp {
         dy: f64,
         picture: Arc<Picture>,
     },
+    /// An external texture's newest frame over `width` by `height` at `dx`,
+    /// `dy`: `TextureLayer`. `freeze` keeps the frame shown when the texture
+    /// marks a new one; `quality` is the `FilterQuality` it is sampled at.
+    AddTexture {
+        dx: f64,
+        dy: f64,
+        width: f64,
+        height: f64,
+        id: i64,
+        freeze: bool,
+        quality: i32,
+    },
     Pop,
 }
 
@@ -393,6 +405,38 @@ pub(crate) extern "C" fn add_picture(
         unsafe {
             peer::with::<Builder, _>(builder, |b| {
                 b.ops.push(LayerOp::AddPicture { dx, dy, picture })
+            })
+        };
+    });
+}
+
+/// `Void Function(Pointer<Void>, Double, Double, Double, Double, Int64,
+/// Bool, Int32)`, a leaf call: `addTexture`'s offset, size, texture id,
+/// `freeze` and `FilterQuality` index.
+#[allow(clippy::too_many_arguments)]
+pub(crate) extern "C" fn add_texture(
+    builder: *mut c_void,
+    dx: f64,
+    dy: f64,
+    width: f64,
+    height: f64,
+    id: i64,
+    freeze: bool,
+    quality: i32,
+) {
+    guard((), || {
+        // SAFETY: builder is the receiver's native field.
+        unsafe {
+            peer::with::<Builder, _>(builder, |b| {
+                b.ops.push(LayerOp::AddTexture {
+                    dx,
+                    dy,
+                    width,
+                    height,
+                    id,
+                    freeze,
+                    quality,
+                })
             })
         };
     });
