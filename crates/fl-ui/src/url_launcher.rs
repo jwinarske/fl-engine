@@ -17,6 +17,13 @@
 //! say, which the launcher waits for off the UI thread, the reply going
 //! back when it comes. An error is the plugin's own reply, a string, not
 //! pigeon's error list, so the plugin raises it as it documents.
+//!
+//! Before 3.2.0 the plugin made the same two calls on a method channel,
+//! `plugins.flutter.io/url_launcher_linux`: `canLaunch` and `launch`, each
+//! with the URL as its argument, in `StandardMethodCodec`'s envelopes. They
+//! are answered by the same rules, a failed launch as the plugin's C side
+//! answered one, a `Launch Error` whose message says why; a method it did
+//! not have, by no handler.
 
 use std::sync::{Mutex, MutexGuard};
 
@@ -47,6 +54,18 @@ pub fn set_url_launcher(platform: Option<Box<dyn UrlLauncher>>) {
 
 const CAN_LAUNCH: &str = "dev.flutter.pigeon.url_launcher_linux.UrlLauncherApi.canLaunchUrl";
 const LAUNCH: &str = "dev.flutter.pigeon.url_launcher_linux.UrlLauncherApi.launchUrl";
+
+/// The method channel of `url_launcher_linux` before 3.2.0.
+const METHOD_CHANNEL: &str = "plugins.flutter.io/url_launcher_linux";
+
+/// How a call came, and so how it is answered.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Protocol {
+    /// Pigeon's, 3.2.0 on: a list holding the answer.
+    Pigeon,
+    /// The method channel's, before 3.2.0: a success or error envelope.
+    MethodChannel,
+}
 
 /// Which of the two calls `channel` is, with pigeon's optional instance
 /// suffix (`.name`) after it.
@@ -150,30 +169,121 @@ fn scheme_of(url: &str) -> Option<&str> {
     has_scheme(url).then(|| url.split_once(':').map_or("", |(scheme, _)| scheme))
 }
 
-/// `launchUrl`'s reply: `[null]` for opened, `[message]` for why not, which
-/// the plugin raises.
-fn launch_reply(result: Result<(), String>) -> Vec<u8> {
-    match result {
-        Ok(()) => vec![12, 1, 0],
-        Err(why) => {
+/// A launch's reply. Pigeon's: `[null]` for opened, `[message]` for why
+/// not, which the plugin raises. The method channel's: `true` in a success
+/// envelope, or a `Launch Error` envelope.
+fn launch_reply(protocol: Protocol, result: Result<(), String>) -> Vec<u8> {
+    match (protocol, result) {
+        (Protocol::Pigeon, Ok(())) => vec![12, 1, 0],
+        (Protocol::Pigeon, Err(why)) => {
             let mut out = vec![12, 1];
             write_string(&mut out, &why);
             out
         }
+        (Protocol::MethodChannel, Ok(())) => vec![0, 1],
+        (Protocol::MethodChannel, Err(why)) => {
+            method_error("Launch Error", &format!("Failed to launch URL: {why}"))
+        }
     }
+}
+
+/// `StandardMethodCodec`'s error envelope: `1`, then code, message and null
+/// details.
+fn method_error(code: &str, message: &str) -> Vec<u8> {
+    let mut out = vec![1];
+    write_string(&mut out, code);
+    write_string(&mut out, message);
+    out.push(0);
+    out
+}
+
+/// A method call, `StandardMethodCodec`'s: the method's name, a string, then
+/// its argument, here the URL as a string and nothing after it. The name,
+/// and the URL if the argument is one.
+fn method_call(message: &[u8]) -> Option<(&str, Option<&str>)> {
+    let mut at = 0;
+    if *message.get(at)? != 7 {
+        return None;
+    }
+    at += 1;
+    let len = read_size(message, &mut at)?;
+    let name = std::str::from_utf8(message.get(at..at + len)?).ok()?;
+    at += len;
+    let url = (|| {
+        if *message.get(at)? != 7 {
+            return None;
+        }
+        let mut at = at + 1;
+        let len = read_size(message, &mut at)?;
+        if len > MAX_URL || at + len != message.len() {
+            return None;
+        }
+        std::str::from_utf8(&message[at..]).ok()
+    })();
+    Some((name, url))
+}
+
+/// Whether the platform's launcher would say yes to `url`: one of the six
+/// schemes, with a launcher that has an opener.
+fn can_launch(url: &str) -> bool {
+    scheme_of(url).is_some_and(|s| SCHEMES.iter().any(|known| s.eq_ignore_ascii_case(known)))
+        && launcher().as_ref().is_some_and(|l| l.available())
+}
+
+/// A launch of `url` if it names a scheme, else the reply that says it
+/// does not: nothing without one reaches a launcher, so no URL reaches an
+/// opener's command line looking like an option.
+fn launch_or_refuse(protocol: Protocol, url: &str) -> Answer {
+    if has_scheme(url) {
+        Answer::Launch(url.to_owned(), protocol)
+    } else {
+        Answer::Reply(launch_reply(
+            protocol,
+            Err(format!("{url:?} names no scheme")),
+        ))
+    }
+}
+
+/// Answers a call on the method channel: `None` for a method it does not
+/// have, which the caller answers as no handler.
+fn handle_method_call(message: Option<&[u8]>) -> Option<Answer> {
+    let Some((name, url)) = message.and_then(method_call) else {
+        return Some(Answer::Reply(method_error(
+            "Bad Arguments",
+            "expected a method call",
+        )));
+    };
+    if name != "canLaunch" && name != "launch" {
+        return None;
+    }
+    let Some(url) = url else {
+        return Some(Answer::Reply(method_error(
+            "Bad Arguments",
+            "expected a URL as a string",
+        )));
+    };
+    Some(if name == "canLaunch" {
+        Answer::Reply(vec![0, if can_launch(url) { 1 } else { 2 }])
+    } else {
+        launch_or_refuse(Protocol::MethodChannel, url)
+    })
 }
 
 /// How a call on one of the plugin's channels is answered.
 pub(crate) enum Answer {
     /// With these bytes, now.
     Reply(Vec<u8>),
-    /// Once [`launch`] has opened this URL.
-    Launch(String),
+    /// Once [`launch`] has opened this URL, in the reply of the protocol the
+    /// call came in.
+    Launch(String, Protocol),
 }
 
 /// Answers a call on one of the plugin's channels, or `None` for a channel
 /// that is not one.
 pub(crate) fn handle(channel: &str, message: Option<&[u8]>) -> Option<Answer> {
+    if channel == METHOD_CHANNEL {
+        return handle_method_call(message);
+    }
     let call = call_of(channel)?;
     let Some(url) = message.and_then(url_of) else {
         return Some(Answer::Reply(error(
@@ -182,34 +292,33 @@ pub(crate) fn handle(channel: &str, message: Option<&[u8]>) -> Option<Answer> {
         )));
     };
     if call == CAN_LAUNCH {
-        let can = scheme_of(url)
-            .is_some_and(|s| SCHEMES.iter().any(|known| s.eq_ignore_ascii_case(known)))
-            && launcher().as_ref().is_some_and(|l| l.available());
         // `[true]` or `[false]`.
-        return Some(Answer::Reply(vec![12, 1, if can { 1 } else { 2 }]));
+        return Some(Answer::Reply(vec![
+            12,
+            1,
+            if can_launch(url) { 1 } else { 2 },
+        ]));
     }
-    Some(if has_scheme(url) {
-        Answer::Launch(url.to_owned())
-    } else {
-        // Nothing without a scheme reaches a launcher, so no URL reaches an
-        // opener's command line looking like an option.
-        Answer::Reply(launch_reply(Err(format!("{url:?} names no scheme"))))
-    })
+    Some(launch_or_refuse(Protocol::Pigeon, url))
 }
 
 /// Opens `url` with the platform's launcher, and gives `reply` the plugin's
 /// answer when the launch is over: at once with no launcher, else whenever
 /// and on whichever thread the launcher says.
-pub(crate) fn launch(url: &str, reply: impl FnOnce(Vec<u8>) + Send + 'static) {
+pub(crate) fn launch(url: &str, protocol: Protocol, reply: impl FnOnce(Vec<u8>) + Send + 'static) {
     let guard = launcher();
     match guard.as_ref() {
         None => {
             drop(guard);
-            reply(launch_reply(Err(
-                "no application here opens URLs".to_owned()
-            )));
+            reply(launch_reply(
+                protocol,
+                Err("no application here opens URLs".to_owned()),
+            ));
         }
-        Some(l) => l.launch(url, Box::new(move |result| reply(launch_reply(result)))),
+        Some(l) => l.launch(
+            url,
+            Box::new(move |result| reply(launch_reply(protocol, result))),
+        ),
     }
 }
 
@@ -227,10 +336,12 @@ mod tests {
     fn reply(channel: &str, url: &str) -> Vec<u8> {
         match handle(channel, Some(&call(url))) {
             Some(Answer::Reply(bytes)) => bytes,
-            Some(Answer::Launch(url)) => {
+            Some(Answer::Launch(url, protocol)) => {
                 let got = Arc::new(Mutex::new(None));
                 let into = Arc::clone(&got);
-                launch(&url, move |bytes| *into.lock().unwrap() = Some(bytes));
+                launch(&url, protocol, move |bytes| {
+                    *into.lock().unwrap() = Some(bytes)
+                });
                 // The test's launcher answers before it returns.
                 let answered = got.lock().unwrap().take();
                 answered.expect("answered")
@@ -261,6 +372,15 @@ mod tests {
                 Ok(())
             });
         }
+    }
+
+    /// A method call as `StandardMethodCodec` writes one: the name, then
+    /// the URL.
+    fn method(name: &str, url: &str) -> Vec<u8> {
+        let mut out = Vec::new();
+        write_string(&mut out, name);
+        write_string(&mut out, url);
+        out
     }
 
     /// One test, in order: the launcher is the process's.
@@ -301,7 +421,88 @@ mod tests {
             launched.lock().unwrap().as_slice(),
             [site, "https://fail.example/", "myapp://open"]
         );
+        method_channel_calls();
         set_url_launcher(None);
+        // With no launcher, the method channel's launch says so as the
+        // plugin's C side said a failure.
+        match handle(METHOD_CHANNEL, Some(&method("launch", site))) {
+            Some(Answer::Launch(url, protocol)) => {
+                let got = Arc::new(Mutex::new(None));
+                let into = Arc::clone(&got);
+                launch(&url, protocol, move |bytes| {
+                    *into.lock().unwrap() = Some(bytes)
+                });
+                let answered = got.lock().unwrap().take();
+                assert_eq!(
+                    answered.unwrap(),
+                    method_error(
+                        "Launch Error",
+                        "Failed to launch URL: no application here opens URLs"
+                    )
+                );
+            }
+            _ => panic!("not a launch"),
+        }
+    }
+
+    /// The method channel's calls, before 3.2.0, by the same rules: run
+    /// within the pigeon test's lock on the process's launcher.
+    fn method_channel_calls() {
+        let site = "https://www.wonderous.info/";
+        let ask = |name: &str, url: &str| match handle(METHOD_CHANNEL, Some(&method(name, url))) {
+            Some(Answer::Reply(bytes)) => bytes,
+            Some(Answer::Launch(url, protocol)) => {
+                assert_eq!(protocol, Protocol::MethodChannel);
+                let got = Arc::new(Mutex::new(None));
+                let into = Arc::clone(&got);
+                launch(&url, protocol, move |bytes| {
+                    *into.lock().unwrap() = Some(bytes)
+                });
+                let answered = got.lock().unwrap().take();
+                answered.expect("answered")
+            }
+            None => panic!("{name}: no handler"),
+        };
+        assert_eq!(ask("canLaunch", site), vec![0, 1]);
+        assert_eq!(ask("canLaunch", "myapp://open"), vec![0, 2]);
+        assert_eq!(ask("launch", site), vec![0, 1]);
+        assert_eq!(
+            ask("launch", "https://fail.example/"),
+            method_error("Launch Error", "Failed to launch URL: exit status 3")
+        );
+        assert_eq!(
+            ask("launch", "--help"),
+            method_error(
+                "Launch Error",
+                "Failed to launch URL: \"--help\" names no scheme"
+            )
+        );
+        // A method the plugin did not have: no handler.
+        assert!(handle(METHOD_CHANNEL, Some(&method("closeWebView", site))).is_none());
+        // Malformed: no method call, or no URL.
+        for bad in [&[][..], &[12, 0][..], &[7, 9, b'c'][..]] {
+            match handle(METHOD_CHANNEL, Some(bad)) {
+                Some(Answer::Reply(bytes)) => {
+                    assert_eq!(
+                        bytes,
+                        method_error("Bad Arguments", "expected a method call")
+                    )
+                }
+                _ => panic!("{bad:?}: not refused"),
+            }
+        }
+        let mut no_url = Vec::new();
+        write_string(&mut no_url, "launch");
+        no_url.push(0);
+        match handle(METHOD_CHANNEL, Some(&no_url)) {
+            Some(Answer::Reply(bytes)) => {
+                assert_eq!(
+                    bytes,
+                    method_error("Bad Arguments", "expected a URL as a string")
+                )
+            }
+            _ => panic!("no URL: not refused"),
+        }
     }
 
     #[test]

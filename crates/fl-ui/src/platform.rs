@@ -96,8 +96,9 @@ pub(crate) extern "C" fn send_channel_update(_name: sys::Dart_Handle, _listening
 ///   leaving, which may wait for the framework's own answer
 /// * `flutter/mousecursor` ([`crate::mouse_cursor`]): the cursor a
 ///   `MouseRegion` asks for, shown by the platform if it has one
-/// * `url_launcher_linux`'s pigeon channels ([`crate::url_launcher`]): a
-///   plugin whose Linux side is C, answered here by the platform's launcher
+/// * `url_launcher_linux`'s pigeon channels, and before 3.2.0 its method
+///   channel ([`crate::url_launcher`]): a plugin whose Linux side is C,
+///   answered here by the platform's launcher
 ///
 /// Every other message, on these channels or any other, is answered with an
 /// empty reply, as the Linux embedder answers a channel it has no handler
@@ -167,7 +168,7 @@ pub(crate) extern "C" fn send_platform_message(
                 .and_then(|channel| crate::url_launcher::handle(channel, bytes.as_deref()))
             {
                 Some(crate::url_launcher::Answer::Reply(reply)) => Some(ReplyArg::Bytes(reply)),
-                Some(crate::url_launcher::Answer::Launch(url)) => {
+                Some(crate::url_launcher::Answer::Launch(url, protocol)) => {
                     // Answered when the launch is over, from whichever thread
                     // says so, and only into the isolate that asked.
                     // SAFETY: as above; callback is a live handle.
@@ -177,7 +178,7 @@ pub(crate) extern "C" fn send_platform_message(
                     // Counted until it is answered, so the loop does not end
                     // with the app still awaiting it ([`awaiting_replies`]).
                     let counted = OffThread::begin();
-                    crate::url_launcher::launch(&url, move |reply| {
+                    crate::url_launcher::launch(&url, protocol, move |reply| {
                         if let Some(callback) = kept {
                             queue_persistent_in(generation, callback, ReplyArg::Bytes(reply));
                         }

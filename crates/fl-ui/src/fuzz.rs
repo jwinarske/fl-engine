@@ -263,6 +263,9 @@ fn channels_answer_every_mutation() {
             // and the decoder is what is under test.
             assert!(url_launcher::handle(channel, Some(&input)).is_some());
         }
+        // The method channel before 3.2.0: answered, or no handler for a
+        // method it does not have, never a panic.
+        let _ = url_launcher::handle("plugins.flutter.io/url_launcher_linux", Some(&input));
         // An exit put to the framework has no reply yet: the empty one
         // stands for it, and the next is not refused as in progress.
         let system = system::handle_call(Some(&input)).map(|a| match a {

@@ -244,7 +244,12 @@ over GTK it cannot load.
   option; and a failure is the plugin's own reply, the string it raises as
   `Launch Error`, as the stock plugin's is. `run-app --open-urls` sets the
   launcher; without it, which is a kiosk's case and a test's, nothing can
-  be opened and the launch says so
+  be opened and the launch says so. Before 3.2.0 the plugin made the same
+  two calls on a method channel, `plugins.flutter.io/url_launcher_linux`,
+  `canLaunch` and `launch` with the URL as the argument; an app pinned to
+  one of those is answered by the same rules, a failure as that plugin's C
+  side answered one, a `Launch Error` whose message is `Failed to launch
+  URL:` and why
 * `package_info_plus`: Dart, reading the version from
   `data/flutter_assets/version.json` beside the running executable, which
   is the stock bundle's layout. `build.sh` now writes that file from the

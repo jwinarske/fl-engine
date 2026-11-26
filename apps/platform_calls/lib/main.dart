@@ -53,6 +53,21 @@ Future<void> main() async {
   print('url can launch a custom scheme: ${await can.send(<Object?>['wonderous://open'])}');
   print('url launch: ${await launch.send(<Object?>['https://www.wonderous.info/'])}');
   print('url launch that fails: ${await launch.send(<Object?>['https://fail.example/'])}');
+  // The same two calls before url_launcher_linux 3.2.0, on its method
+  // channel, as its Dart side made them: a failed launch is raised.
+  const MethodChannel legacy = MethodChannel('plugins.flutter.io/url_launcher_linux');
+  Future<String> legacyLaunch(String url) async {
+    try {
+      return '${await legacy.invokeMethod<bool>('launch', url)}';
+    } on PlatformException catch (e) {
+      return '${e.code}: ${e.message}';
+    }
+  }
+
+  print('channel can launch: ${await legacy.invokeMethod<bool>('canLaunch', 'https://www.wonderous.info/')}');
+  print('channel can launch a custom scheme: ${await legacy.invokeMethod<bool>('canLaunch', 'wonderous://open')}');
+  print('channel launch: ${await legacyLaunch('https://www.wonderous.info/')}');
+  print('channel launch that fails: ${await legacyLaunch('https://fail.example/')}');
   runApp(const ColoredBox(color: Color(0xFF4CAF50)));
   WidgetsBinding.instance.addPostFrameCallback((_) => _leave());
 }

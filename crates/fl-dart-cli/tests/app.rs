@@ -105,6 +105,10 @@ fn platform_calls_are_answered_and_the_app_can_leave() {
              url can launch a custom scheme: [false]\n\
              url launch: [no application here opens URLs]\n\
              url launch that fails: [no application here opens URLs]\n\
+             channel can launch: false\n\
+             channel can launch a custom scheme: false\n\
+             channel launch: Launch Error: Failed to launch URL: no application here opens URLs\n\
+             channel launch that fails: Launch Error: Failed to launch URL: no application here opens URLs\n\
              frame 1: "
         ),
         "{out}"
@@ -191,9 +195,10 @@ fn network_images_load_over_https() {
     assert_eq!(at(50, 50)[3], 0, "outside the photo");
 }
 
-/// `run-app --open-urls`: `url_launcher_linux`'s calls answered through
-/// `xdg-open`, here a stand-in on the `PATH` that records what it is asked
-/// to open and fails a URL naming `fail` with status 3. `canLaunchUrl` says
+/// `run-app --open-urls`: `url_launcher_linux`'s calls, pigeon's and the
+/// method channel's before 3.2.0, answered through `xdg-open`, here a
+/// stand-in on the `PATH` that records what it is asked to open and fails a
+/// URL naming `fail` with status 3. `canLaunchUrl` says
 /// yes to the six schemes and no to a custom one; `launchUrl` answers when
 /// the opener has exited, with its status where it failed.
 #[test]
@@ -231,13 +236,18 @@ fn urls_are_opened_by_xdg_open_when_asked() {
             "url can launch: [true]\n\
              url can launch a custom scheme: [false]\n\
              url launch: [null]\n\
-             url launch that fails: [xdg-open exited with status 3]\n"
+             url launch that fails: [xdg-open exited with status 3]\n\
+             channel can launch: true\n\
+             channel can launch a custom scheme: false\n\
+             channel launch: true\n\
+             channel launch that fails: Launch Error: Failed to launch URL: xdg-open exited with status 3\n"
         ),
         "{out}"
     );
     assert_eq!(
         std::fs::read_to_string(&log).unwrap(),
-        "https://www.wonderous.info/\nhttps://fail.example/\n"
+        "https://www.wonderous.info/\nhttps://fail.example/\n\
+         https://www.wonderous.info/\nhttps://fail.example/\n"
     );
 }
 
