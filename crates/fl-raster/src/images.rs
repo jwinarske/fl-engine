@@ -431,3 +431,160 @@ impl<'a> Slots<'a> {
         Ok(Some((s, size, visible)))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::os::unix::fs::MetadataExt;
+
+    use emblema::vulkan::{DevicePreference, VulkanContext, VulkanTexture};
+
+    const SIZE: u32 = 16;
+
+    /// A producer's buffer: exported once, its planes kept open, and handed
+    /// over as a frame again and again, as a pool's buffers are.
+    struct Buffer {
+        texture: VulkanTexture,
+        planes: Vec<emblema::DmaBufPlane>,
+        modifier: u64,
+    }
+
+    impl Buffer {
+        /// A frame in this buffer, as `fl_ui::texture` takes one: the
+        /// planes duplicated, the buffer known by its first plane's inode.
+        fn frame(&self) -> fl_ui::texture::DmaBufFrame {
+            let planes: Vec<_> = self
+                .planes
+                .iter()
+                .map(|p| fl_ui::texture::DmaBufPlane {
+                    fd: p.fd.try_clone().unwrap(),
+                    offset: p.offset,
+                    pitch: p.stride,
+                })
+                .collect();
+            let stat = std::fs::File::from(planes[0].fd.try_clone().unwrap())
+                .metadata()
+                .unwrap();
+            fl_ui::texture::DmaBufFrame {
+                width: SIZE,
+                height: SIZE,
+                visible_width: SIZE,
+                visible_height: SIZE,
+                fourcc: emblema::Fourcc::ARGB8888.0,
+                modifier: self.modifier,
+                key: fl_ui::texture::BufferKey {
+                    dev: stat.dev(),
+                    ino: stat.ino(),
+                    fourcc: emblema::Fourcc::ARGB8888.0,
+                    modifier: self.modifier,
+                    size: (SIZE, SIZE),
+                    layout: planes.iter().map(|p| (p.offset, p.pitch)).collect(),
+                },
+                planes,
+            }
+        }
+
+        fn ino(&self) -> u64 {
+            std::fs::File::from(self.planes[0].fd.try_clone().unwrap())
+                .metadata()
+                .unwrap()
+                .ino()
+        }
+    }
+
+    /// The buffers texture `id` keeps imported, least recently shown first.
+    fn imported(images: &GpuImages, id: i64) -> Vec<u64> {
+        match images.textures.get(&id) {
+            Some(Texture::Imported { imports, .. }) => imports.iter().map(|i| i.key.ino).collect(),
+            _ => Vec::new(),
+        }
+    }
+
+    /// A producer cycling through more buffers than a texture keeps: each
+    /// new one imported, the least recently shown going past four once the
+    /// frames are settled, a buffer shown again kept and made the newest,
+    /// and one evicted imported again when it comes back. Unregistering
+    /// destroys what is left.
+    #[test]
+    #[ignore = "app lane: needs a Vulkan driver that exports dma-bufs"]
+    fn a_dma_buf_texture_keeps_the_four_buffers_shown_last() {
+        let mut producer = match VulkanContext::new(DevicePreference::Auto) {
+            Ok(p) if p.capabilities().dma_buf.can_allocate_scanout() => p,
+            Ok(_) => {
+                eprintln!("skipping: this device exports no dma-buf");
+                return;
+            }
+            Err(e) => {
+                eprintln!("skipping: no Vulkan device to produce with ({e})");
+                return;
+            }
+        };
+        let mut ctx = Context::new(emblema::BackendPreference::Vulkan).unwrap();
+        let buffers: Vec<Buffer> = (0..6)
+            .map(|_| {
+                let texture = producer
+                    .create_exportable_texture(
+                        Extent2D::new(SIZE, SIZE),
+                        PixelFormat::Bgra8Unorm,
+                        &[emblema::Modifier::LINEAR],
+                    )
+                    .unwrap();
+                let desc = producer.export_texture(&texture).unwrap();
+                Buffer {
+                    texture,
+                    planes: desc.planes,
+                    modifier: desc.modifier.0,
+                }
+            })
+            .collect();
+        let ino: Vec<u64> = buffers.iter().map(Buffer::ino).collect();
+
+        let mut images = GpuImages::default();
+        let mut settled = 0;
+        let mut show = |images: &mut GpuImages, ctx: &mut Context, b: &Buffer| {
+            images
+                .show_dma_buf(ctx, 7, b.frame(), &mut || {
+                    settled += 1;
+                    Ok(())
+                })
+                .unwrap()
+                .unwrap();
+        };
+
+        for b in &buffers[..4] {
+            show(&mut images, &mut ctx, b);
+        }
+        assert_eq!(imported(&images, 7), ino[..4]);
+
+        // Shown again: no new import, and it is the newest.
+        show(&mut images, &mut ctx, &buffers[0]);
+        assert_eq!(imported(&images, 7), [ino[1], ino[2], ino[3], ino[0]]);
+
+        // A fifth buffer: the least recently shown, 1, goes, not 0.
+        show(&mut images, &mut ctx, &buffers[4]);
+        assert_eq!(imported(&images, 7), [ino[2], ino[3], ino[0], ino[4]]);
+        show(&mut images, &mut ctx, &buffers[5]);
+        assert_eq!(imported(&images, 7), [ino[3], ino[0], ino[4], ino[5]]);
+
+        // Back again after its eviction: imported anew, 3 going.
+        show(&mut images, &mut ctx, &buffers[1]);
+        assert_eq!(imported(&images, 7), [ino[0], ino[4], ino[5], ino[1]]);
+        assert_eq!(settled, 3, "once before each eviction, and only then");
+
+        // What is drawn is the newest.
+        let mut slots = Slots::new(&images);
+        let (slot, size, visible) = slots.texture_slot(7).unwrap().unwrap();
+        assert_eq!(
+            (slot, size, visible),
+            (0, Extent2D::new(SIZE, SIZE), Extent2D::new(SIZE, SIZE))
+        );
+        drop(slots);
+
+        images.remove_texture(&mut ctx, 7);
+        assert!(imported(&images, 7).is_empty());
+        assert!(!images.has_texture(7));
+        for b in buffers {
+            producer.destroy_texture(b.texture);
+        }
+    }
+}
