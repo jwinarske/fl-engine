@@ -1,0 +1,10 @@
+name: native_assets
+description: fl-engine test program. A package's code asset, built by its hook and bound by @Native.
+publish_to: none
+environment:
+  sdk: ^3.13.0
+dependencies:
+  flutter:
+    sdk: flutter
+  native_add:
+    path: packages/native_add

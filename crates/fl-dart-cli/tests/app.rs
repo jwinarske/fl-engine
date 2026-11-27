@@ -79,6 +79,59 @@ fn a_dart_plugin_is_registered_before_main_and_compute_runs() {
     assert!(out.contains("\nframe 1: "), "{out}");
 }
 
+/// A package's code asset, built by its hook and staged by the bundle
+/// build, is bound by `@Native` through the bundle's
+/// `NativeAssetsManifest.json`, as the engine binds it: from the root
+/// isolate and from one `compute` spawns in its group. A symbol the library
+/// lacks is an error that says so, and an asset id the manifest does not map
+/// still resolves in the process. From the program with its assets beside
+/// it, from the bundle, and with fl-dart copied into the bundle, where its
+/// RUNPATH, `$ORIGIN/lib`, finds the library by a bare name as a stock
+/// bundle's engine does; run from elsewhere, nothing does.
+#[test]
+#[ignore = "app lane: needs FLUTTER_ROOT and a C compiler"]
+fn a_code_asset_is_bound_through_the_bundles_manifest() {
+    let app = build_app("native_assets");
+    let bundle = app.with_extension("");
+    assert!(bundle.join("lib/libnative_add.so").is_file());
+    // A copy, not a symlink: $ORIGIN is the directory of the file run.
+    let runner = bundle.join("fl-dart");
+    let _ = std::fs::remove_file(&runner);
+    if std::fs::hard_link(env!("CARGO_BIN_EXE_fl-dart"), &runner).is_err() {
+        std::fs::copy(env!("CARGO_BIN_EXE_fl-dart"), &runner).unwrap();
+    }
+    let fl_dart = std::path::PathBuf::from(env!("CARGO_BIN_EXE_fl-dart"));
+    for (exe, path, bare) in [
+        (&fl_dart, &app, "not found"),
+        (&fl_dart, &bundle, "not found"),
+        (&runner, &bundle, "found"),
+    ] {
+        let o = std::process::Command::new(exe)
+            .arg("run-app")
+            .arg(path)
+            .arg("800x600@2")
+            .env_remove("LD_LIBRARY_PATH")
+            .output()
+            .unwrap();
+        assert!(o.status.success(), "{o:?}");
+        let out = String::from_utf8_lossy(&o.stdout);
+        let want = format!(
+            "bare name: {bare}\n\
+             native_add: 42\n\
+             native_add in compute: 7\n\
+             missing symbol: true\n\
+             unmapped id from the process: true\n"
+        );
+        assert!(
+            out.starts_with(&want),
+            "{} {}: {out}",
+            exe.display(),
+            path.display()
+        );
+        assert!(out.contains("\nframe 1: "), "{out}");
+    }
+}
+
 /// The framework's calls on `flutter/platform` and `flutter/navigation`
 /// are answered as the Linux embedder answers them: those it has no
 /// method or handler for with an empty reply, which an optional channel

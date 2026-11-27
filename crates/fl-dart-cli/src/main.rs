@@ -197,13 +197,21 @@ fn run_aot(path: &str, args: &[&str]) -> Result<(), Failure> {
 /// vsync, a `vsync:` line reports their spacing.
 fn run_app(path: &str, mut app: AppArgs) -> Result<(), Failure> {
     let program = load_app(path)?;
-    set_assets(path, &app)?;
+    let native_assets = set_assets(path, &app)?;
     fl_ui::set_style_report(app.styles);
     let vm = start_vm(app.io_concurrency)?;
     // Dropped before `vm`: no poster is in the VM when it is cleaned up.
     let _posters = ffi::Posters;
     let (raster, screen) = raster_for(path, &mut app)?;
-    let run = app_once(&vm, &program, path, &app, raster.as_ref(), true)?;
+    let run = app_once(
+        &vm,
+        &program,
+        path,
+        &native_assets,
+        &app,
+        raster.as_ref(),
+        true,
+    )?;
     if let Some(line) = vsync_line(&run.report.frame_times_us) {
         println!("{line}");
     }
@@ -277,8 +285,16 @@ fn app_cycle(path: &str, n: u32, mut app: AppArgs) -> Result<(), Failure> {
     for i in 0..n {
         // Each lifecycle an engine's: the bundle and fonts afresh, so the
         // fonts an app loaded go with it, as with the engine.
-        set_assets(path, &app)?;
-        let run = app_once(&vm, &program, path, &app, raster.as_ref(), false)?;
+        let native_assets = set_assets(path, &app)?;
+        let run = app_once(
+            &vm,
+            &program,
+            path,
+            &native_assets,
+            &app,
+            raster.as_ref(),
+            false,
+        )?;
         frames += run.rendered;
         builds.extend(run.builds_us);
         latency.extend(run.report.input_latency_us);
@@ -345,8 +361,12 @@ type AppProgram = Vec<u8>;
 
 /// Sets the asset bundle the app reads: `--assets`, else a bundle's
 /// `data/flutter_assets`, else `<app>.assets` beside the program if it
-/// exists, else none (every asset not found).
-fn set_assets(path: &str, app: &AppArgs) -> Result<(), Failure> {
+/// exists, else none (every asset not found). Returns the code assets its
+/// `NativeAssetsManifest.json` maps, for the app's isolate group.
+fn set_assets(
+    path: &str,
+    app: &AppArgs,
+) -> Result<std::sync::Arc<fl_dart_vm::NativeAssets>, Failure> {
     let dir = app.assets.clone().or_else(|| {
         let bundle = std::path::Path::new(path)
             .join("data")
@@ -360,6 +380,7 @@ fn set_assets(path: &str, app: &AppArgs) -> Result<(), Failure> {
         )),
         None => None,
     };
+    let native_assets = native_assets(path, bundle.as_deref())?;
     fl_ui::set_asset_bundle(bundle);
     // After the bundle, which starts the font collection afresh.
     for (family, file) in &app.fonts {
@@ -372,7 +393,33 @@ fn set_assets(path: &str, app: &AppArgs) -> Result<(), Failure> {
             )));
         }
     }
-    Ok(())
+    Ok(native_assets)
+}
+
+/// The code assets an app's bundle maps, looked for where `flutter build
+/// linux` puts them, the bundle's `lib/` beside the program, and then where
+/// `flutter build bundle` stages them, the asset bundle's
+/// `native_assets/linux/`.
+fn native_assets(
+    path: &str,
+    bundle: Option<&fl_assets::Bundle>,
+) -> Result<std::sync::Arc<fl_dart_vm::NativeAssets>, Failure> {
+    let Some(bundle) = bundle else {
+        return Ok(Default::default());
+    };
+    let assets = bundle
+        .native_assets(fl_assets::NATIVE_ASSETS_TARGET)
+        .map_err(|e| Failure::Other(format!("assets: {e}")))?;
+    let program = bundle_program(path);
+    let search = program
+        .parent()
+        .map(std::path::Path::to_path_buf)
+        .into_iter()
+        .chain([bundle.root().join("native_assets").join("linux")])
+        .collect();
+    Ok(std::sync::Arc::new(fl_dart_vm::NativeAssets::new(
+        assets, search,
+    )))
 }
 
 fn load_app(path: &str) -> Result<AppProgram, Failure> {
@@ -485,6 +532,7 @@ fn app_once(
     vm: &Vm,
     program: &AppProgram,
     path: &str,
+    native_assets: &std::sync::Arc<fl_dart_vm::NativeAssets>,
     app: &AppArgs,
     raster: Option<&std::sync::Arc<fl_raster::RasterThread>>,
     echo: bool,
@@ -546,6 +594,7 @@ fn app_once(
     }
     let wake = fl_shell::Wake::default();
     let mut cfg = fl_shell::isolate_config(path, &wake);
+    cfg.native_assets = Some(Arc::clone(native_assets));
     if !echo {
         cfg.print = Arc::new(|_| {});
     }

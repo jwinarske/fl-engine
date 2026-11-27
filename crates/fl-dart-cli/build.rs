@@ -17,7 +17,16 @@
 //! `jal`'s reach: "relocation truncated to fit: R_RISCV_JAL against symbol
 //! `operator new`" linking the debug test binary once fl-text took ICU4X's
 //! segmenter. Unrelaxed, a call costs one instruction more; it always links.
+//!
+//! `RUNPATH $ORIGIN/lib`: the VM is linked into this executable, so a
+//! `dlopen` it makes searches the executable's RUNPATH. In a stock Linux
+//! bundle the VM is in `lib/libflutter_linux_gtk.so`, whose `RUNPATH
+//! $ORIGIN` is what finds a library of the bundle's `lib/` by a bare name
+//! (`DynamicLibrary.open('libfoo.so')`); fl-dart copied into a bundle's root
+//! finds the same ones. RUNPATH, not RPATH: `LD_LIBRARY_PATH` still comes
+//! first, and the libraries fl-dart opens do not inherit it.
 fn main() {
+    println!("cargo:rustc-link-arg-bins=-Wl,--enable-new-dtags,-rpath,$ORIGIN/lib");
     println!("cargo:rustc-link-arg-bins=-Wl,--export-dynamic-symbol=fl_dart_*");
     println!("cargo:rustc-link-arg-bins=-Wl,--export-dynamic-symbol=FlutterDesktop*");
     if std::env::var("CARGO_CFG_TARGET_ARCH").as_deref() == Ok("riscv64") {
