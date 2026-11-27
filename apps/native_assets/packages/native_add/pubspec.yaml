@@ -1,0 +1,8 @@
+name: native_add
+description: fl-engine test package. A C library its build hook compiles, as a code asset.
+publish_to: none
+environment:
+  sdk: ^3.13.0
+dependencies:
+  code_assets: ^2.2.0
+  hooks: ^2.2.0

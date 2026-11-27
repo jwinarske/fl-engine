@@ -24,6 +24,7 @@
 
 mod error;
 mod isolate;
+mod native_assets;
 mod port;
 mod snapshot;
 mod vm;
@@ -33,6 +34,7 @@ pub use isolate::{
     live_persistent_handles, Handle, HandleScope, Isolate, IsolateConfig, IsolateScope,
     MessageNotify, NativeResolver, PersistentHandle, PrintSink,
 };
+pub use native_assets::NativeAssets;
 pub use port::{CObject, NativePort};
 #[cfg(feature = "aot")]
 pub use snapshot::AotSnapshot;

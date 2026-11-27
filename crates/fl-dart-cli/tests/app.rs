@@ -79,6 +79,35 @@ fn a_dart_plugin_is_registered_before_main_and_compute_runs() {
     assert!(out.contains("\nframe 1: "), "{out}");
 }
 
+/// A package's code asset, built by its hook and staged by the bundle
+/// build, is bound by `@Native` through the bundle's
+/// `NativeAssetsManifest.json`, as the engine binds it: from the root
+/// isolate and from one `compute` spawns in its group. A symbol the library
+/// lacks is an error that says so, and an asset id the manifest does not map
+/// still resolves in the process. From the program with its assets beside
+/// it, and from the bundle.
+#[test]
+#[ignore = "app lane: needs FLUTTER_ROOT and a C compiler"]
+fn a_code_asset_is_bound_through_the_bundles_manifest() {
+    let app = build_app("native_assets");
+    for path in [app.clone(), app.with_extension("")] {
+        let o = common::fl_dart(&["run-app".as_ref(), path.as_os_str(), "800x600@2".as_ref()]);
+        assert!(o.status.success(), "{o:?}");
+        let out = String::from_utf8_lossy(&o.stdout);
+        assert!(
+            out.starts_with(
+                "native_add: 42\n\
+                 native_add in compute: 7\n\
+                 missing symbol: true\n\
+                 unmapped id from the process: true\n"
+            ),
+            "{}: {out}",
+            path.display()
+        );
+        assert!(out.contains("\nframe 1: "), "{out}");
+    }
+}
+
 /// The framework's calls on `flutter/platform` and `flutter/navigation`
 /// are answered as the Linux embedder answers them: those it has no
 /// method or handler for with an empty reply, which an optional channel

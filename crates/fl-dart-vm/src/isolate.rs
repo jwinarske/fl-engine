@@ -23,6 +23,7 @@ use std::sync::Arc;
 use fl_dart_sys as sys;
 
 use crate::error::{check, malloc_string, string_value, take_c_error, DartError};
+use crate::native_assets::NativeAssets;
 use crate::vm::Vm;
 
 /// Where `print()` goes.
@@ -49,6 +50,10 @@ pub struct IsolateConfig {
     /// Told of each message for the isolate, for an embedder's own loop.
     /// `None` leaves message delivery to [`HandleScope::run_loop`].
     pub notify: Option<MessageNotify>,
+    /// The code assets the app's `@Native` declarations name, for its whole
+    /// isolate group. `None` maps none: an `@Native` resolves only in the
+    /// process, as it did before the group had a resolver.
+    pub native_assets: Option<Arc<NativeAssets>>,
 }
 
 /// Maps an `@Native` symbol name and its argument count to the function that
@@ -65,6 +70,7 @@ impl Default for IsolateConfig {
             print: Arc::new(|line| println!("{line}")),
             natives: None,
             notify: None,
+            native_assets: None,
         }
     }
 }
@@ -76,6 +82,7 @@ impl std::fmt::Debug for IsolateConfig {
             .field("name", &self.name)
             .field("natives", &self.natives.is_some())
             .field("notify", &self.notify.is_some())
+            .field("native_assets", &self.native_assets)
             .finish_non_exhaustive()
     }
 }
@@ -91,6 +98,8 @@ struct GroupData {
     _aot: Arc<crate::AotSnapshot>,
     /// What an isolate the group's code spawns is set up with.
     spawned: Spawned,
+    /// What the group's `@Native` asset ids open ([`crate::native_assets`]).
+    native_assets: Option<Arc<NativeAssets>>,
 }
 
 /// The root isolate's script URI and print sink, for the isolates
@@ -154,6 +163,7 @@ impl Vm {
         let group = GroupData {
             _kernel: kernel,
             spawned: Spawned::of(&cfg)?,
+            native_assets: cfg.native_assets.clone(),
         };
         // SAFETY: the kernel bytes live in `group`, which the VM keeps until it
         // calls cleanup_group.
@@ -189,6 +199,7 @@ impl Vm {
         let group = GroupData {
             _aot: Arc::clone(snapshot),
             spawned: Spawned::of(&cfg)?,
+            native_assets: cfg.native_assets.clone(),
         };
         // SAFETY: the snapshot stays mapped while `group` holds it.
         unsafe {
@@ -268,6 +279,8 @@ impl Vm {
         // The new isolate is current, with no scope open.
         // SAFETY: there is a current isolate (just created) for the whole block.
         let setup = unsafe {
+            // Before any of the group's code runs, as the VM requires.
+            crate::native_assets::install();
             sys::Dart_EnterScope();
             let r = load(()).and_then(|()| install_hooks(&uri));
             sys::Dart_ExitScope();
@@ -1119,6 +1132,19 @@ pub(crate) extern "C" fn on_initialize(
             false
         }
     }
+}
+
+/// The current isolate group's native assets.
+///
+/// # Safety
+/// The current isolate group, if any, was made by this crate: its data is the
+/// `GroupData` `create` gave it, released only at group cleanup.
+pub(crate) unsafe fn group_native_assets() -> Option<&'static NativeAssets> {
+    // SAFETY: per this function's contract. The reference outlives no call
+    // the VM makes in the group, which is all it is used for.
+    let group = unsafe { sys::Dart_CurrentIsolateGroupData() } as *const GroupData;
+    // SAFETY: as above.
+    unsafe { group.as_ref() }.and_then(|g| g.native_assets.as_deref())
 }
 
 pub(crate) extern "C" fn on_shutdown(_group: *mut c_void, _isolate: *mut c_void) {}

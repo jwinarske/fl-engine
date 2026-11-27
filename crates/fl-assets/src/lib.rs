@@ -36,6 +36,8 @@ pub enum AssetError {
     Io(String),
     /// `FontManifest.json` is not the shape the tool writes.
     Manifest(String),
+    /// `NativeAssetsManifest.json` is not the shape the tool writes.
+    NativeAssetsManifest(String),
 }
 
 impl std::fmt::Display for AssetError {
@@ -49,6 +51,7 @@ impl std::fmt::Display for AssetError {
             }
             AssetError::Io(e) => write!(f, "{e}"),
             AssetError::Manifest(e) => write!(f, "FontManifest.json: {e}"),
+            AssetError::NativeAssetsManifest(e) => write!(f, "NativeAssetsManifest.json: {e}"),
         }
     }
 }
@@ -140,6 +143,17 @@ impl Bundle {
             Err(e) => Err(e),
         }
     }
+
+    /// The code assets `NativeAssetsManifest.json` maps for `target`, as the
+    /// engine's `NativeAssetsManager` reads them at start-up. No manifest is
+    /// no assets.
+    pub fn native_assets(&self, target: &str) -> Result<NativeAssetMap, AssetError> {
+        match self.load("NativeAssetsManifest.json") {
+            Ok(bytes) => parse_native_assets_manifest(&bytes, target),
+            Err(AssetError::NotFound(_)) => Ok(NativeAssetMap::new()),
+            Err(e) => Err(e),
+        }
+    }
 }
 
 /// A regular file at `path`, up to `limit` bytes: what
@@ -190,6 +204,66 @@ fn read_limited(path: &Path, what: &str, limit: u64) -> Result<Vec<u8>, AssetErr
         return Err(too_large(bytes.len() as u64));
     }
     Ok(bytes)
+}
+
+/// An asset id (`package:foo/foo.dart`) and where its library is, as the
+/// manifest gives it: a kind (`absolute`, `relative`, `system`, `process`,
+/// `executable`), then a path for the first three.
+pub type NativeAssetMap = std::collections::HashMap<String, Vec<String>>;
+
+/// The manifest's name for the platform this is built for, `linux_x64` and
+/// the like (the engine's `kTarget`, `assets/native_assets.cc`).
+pub const NATIVE_ASSETS_TARGET: &str = if cfg!(target_arch = "x86_64") {
+    "linux_x64"
+} else if cfg!(target_arch = "aarch64") {
+    "linux_arm64"
+} else if cfg!(target_arch = "riscv64") {
+    "linux_riscv64"
+} else if cfg!(target_arch = "arm") {
+    "linux_arm"
+} else if cfg!(target_arch = "x86") {
+    "linux_ia32"
+} else {
+    "linux_unknown"
+};
+
+/// `{"format-version": [1,0,0], "native-assets": {"<target>": {"<id>":
+/// ["absolute", "libfoo.so"]}}}`, as the flutter tool writes it beside the
+/// fonts, `target`'s entries. A manifest with nothing for `target` maps
+/// nothing: the tool writes an empty `native-assets` for an app with no code
+/// assets.
+pub fn parse_native_assets_manifest(
+    bytes: &[u8],
+    target: &str,
+) -> Result<NativeAssetMap, AssetError> {
+    use serde_json::Value;
+    let bad = |what: &str| AssetError::NativeAssetsManifest(what.to_owned());
+    let v: Value = serde_json::from_slice(bytes)
+        .map_err(|e| AssetError::NativeAssetsManifest(e.to_string()))?;
+    let all = v
+        .get("native-assets")
+        .and_then(Value::as_object)
+        .ok_or_else(|| bad("no native-assets object"))?;
+    let Some(mapping) = all.get(target) else {
+        return Ok(NativeAssetMap::new());
+    };
+    let mapping = mapping
+        .as_object()
+        .ok_or_else(|| bad("a target that is not an object"))?;
+    mapping
+        .iter()
+        .map(|(id, path)| {
+            let path = path
+                .as_array()
+                .and_then(|p| {
+                    p.iter()
+                        .map(|e| e.as_str().map(str::to_owned))
+                        .collect::<Option<Vec<_>>>()
+                })
+                .ok_or_else(|| bad(&format!("{id}: not a list of strings")))?;
+            Ok((id.clone(), path))
+        })
+        .collect()
 }
 
 /// One family of `FontManifest.json`.
@@ -340,5 +414,35 @@ mod tests {
     fn no_manifest_is_no_fonts() {
         let (_d, b) = bundle("nofonts");
         assert_eq!(b.fonts().unwrap(), Vec::new());
+    }
+
+    #[test]
+    fn reads_the_native_assets_manifest_the_tool_writes() {
+        let m = br#"{"format-version":[1,0,0],"native-assets":{"linux_x64":
+            {"package:firebase_ffi/src/ffi/firebase_ffi_asset.dart":["absolute","libfirebase_ffi.so"],
+             "package:p/q.dart":["process"]}}}"#;
+        let a = parse_native_assets_manifest(m, "linux_x64").unwrap();
+        assert_eq!(
+            a["package:firebase_ffi/src/ffi/firebase_ffi_asset.dart"],
+            ["absolute", "libfirebase_ffi.so"]
+        );
+        assert_eq!(a["package:p/q.dart"], ["process"]);
+        // Another target's entries are not this one's.
+        assert!(parse_native_assets_manifest(m, "linux_arm64")
+            .unwrap()
+            .is_empty());
+        let none = br#"{"format-version":[1,0,0],"native-assets":{}}"#;
+        assert!(parse_native_assets_manifest(none, "linux_x64")
+            .unwrap()
+            .is_empty());
+        assert!(parse_native_assets_manifest(b"[]", "linux_x64").is_err());
+        let bad = br#"{"native-assets":{"linux_x64":{"package:p/q.dart":["absolute",1]}}}"#;
+        assert!(parse_native_assets_manifest(bad, "linux_x64").is_err());
+    }
+
+    #[test]
+    fn no_native_assets_manifest_is_no_assets() {
+        let (_d, b) = bundle("noassets");
+        assert!(b.native_assets(NATIVE_ASSETS_TARGET).unwrap().is_empty());
     }
 }

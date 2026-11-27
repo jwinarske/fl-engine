@@ -17,7 +17,8 @@
 #
 # Either way the app's asset bundle goes to <out-dir>/<app>.assets: what a
 # Linux bundle keeps in data/flutter_assets (FontManifest.json, fonts, the
-# app's own assets), from `flutter build bundle`. fl-dart run-app finds it
+# app's own assets, the code assets its packages' build hooks make), from
+# `flutter build bundle`. fl-dart run-app finds it
 # beside the program.
 #
 # And <out-dir>/<app>/ is the two laid out as `flutter build linux` lays out
@@ -41,10 +42,10 @@ target="${4:-x86_64-unknown-linux-gnu}"
 name="$(basename "$app")"
 
 case "$target" in
-  x86_64-unknown-linux-gnu) engine=linux-x64-release ;;
-  aarch64-unknown-linux-gnu) engine=linux-arm64-release; cross=arm64 ;;
-  riscv64gc-unknown-linux-gnu) engine=; cross=riscv64 ;;
-  kernel) engine= ;;
+  x86_64-unknown-linux-gnu) engine=linux-x64-release; platform=linux-x64 ;;
+  aarch64-unknown-linux-gnu) engine=linux-arm64-release; cross=arm64; platform=linux-arm64 ;;
+  riscv64gc-unknown-linux-gnu) engine=; cross=riscv64; platform=linux-riscv64 ;;
+  kernel) engine=; platform=linux-x64 ;;
   *) echo "build.sh: unsupported target $target" >&2; exit 1 ;;
 esac
 
@@ -54,9 +55,12 @@ fes="$cache/dart-sdk/bin/snapshots/frontend_server_aot.dart.snapshot"
 (cd "$app" && "$flutter_root/bin/flutter" pub get >/dev/null)
 
 # The asset bundle, both modes. Release, so no kernel_blob.bin rides along.
+# For the target's platform: the build hooks make its code assets, which go
+# to native_assets/linux/ under the target's key in NativeAssetsManifest.json
+# (the kernel is run on the host).
 rm -rf "$out/$name.assets"
 (cd "$app" && "$flutter_root/bin/flutter" build bundle --release --no-pub \
-  --target-platform linux-x64 --asset-dir "$out/$name.assets" >/dev/null)
+  --target-platform "$platform" --asset-dir "$out/$name.assets" >/dev/null)
 # version.json, as flutter_tools' getVersionInfo writes it for a Linux
 # build: the app's name, and its version and build number where the
 # pubspec states them (`version: 1.2.3+4`). `build bundle` writes none.
