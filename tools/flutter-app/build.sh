@@ -23,8 +23,8 @@
 #
 # And <out-dir>/<app>/ is the two laid out as `flutter build linux` lays out
 # a bundle, hard links where the file system allows: lib/libapp.so (or
-# lib/app.dill), data/flutter_assets, and in it the version.json that build
-# writes from the pubspec's name and version. fl-dart run-app takes the
+# lib/app.dill) and the code assets beside it, data/flutter_assets, and in
+# it the version.json that build writes from the pubspec's name and version. fl-dart run-app takes the
 # directory. A plugin reading beside the running executable
 # (package_info_plus) finds the app's own files when fl-dart is copied into
 # the directory and run from there.
@@ -81,6 +81,14 @@ bundle() {
   cp -al "$out/$name.assets" "$out/$name/data/flutter_assets" 2>/dev/null ||
     cp -a "$out/$name.assets" "$out/$name/data/flutter_assets"
   ln -f "$1" "$out/$name/lib/$2" 2>/dev/null || cp -f "$1" "$out/$name/lib/$2"
+  # The code assets in lib/ too, where `flutter build linux` puts them: a
+  # bare name given to DynamicLibrary.open is found there through fl-dart's
+  # RUNPATH, $ORIGIN/lib, as through the engine library's in a stock bundle.
+  local asset
+  for asset in "$out/$name.assets/native_assets/linux/"*; do
+    [[ -f "$asset" ]] || continue
+    ln -f "$asset" "$out/$name/lib/" 2>/dev/null || cp -f "$asset" "$out/$name/lib/"
+  done
 }
 
 # The Dart plugin registrant `flutter build bundle` generated, compiled in as
