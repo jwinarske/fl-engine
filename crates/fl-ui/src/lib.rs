@@ -19,6 +19,7 @@ mod buffer;
 mod clipboard;
 mod color_filter;
 mod compositing;
+mod fragment;
 #[cfg(test)]
 mod fuzz;
 mod gradient;
@@ -32,6 +33,7 @@ mod path;
 mod path_op;
 mod platform;
 pub mod pointer;
+mod runtime_stage;
 mod semantics;
 pub mod system;
 mod text;
@@ -45,6 +47,7 @@ pub use clipboard::set_clipboard;
 pub use color_filter::ColorFilter;
 pub use compositing::{Clip, LayerOp, Scene};
 pub use fl_text::font::live_faces;
+pub use fragment::{RUNTIME_FLOATS, RUNTIME_IMAGES};
 pub use gradient::{Gradient, GradientKind};
 pub use image::{
     awaiting_decodes, clear_image_sink, set_image_sink, set_max_image_pixels, ImageData,
@@ -167,6 +170,33 @@ pub static NATIVES: &[Symbol] = &[
     fl_dart_ffi::symbol!("ImageShader::Create", 1, image::image_shader_create),
     fl_dart_ffi::symbol!("ImageShader::initWithImage", 6, image::image_shader_init),
     fl_dart_ffi::symbol!("ImageShader::dispose", 1, image::image_shader_dispose),
+    fl_dart_ffi::symbol!("FragmentProgram::Create", 1, fragment::program_create),
+    fl_dart_ffi::symbol!(
+        "FragmentProgram::initFromAsset",
+        2,
+        fragment::program_init_from_asset
+    ),
+    fl_dart_ffi::symbol!("ReusableFragmentShader::Create", 4, fragment::shader_create),
+    fl_dart_ffi::symbol!(
+        "ReusableFragmentShader::SetImageSampler",
+        4,
+        fragment::shader_set_image_sampler
+    ),
+    fl_dart_ffi::symbol!(
+        "ReusableFragmentShader::ValidateSamplers",
+        1,
+        fragment::shader_validate_samplers
+    ),
+    fl_dart_ffi::symbol!(
+        "ReusableFragmentShader::ValidateImageFilter",
+        1,
+        fragment::shader_validate_image_filter
+    ),
+    fl_dart_ffi::symbol!(
+        "ReusableFragmentShader::Dispose",
+        1,
+        fragment::shader_dispose
+    ),
     fl_dart_ffi::symbol!("ColorFilter::Create", 1, color_filter::create),
     fl_dart_ffi::symbol!("ColorFilter::initMode", 3, color_filter::init_mode),
     fl_dart_ffi::symbol!("ColorFilter::initMatrix", 2, color_filter::init_matrix),

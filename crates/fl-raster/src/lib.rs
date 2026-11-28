@@ -2283,6 +2283,14 @@ mod tests {
     }
 
     #[test]
+    fn fl_ui_refuses_a_program_at_emblema_s_limits() {
+        // fl-ui checks a FragmentProgram against these when it loads, so an
+        // app learns there, not at its first draw, that one cannot run.
+        assert_eq!(fl_ui::RUNTIME_FLOATS, emblema::RUNTIME_FLOATS);
+        assert_eq!(fl_ui::RUNTIME_IMAGES, emblema_hal::MAX_EFFECT_TEXTURES);
+    }
+
+    #[test]
     fn a_device_s_memory_blocks_are_sized_by_its_target() {
         const MIB: u64 = 1 << 20;
         let device = |w, h| memory_blocks(w, h, None).device / MIB;
