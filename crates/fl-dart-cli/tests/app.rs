@@ -893,6 +893,24 @@ fn text_draws_no_fallback_glyph() {
 
 /// Natives no app reaches yet, and the M3 stage whose programs will.
 const NOT_YET: &[(&str, &str)] = &[
+    // Loaded but not yet drawn: apps/fragment_shader comes with drawing
+    // them (the FragmentProgram plan's step 4).
+    ("FragmentProgram::Create", "a fragment shader drawn"),
+    ("FragmentProgram::initFromAsset", "a fragment shader drawn"),
+    ("ReusableFragmentShader::Create", "a fragment shader drawn"),
+    (
+        "ReusableFragmentShader::SetImageSampler",
+        "a fragment shader drawn",
+    ),
+    (
+        "ReusableFragmentShader::ValidateSamplers",
+        "a fragment shader drawn",
+    ),
+    (
+        "ReusableFragmentShader::ValidateImageFilter",
+        "a fragment shader drawn",
+    ),
+    ("ReusableFragmentShader::Dispose", "a fragment shader drawn"),
     // Refused when drawn (fl-raster names them), so no app here can use
     // one yet; docs/wonderous.md.
     ("ImageFilter::initMatrix", "a matrix image filter"),

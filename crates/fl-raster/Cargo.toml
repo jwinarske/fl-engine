@@ -38,6 +38,8 @@ fl-text = { workspace = true }
 
 [dev-dependencies]
 trybuild = { workspace = true }
+# The effect limits fl-ui refuses a program over, checked against emblema's.
+emblema-hal = { workspace = true }
 
 [lints]
 workspace = true
